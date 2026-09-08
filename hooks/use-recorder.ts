@@ -1,8 +1,11 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RecordingClock } from '@/lib/recording-clock';
+import { localStore } from '@/lib/local/store';
+import { createAudioWriter } from '@/lib/local/audio-writer';
 
 export const MAX_AUDIO_BYTES = 20 * 1024 * 1024;
+const MAX_LOCAL_AUDIO_BYTES = 256 * 1024 * 1024;
 export type RecorderState =
   | 'idle'
   | 'requesting'
@@ -16,6 +19,9 @@ export function useRecorder() {
   const [levels, setLevels] = useState<number[]>([]);
   const [blob, setBlob] = useState<Blob | null>(null);
   const [error, setError] = useState('');
+  const [persistence, setPersistence] = useState<
+    'idle' | 'saving' | 'saved' | 'partial'
+  >('idle');
   const [device, setDevice] = useState('笔记本默认麦克风');
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -24,6 +30,9 @@ export function useRecorder() {
   const clock = useRef(new RecordingClock());
   const mounted = useRef(true);
   const acquiring = useRef(false);
+  const recovery = useRef<((retry: boolean) => Promise<void>) | null>(null);
+  const [canRetry, setCanRetry] = useState(false);
+  const [needsBackup, setNeedsBackup] = useState(false);
   const cleanup = useCallback(() => {
     if (timer.current) clearInterval(timer.current);
     timer.current = null;
@@ -59,7 +68,7 @@ export function useRecorder() {
       cleanup();
     };
   }, [cleanup]);
-  const start = async () => {
+  const start = async (sessionId: string) => {
     if (
       acquiring.current ||
       (recorder.current && recorder.current.state !== 'inactive')
@@ -97,29 +106,64 @@ export function useRecorder() {
         audioBitsPerSecond: 32000,
       });
       recorder.current = r;
-      const chunks: Blob[] = [];
+      await localStore().beginAudio(sessionId, r.mimeType || 'audio/webm');
+      const writer = createAudioWriter(
+        localStore(),
+        sessionId,
+        r.mimeType || 'audio/webm',
+        () => {
+          setPersistence('partial');
+          setNeedsBackup(true);
+          setError('本地空间不足或保存失败，录音已停止。请立即下载音频备份。');
+          stop();
+        },
+      );
+      recovery.current = async (retry) => {
+        setState('stopping');
+        try {
+          const result = await writer.finish(clock.current.seconds(), retry);
+          if (!mounted.current) return;
+          setBlob(result.blob.size ? result.blob : null);
+          setPersistence(result.complete ? 'saved' : 'partial');
+          setNeedsBackup(!result.complete);
+          if (!result.complete)
+            setError('录音未完整保存到本地，请下载备份或释放空间后重试保存。');
+          else if (retry) setError('');
+          if (!result.blob.size)
+            setError('未获取到音频，请检查麦克风后新建面试重试。');
+        } catch {
+          if (mounted.current) {
+            setPersistence('partial');
+            setNeedsBackup(true);
+            setError(
+              '无法读取本地音频，待恢复片段仍在此页面中。请保留页面，释放空间或恢复存储权限后点击重试保存。',
+            );
+          }
+        } finally {
+          if (mounted.current) {
+            setLevels([]);
+            setState('stopped');
+            setSeconds(clock.current.seconds());
+          }
+        }
+      };
       let bytes = 0;
+      setCanRetry(true);
+      setPersistence('saving');
       r.ondataavailable = (event) => {
         if (event.data.size) {
-          chunks.push(event.data);
           bytes += event.data.size;
+          writer.append(event.data, clock.current.seconds());
         }
-        if (bytes >= MAX_AUDIO_BYTES && r.state !== 'inactive') {
-          setError('已达到本次录音大小上限，录音已结束，请下载备份。');
+        if (bytes >= MAX_LOCAL_AUDIO_BYTES && r.state !== 'inactive') {
+          setError('已达到 256 MB 本地录音上限，请下载备份。');
           stop();
         }
       };
       r.onstop = () => {
         cleanup();
         clock.current.pause();
-        if (!mounted.current) return;
-        const result = new Blob(chunks, { type: r.mimeType || 'audio/webm' });
-        setBlob(result.size ? result : null);
-        setLevels([]);
-        setState('stopped');
-        setSeconds(clock.current.seconds());
-        if (!result.size)
-          setError('未获取到音频，请检查麦克风后新建面试重试。');
+        void recovery.current?.(false);
       };
       r.onerror = () => {
         setError('录音遇到错误，已保留收到的音频，请下载后检查。');
@@ -152,8 +196,8 @@ export function useRecorder() {
       setState('recording');
       timer.current = setInterval(() => {
         setSeconds(clock.current.seconds());
-        if (clock.current.seconds() >= 3600) {
-          setError('已录满 60 分钟，录音已结束，请下载备份。');
+        if (clock.current.seconds() >= 14400) {
+          setError('已录满 4 小时，录音已结束，请下载备份。');
           stop();
           return;
         }
@@ -165,6 +209,12 @@ export function useRecorder() {
       }, 120);
     } catch (e) {
       cleanup();
+      await localStore()
+        .discardEmptyAudio(sessionId)
+        .catch(() => {});
+      setPersistence('idle');
+      setCanRetry(false);
+      recovery.current = null;
       setState('idle');
       const name = e instanceof Error ? e.name : '';
       setError(
@@ -203,10 +253,45 @@ export function useRecorder() {
     setState('idle');
     setSeconds(0);
     setBlob(null);
+    setPersistence('idle');
+    setNeedsBackup(false);
+    recovery.current = null;
+    setCanRetry(false);
     setError('');
     setLevels([]);
   };
+  const restore = async (id: string) => {
+    const [audio, meta] = await Promise.all([
+      localStore().readAudio(id),
+      localStore().getAudio(id),
+    ]);
+    if (meta && !meta.bytes) await localStore().discardEmptyAudio(id);
+    cleanup();
+    recovery.current = null;
+    setCanRetry(false);
+    setNeedsBackup(false);
+    setBlob(audio);
+    setSeconds(meta?.seconds || 0);
+    setState(audio ? 'stopped' : 'idle');
+    setLevels([]);
+    setPersistence(
+      audio && meta ? (meta.complete ? 'saved' : 'partial') : 'idle',
+    );
+    setError(
+      meta && !meta.complete
+        ? '已恢复中断录音中保存成功的部分，末尾可能不完整，请回听并下载备份。'
+        : '',
+    );
+  };
   return {
+    needsBackup,
+    acknowledgeBackup: () => setNeedsBackup(false),
+    retrySave: async () => {
+      await recovery.current?.(true);
+    },
+    canRetry,
+    restore,
+    persistence,
     state,
     seconds,
     levels,

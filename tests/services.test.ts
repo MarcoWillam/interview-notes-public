@@ -95,7 +95,7 @@ void test('raw provider failures and keys are not returned to the browser', asyn
 });
 void test('oversized requests and fabricated output are rejected', async () => {
   const r = await handleAnalysis(
-    request({ ...input, transcript: 'x'.repeat(410000) }),
+    request({ ...input, transcript: 'x'.repeat(560000) }),
     env,
   );
   assert.equal(r.status, 413);
