@@ -121,8 +121,19 @@ void test('resume and interview preferences are included in validated analysis i
     ...input,
     resumeText: '自述管理过项目',
     focus: '重点核实项目规模',
+    scoringGuidance: '3 分需独立完成项目',
+    reportRequirements: '摘要不超过三句话',
   };
   assert.deepEqual(validateInput(full), full);
+  const exported = exportMarkdown('测试', full, null, '', false);
+  assert.ok(exported.includes(full.scoringGuidance));
+  assert.ok(exported.includes(full.reportRequirements));
+  assert.throws(() =>
+    validateInput({ ...full, scoringGuidance: 'x'.repeat(4001) }),
+  );
+  assert.throws(() =>
+    validateInput({ ...full, reportRequirements: 'x'.repeat(4001) }),
+  );
   assert.ok(
     exportMarkdown('测试', full, null, '', false).includes('重点核实项目规模'),
   );

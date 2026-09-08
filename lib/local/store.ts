@@ -1,3 +1,9 @@
+import {
+  defaultStandards,
+  normalizeStandards,
+  validateStandards,
+  type GlobalSettings,
+} from '../standards.ts';
 export type SavedInterview = {
   id: string;
   updatedAt: number;
@@ -13,6 +19,8 @@ export type SavedInterview = {
   report: import('../interview.ts').Report | null;
   conclusion: string;
   confirmed: boolean;
+  scoringGuidance?: string;
+  reportRequirements?: string;
 };
 export type AudioRecord = {
   id: string;
@@ -29,21 +37,27 @@ export type Preference = {
   requirements: string;
   dimensionText: string;
   focus: string;
+  scoringGuidance?: string;
+  reportRequirements?: string;
 };
 export function createLocalStore(
   factory: IDBFactory,
   name = 'interview-notes-local',
 ) {
   const connection = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = factory.open(name, 1);
-    request.onupgradeneeded = () => {
+    const request = factory.open(name, 2);
+    request.onupgradeneeded = (event) => {
       const db = request.result;
-      db.createObjectStore('interviews', { keyPath: 'id' });
-      db.createObjectStore('audio', { keyPath: 'id' });
-      db.createObjectStore('preferences', { keyPath: 'id' });
-      db.createObjectStore('chunks', {
-        keyPath: ['id', 'sequence'],
-      }).createIndex('session', 'id');
+      if (event.oldVersion < 1) {
+        db.createObjectStore('interviews', { keyPath: 'id' });
+        db.createObjectStore('audio', { keyPath: 'id' });
+        db.createObjectStore('preferences', { keyPath: 'id' });
+        db.createObjectStore('chunks', {
+          keyPath: ['id', 'sequence'],
+        }).createIndex('session', 'id');
+      }
+      if (event.oldVersion < 2)
+        db.createObjectStore('settings', { keyPath: 'id' });
     };
     request.onsuccess = () => {
       request.result.onversionchange = () => request.result.close();
@@ -89,6 +103,84 @@ export function createLocalStore(
       tx.objectStore(store).put(value);
     });
   return {
+    savePreferencesConfig: async (
+      settings: GlobalSettings,
+      templates: Preference[],
+    ) => {
+      validateStandards(settings.defaults, false);
+      const ids = new Set<string>(),
+        names = new Set<string>();
+      for (const template of templates) {
+        validateStandards(normalizeStandards(template), true);
+        if (
+          !template.name.trim() ||
+          template.name.length > 80 ||
+          ids.has(template.id) ||
+          names.has(template.name.trim())
+        )
+          throw new Error('模板名称不能为空、超过 80 字或重复');
+        ids.add(template.id);
+        names.add(template.name.trim());
+      }
+      if (settings.defaultTemplateId && !ids.has(settings.defaultTemplateId))
+        throw new Error('默认模板已不存在，请重新选择');
+      const savedSettings: GlobalSettings = {
+        ...settings,
+        id: 'global',
+        defaults: {
+          ...normalizeStandards(settings.defaults),
+          role: '',
+          requirements: '',
+        },
+      };
+      const savedTemplates = templates.map((template) => ({
+        ...normalizeStandards(template),
+        id: template.id,
+        name: template.name.trim(),
+      }));
+      await run<void>(['settings', 'preferences'], 'readwrite', (tx) => {
+        tx.objectStore('preferences').clear();
+        savedTemplates.forEach((template) =>
+          tx.objectStore('preferences').put(template),
+        );
+        tx.objectStore('settings').put(savedSettings);
+      });
+      return { settings: savedSettings, templates: savedTemplates };
+    },
+    getSettings: () => read<GlobalSettings>('settings', 'global'),
+    saveSettings: async (value: GlobalSettings) => {
+      validateStandards(value.defaults, false);
+      return run<void>(['settings', 'preferences'], 'readwrite', (tx) => {
+        const save = () =>
+          tx.objectStore('settings').put({
+            ...value,
+            id: 'global',
+            defaults: {
+              ...normalizeStandards(value.defaults),
+              role: '',
+              requirements: '',
+            },
+          });
+        if (!value.defaultTemplateId) {
+          save();
+          return;
+        }
+        const r = tx.objectStore('preferences').get(value.defaultTemplateId);
+        r.onsuccess = () => {
+          if (r.result) save();
+          else tx.abort();
+        };
+      });
+    },
+    getNewInterviewStandards: async () => {
+      const settings = await read<GlobalSettings>('settings', 'global');
+      const template = settings?.defaultTemplateId
+        ? await read<Preference>('preferences', settings.defaultTemplateId)
+        : undefined;
+      return normalizeStandards(
+        template || settings?.defaults || defaultStandards,
+      );
+    },
     saveInterview: (value: SavedInterview) => put('interviews', value),
     getInterview: (id: string) => read<SavedInterview>('interviews', id),
     listInterviews: () => all<SavedInterview>('interviews'),
@@ -187,8 +279,16 @@ export function createLocalStore(
     savePreference: (value: Preference) => put('preferences', value),
     listPreferences: () => all<Preference>('preferences'),
     deletePreference: (id: string) =>
-      run<void>(['preferences'], 'readwrite', (tx) => {
+      run<void>(['preferences', 'settings'], 'readwrite', (tx) => {
         tx.objectStore('preferences').delete(id);
+        const r = tx.objectStore('settings').get('global');
+        r.onsuccess = () => {
+          if (r.result?.defaultTemplateId === id)
+            tx.objectStore('settings').put({
+              ...r.result,
+              defaultTemplateId: null,
+            });
+        };
       }),
   };
 }
