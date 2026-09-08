@@ -3,6 +3,8 @@ export type InterviewInput = {
   requirements: string;
   transcript: string;
   dimensions: string[];
+  resumeText?: string;
+  focus?: string;
 };
 export type Assessment = {
   name: string;
@@ -36,7 +38,18 @@ export function validateInput(value: unknown): InterviewInput {
   const dimensions = v.dimensions.map((d) => boundedString(d, 60, '评估维度'));
   if (new Set(dimensions).size !== dimensions.length)
     throw new Error('评估维度不能重复');
-  return { role, requirements, transcript, dimensions };
+  const extras: { resumeText?: string; focus?: string } = {};
+  for (const [key, max] of [
+    ['resumeText', 30000],
+    ['focus', 8000],
+  ] as const) {
+    if (v[key] !== undefined) {
+      if (typeof v[key] !== 'string' || v[key].length > max)
+        throw new Error('简历或面试偏好超过长度限制');
+      extras[key] = v[key].trim();
+    }
+  }
+  return { role, requirements, transcript, dimensions, ...extras };
 }
 export function validateReport(value: unknown, input: InterviewInput): Report {
   if (!value || typeof value !== 'object') throw new Error('评估返回格式错误');
@@ -99,6 +112,9 @@ export function exportMarkdown(
     '## 评估维度',
     input.dimensions.join('、'),
   ];
+  if (input.focus) lines.push('', '## 重点考察事项', input.focus);
+  if (input.resumeText)
+    lines.push('', '## 候选人简历（自述背景，待面试核实）', input.resumeText);
   if (report) {
     lines.push('', '## AI 辅助评估（需人工核实）', report.summary);
     for (const d of report.dimensions)

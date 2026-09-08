@@ -116,3 +116,34 @@ void test('manual reports export honestly as drafts until the interviewer confir
   const final = exportMarkdown('李明', input, null, '安排下一轮核实项目', true);
   assert.ok(final.includes('面试官已确认'));
 });
+void test('resume and interview preferences are included in validated analysis input and export', () => {
+  const full = {
+    ...input,
+    resumeText: '自述管理过项目',
+    focus: '重点核实项目规模',
+  };
+  assert.deepEqual(validateInput(full), full);
+  assert.ok(
+    exportMarkdown('测试', full, null, '', false).includes('重点核实项目规模'),
+  );
+  assert.throws(() =>
+    validateInput({ ...full, resumeText: 'x'.repeat(30001) }),
+  );
+  assert.throws(() =>
+    validateReport(
+      {
+        summary: 'x',
+        dimensions: [
+          {
+            name: '专业能力',
+            score: 5,
+            assessment: 'x',
+            evidence: ['自述管理过项目'],
+          },
+        ],
+        followUps: [],
+      },
+      full,
+    ),
+  );
+});

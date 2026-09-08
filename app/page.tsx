@@ -18,6 +18,8 @@ import {
   Check,
   CircleAlert,
   X,
+  Upload,
+  FolderOpen,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -38,6 +40,12 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useRecorder, MAX_AUDIO_BYTES } from '@/hooks/use-recorder';
 import { validateInput, exportMarkdown, type Report } from '@/lib/interview';
+import { useInterviewLibrary } from '@/hooks/use-interview-library';
+import {
+  LocalLibrary,
+  PreferenceLibrary,
+} from '@/components/interview/local-library';
+import { importResume } from '@/lib/import-resume';
 
 const defaultDimensions = '专业能力、问题解决、沟通协作、岗位匹配';
 const stateLabels = {
@@ -63,13 +71,20 @@ export default function Home() {
   const [role, setRole] = useState('');
   const [requirements, setRequirements] = useState('');
   const [dimensionText, setDimensionText] = useState(defaultDimensions);
+  const [focus, setFocus] = useState('');
+  const [resumeText, setResumeText] = useState('');
+  const [resumeName, setResumeName] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [consent, setConsent] = useState(false);
   const [reviewed, setReviewed] = useState(false);
   const [report, setReport] = useState<Report | null>(null);
   const [conclusion, setConclusion] = useState('');
   const [confirmed, setConfirmed] = useState(false);
-  const [busy, setBusy] = useState<'transcribe' | 'analyze' | null>(null);
+  const [busy, setBusy] = useState<
+    'transcribe' | 'analyze' | 'resume' | 'prepare' | null
+  >(null);
   const busyRef = useRef(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -88,9 +103,88 @@ export default function Home() {
     .split(/[、,，\n]/)
     .map((s) => s.trim())
     .filter(Boolean);
-  const input = { role, requirements, transcript, dimensions };
+  const input = {
+    role,
+    requirements,
+    transcript,
+    dimensions,
+    resumeText,
+    focus,
+  };
+  const library = useInterviewLibrary(
+    {
+      candidate,
+      role,
+      requirements,
+      dimensionText,
+      focus,
+      resumeText,
+      resumeName,
+      transcript,
+      reviewed,
+      report,
+      conclusion,
+      confirmed,
+    },
+    async (saved) => {
+      await recorder.restore(saved.id);
+      setCandidate(saved.candidate);
+      setRole(saved.role);
+      setRequirements(saved.requirements);
+      setDimensionText(saved.dimensionText);
+      setFocus(saved.focus || '');
+      setResumeText(saved.resumeText || '');
+      setResumeName(saved.resumeName || '');
+      setTranscript(saved.transcript);
+      setReviewed(saved.reviewed);
+      setReport(saved.report);
+      setConclusion(saved.conclusion);
+      setConfirmed(saved.confirmed);
+      setConsent(false);
+      setTab('record');
+      setNotice('已从当前浏览器恢复面试记录。');
+    },
+    reset,
+  );
+  async function localAction(action: () => Promise<void>) {
+    if (busyRef.current || active) return;
+    busyRef.current = true;
+    setBusy('prepare');
+    try {
+      await action();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '本地操作失败');
+    } finally {
+      busyRef.current = false;
+      setBusy(null);
+    }
+  }
+  async function startRecording() {
+    await library.flush();
+    await recorder.start(library.id);
+  }
+  async function resumeFile(file: File) {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy('resume');
+    setError('');
+    try {
+      const text = await importResume(file);
+      invalidate();
+      setResumeText(text);
+      setResumeName(file.name);
+      setNotice('简历已在本地解析，请校对正文；简历陈述仍需面试核实。');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '简历导入失败');
+    } finally {
+      busyRef.current = false;
+      setBusy(null);
+    }
+  }
   const hasContent = Boolean(
     dimensionText !== defaultDimensions ||
+    resumeText ||
+    focus ||
     candidate ||
     role ||
     requirements ||
@@ -131,13 +225,13 @@ export default function Home() {
     return () => URL.revokeObjectURL(url);
   }, [recorder.blob]);
   useEffect(() => {
-    if (!hasContent) return;
+    if (!active && !library.unsaved && !recorder.needsBackup) return;
     const warn = (e: BeforeUnloadEvent) => {
       e.preventDefault();
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [hasContent]);
+  }, [active, library.unsaved, recorder.needsBackup]);
   const reportSnapshot = useRef({
     report,
     conclusion,
@@ -306,7 +400,7 @@ export default function Home() {
       if (!conclusion.trim()) throw new Error('请填写面试官结论。');
       setError('');
       setConfirmed(true);
-      setNotice('面试结论已在当前页面确认，请导出保存。');
+      setNotice('面试结论已确认，将自动保存在本地，也可导出备份。');
     } catch (e) {
       setError(e instanceof Error ? e.message : '请补全资料');
     }
@@ -314,9 +408,8 @@ export default function Home() {
   function reset() {
     recorder.reset();
     setCandidate('');
-    setRole('');
-    setRequirements('');
-    setDimensionText(defaultDimensions);
+    setResumeText('');
+    setResumeName('');
     setTranscript('');
     setConsent(false);
     setReviewed(false);
@@ -353,7 +446,7 @@ export default function Home() {
         </div>
         <span className="workspace-label">面试工作台</span>
         <span className="privacy-label">
-          <ShieldCheck size={16} /> 当前页面 · 私密会话
+          <ShieldCheck size={16} /> 当前设备 · 本地保存
         </span>
         <button
           className="icon-button"
@@ -363,7 +456,22 @@ export default function Home() {
           <Settings2 size={19} />
         </button>
       </header>
-      <main className="workspace">
+      {(!library.ready || library.error) && (
+        <div className="workspace">
+          <div className="message" role="alert">
+            {library.error ||
+              (library.access === 'blocked'
+                ? '另一个标签正在使用本地工作台。请关闭另一个标签后刷新，避免互相覆盖。'
+                : library.access === 'unavailable'
+                  ? '浏览器本地存储不可用，请使用正常模式的 Chrome 打开。'
+                  : '正在恢复本地面试记录…')}
+          </div>
+        </div>
+      )}
+      <main
+        className="workspace"
+        inert={!library.ready || library.working || busy === 'prepare'}
+      >
         <div className="page-heading">
           <div>
             <p className="eyebrow">每一份判断，都有依据</p>
@@ -377,13 +485,62 @@ export default function Home() {
           </div>
           <button
             className="secondary-button"
-            disabled={active || !!busy}
-            onClick={() => (hasContent ? setResetOpen(true) : reset())}
+            disabled={active || !!busy || recorder.needsBackup}
+            onClick={() => {
+              if (hasContent) setResetOpen(true);
+              else void localAction(library.create);
+            }}
           >
             <Plus size={16} />
             新的面试
           </button>
         </div>
+        <div className="local-toolbar">
+          <span className="local-save-status">
+            {recorder.persistence === 'partial'
+              ? '部分录音未完整保存，请下载备份'
+              : active
+                ? '录音分段保存到本地'
+                : library.unsaved
+                  ? '正在保存到本地…'
+                  : '已保存在当前浏览器'}
+          </span>
+          <button
+            className="text-button"
+            disabled={active || !!busy}
+            onClick={() =>
+              void localAction(async () => {
+                await library.refresh();
+                setHistoryOpen(true);
+              })
+            }
+          >
+            <FolderOpen size={15} />
+            本地面试记录
+          </button>
+        </div>
+        {recorder.persistence === 'partial' && (
+          <div className="message" role="alert">
+            <span>请保留此页面，下载备份后再切换面试。</span>
+            {recorder.canRetry && (
+              <button
+                className="text-button"
+                disabled={active || !!busy}
+                onClick={() => void localAction(recorder.retrySave)}
+              >
+                重试保存录音
+              </button>
+            )}
+            {recorder.needsBackup && recorder.blob && (
+              <button
+                className="text-button"
+                onClick={recorder.acknowledgeBackup}
+              >
+                我已下载备份，允许切换
+              </button>
+            )}
+          </div>
+        )}
         {(error || recorder.error) && (
           <div role="alert" className="message error">
             <CircleAlert size={18} />
@@ -408,6 +565,10 @@ export default function Home() {
           <section className="main-column">
             <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
               <TabsList className="work-tabs">
+                <TabsTrigger value="resume">
+                  <FileText />
+                  候选人简历
+                </TabsTrigger>
                 <TabsTrigger value="record">
                   <Mic />
                   面试录音
@@ -421,6 +582,75 @@ export default function Home() {
                   结论评估{confirmed && <Check size={14} />}
                 </TabsTrigger>
               </TabsList>
+              <TabsContent value="resume">
+                <div className="panel text-panel">
+                  <div className="panel-heading">
+                    <div>
+                      <h2>候选人简历</h2>
+                      <p className="section-description">
+                        文件在浏览器中解析，不上传原件。
+                      </p>
+                    </div>
+                    <span className="count">
+                      {resumeText.length.toLocaleString()} / 30,000 字
+                    </span>
+                  </div>
+                  <div className="panel-body">
+                    <label className="resume-upload" htmlFor="resume-file">
+                      <Upload size={24} />
+                      <strong>
+                        {busy === 'resume' ? '正在本地解析…' : '导入 Word 简历'}
+                      </strong>
+                      <span>DOC / DOCX · 最大 5 MB</span>
+                      <input
+                        id="resume-file"
+                        type="file"
+                        accept=".doc,.docx"
+                        disabled={!!busy || active}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = '';
+                          if (file) void resumeFile(file);
+                        }}
+                      />
+                    </label>
+                    {resumeName && (
+                      <p className="small-note">
+                        来源：{resumeName} · 已提取正文，可在下方校对
+                      </p>
+                    )}
+                    <label htmlFor="resume-text" className="field-title">
+                      简历正文
+                    </label>
+                    <textarea
+                      id="resume-text"
+                      rows={12}
+                      maxLength={30000}
+                      disabled={!!busy || active}
+                      value={resumeText}
+                      onChange={(e) => {
+                        invalidate();
+                        setResumeText(e.target.value);
+                      }}
+                      placeholder="也可以直接粘贴简历文字。简历作为背景信息，项目经历与能力仍需通过面试核实。"
+                    />
+                    <div className="action-footer">
+                      <span>简历变更后，需要重新生成评估。</span>
+                      <button
+                        className="text-button"
+                        disabled={!resumeText || !!busy || active}
+                        onClick={() => {
+                          invalidate();
+                          setResumeText('');
+                          setResumeName('');
+                        }}
+                      >
+                        清空简历文字
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
               <TabsContent value="record">
                 <div className="panel recorder">
                   <div className="panel-heading">
@@ -476,7 +706,7 @@ export default function Home() {
                         <button
                           className="primary-button"
                           disabled={!consent || !!busy}
-                          onClick={() => void recorder.start()}
+                          onClick={() => void localAction(startRecording)}
                         >
                           <Mic size={18} />
                           开始录音
@@ -576,14 +806,14 @@ export default function Home() {
                     )}
                     {!recorder.blob && (
                       <p className="small-note">
-                        {recorder.device} · 最长 60 分钟 / 20 MB
+                        {recorder.device} · 本地最长 4 小时 / 256 MB
                       </p>
                     )}
                   </div>
                   <div className="recording-footer">
                     <span>
                       <ShieldCheck size={15} />{' '}
-                      关闭前请下载，音频仅保留在当前页面
+                      录音分段存于本地，建议下载文件备份
                     </span>
                     <span>建议在安静环境使用</span>
                   </div>
@@ -636,7 +866,7 @@ export default function Home() {
                       <span>
                         {!services?.analysis
                           ? 'AI 分析服务尚未配置'
-                          : '生成评估时，将发送岗位要求和校对后的文字'}
+                          : '生成评估时，将发送简历、面试偏好与校对后的文字'}
                       </span>
                       <button
                         className="primary-button"
@@ -796,6 +1026,19 @@ export default function Home() {
           <aside className="panel context-panel">
             <p className="eyebrow">面试准备</p>
             <h2>给评估一个清晰的标准</h2>
+            <button
+              className="preference-button secondary-button"
+              disabled={!!busy || active}
+              onClick={() =>
+                void localAction(async () => {
+                  await library.refresh();
+                  setPreferencesOpen(true);
+                })
+              }
+            >
+              <Settings2 size={15} />
+              保存 / 使用偏好模板
+            </button>
             <fieldset disabled={!!busy || active}>
               <label>
                 候选人
@@ -851,6 +1094,19 @@ export default function Home() {
               <p id="dimensions-help" className="small-note">
                 用顿号或换行分隔，支持 1–8 个维度。每个维度依据对话证据评估。
               </p>
+              <label className="focus-field">
+                重点考察事项
+                <textarea
+                  rows={4}
+                  value={focus}
+                  maxLength={8000}
+                  onChange={(e) => {
+                    invalidate();
+                    setFocus(e.target.value);
+                  }}
+                  placeholder="例如：重点核实独立负责的项目、实际业绩与跨团队协作；优先追问简历中未说明的部分。"
+                />
+              </label>
             </fieldset>
             <div className="service-summary">
               <span
@@ -884,6 +1140,33 @@ export default function Home() {
           </button>
         </footer>
       </main>
+      <LocalLibrary
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        library={library}
+        onError={setError}
+        download={download}
+        canSwitch={!recorder.needsBackup}
+        assertIdle={() => {
+          if (active || busyRef.current)
+            throw new Error('请等待当前操作结束后管理本地记录');
+        }}
+      />
+      <PreferenceLibrary
+        open={preferencesOpen}
+        onClose={() => setPreferencesOpen(false)}
+        library={library}
+        current={{ role, requirements, dimensionText, focus }}
+        onError={setError}
+        onApply={(p) => {
+          invalidate();
+          setRole(p.role);
+          setRequirements(p.requirements);
+          setDimensionText(p.dimensionText);
+          setFocus(p.focus);
+          setNotice(`已应用面试偏好：${p.name}`);
+        }}
+      />
       <Dialog open={settings} onOpenChange={setSettings}>
         <DialogContent className="settings-dialog" showCloseButton={false}>
           <div className="dialog-heading">
@@ -932,11 +1215,13 @@ export default function Home() {
         <AlertDialogContent>
           <AlertDialogTitle>开始一场新的面试？</AlertDialogTitle>
           <AlertDialogDescription>
-            当前页面的录音、文字和结论将被清除。请先下载录音并导出面试记录。
+            当前面试将保留在本地记录中。新面试沿用岗位与评估偏好，清空候选人资料和对话。
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>返回并保留</AlertDialogCancel>
-            <AlertDialogAction onClick={reset}>清除并新建</AlertDialogAction>
+            <AlertDialogAction onClick={() => void localAction(library.create)}>
+              保存并新建
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

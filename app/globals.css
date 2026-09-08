@@ -980,3 +980,161 @@ fieldset label:last-of-type {
     font-size: 14px;
   }
 }
+.local-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: -10px 0 12px;
+  font-size: 13px;
+  color: #738c81;
+  gap: 12px;
+}
+.local-save-status {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+}
+.local-save-status:before {
+  content: '';
+  display: block;
+  width: 6px;
+  height: 6px;
+  background: #649f80;
+  border-radius: 50%;
+}
+.resume-upload {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: #f4faf7;
+  border: 1px dashed #a8ccbc;
+  border-radius: 10px;
+  min-height: 136px;
+  color: #31735e;
+  cursor: pointer;
+  margin-bottom: 20px;
+}
+.resume-upload span {
+  font-size: 12px;
+  color: #7a9389;
+}
+.resume-upload input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.resume-upload:focus-within {
+  outline: 3px solid #8bc6b0;
+  outline-offset: 2px;
+}
+.resume-upload:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.field-title {
+  display: block;
+  margin: 15px 0 10px;
+  font-size: 14px;
+}
+.preference-button {
+  width: 100%;
+  margin: -8px 0 24px;
+}
+.focus-field {
+  margin-top: 20px;
+}
+.work-tabs {
+  gap: 19px !important;
+}
+.library-dialog {
+  max-width: 720px !important;
+  max-height: 85vh;
+  overflow: auto;
+  padding: 28px !important;
+}
+.local-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.local-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  align-items: center;
+  border: 1px solid #e0e9e4;
+  border-radius: 10px;
+  padding: 16px;
+}
+.local-row strong {
+  font-size: 16px;
+}
+.local-row strong .badge {
+  margin-left: 10px;
+}
+.local-row p {
+  font-size: 13px;
+  color: #799087;
+  margin: 5px 0;
+  overflow-wrap: anywhere;
+}
+.local-row > div:first-child {
+  min-width: 0;
+}
+.local-row .button-row {
+  flex-shrink: 0;
+}
+.local-row .secondary-button {
+  font-size: 13px;
+  padding: 7px 11px;
+}
+.storage-overview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f0f7f3;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.library-dialog .small-note {
+  margin-top: 0 !important;
+}
+.library-dialog > .primary-button {
+  justify-self: start;
+}
+.library-dialog label {
+  font-size: 14px;
+}
+.library-dialog input {
+  font-size: 16px;
+}
+@media (max-width: 760px) {
+  .work-tabs {
+    gap: 10px !important;
+  }
+  .work-tabs [data-slot='tabs-trigger'] {
+    font-size: 13px;
+    gap: 4px;
+  }
+  .work-tabs [data-slot='tabs-trigger'] > svg {
+    display: none;
+  }
+  .local-toolbar {
+    flex-wrap: wrap;
+  }
+  .local-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .library-dialog {
+    padding: 20px !important;
+  }
+  .local-row .button-row {
+    align-self: flex-end;
+  }
+}
