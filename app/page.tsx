@@ -41,13 +41,17 @@ import {
 import { useRecorder, MAX_AUDIO_BYTES } from '@/hooks/use-recorder';
 import { validateInput, exportMarkdown, type Report } from '@/lib/interview';
 import { useInterviewLibrary } from '@/hooks/use-interview-library';
+import { LocalLibrary } from '@/components/interview/local-library';
+import { GlobalPreferences } from '@/components/interview/global-preferences';
+import { StandardsFields } from '@/components/interview/standards-fields';
 import {
-  LocalLibrary,
-  PreferenceLibrary,
-} from '@/components/interview/local-library';
+  defaultStandards,
+  normalizeStandards,
+  type InterviewStandards,
+} from '@/lib/standards';
 import { importResume } from '@/lib/import-resume';
 
-const defaultDimensions = '专业能力、问题解决、沟通协作、岗位匹配';
+const defaultDimensions = defaultStandards.dimensionText;
 const stateLabels = {
   idle: '准备就绪',
   requesting: '等待麦克风授权',
@@ -72,6 +76,8 @@ export default function Home() {
   const [requirements, setRequirements] = useState('');
   const [dimensionText, setDimensionText] = useState(defaultDimensions);
   const [focus, setFocus] = useState('');
+  const [scoringGuidance, setScoringGuidance] = useState('');
+  const [reportRequirements, setReportRequirements] = useState('');
   const [resumeText, setResumeText] = useState('');
   const [resumeName, setResumeName] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -110,6 +116,8 @@ export default function Home() {
     dimensions,
     resumeText,
     focus,
+    scoringGuidance,
+    reportRequirements,
   };
   const library = useInterviewLibrary(
     {
@@ -118,6 +126,8 @@ export default function Home() {
       requirements,
       dimensionText,
       focus,
+      scoringGuidance,
+      reportRequirements,
       resumeText,
       resumeName,
       transcript,
@@ -133,6 +143,8 @@ export default function Home() {
       setRequirements(saved.requirements);
       setDimensionText(saved.dimensionText);
       setFocus(saved.focus || '');
+      setScoringGuidance(saved.scoringGuidance || '');
+      setReportRequirements(saved.reportRequirements || '');
       setResumeText(saved.resumeText || '');
       setResumeName(saved.resumeName || '');
       setTranscript(saved.transcript);
@@ -184,6 +196,8 @@ export default function Home() {
   const hasContent = Boolean(
     dimensionText !== defaultDimensions ||
     resumeText ||
+    scoringGuidance ||
+    reportRequirements ||
     focus ||
     candidate ||
     role ||
@@ -405,7 +419,28 @@ export default function Home() {
       setError(e instanceof Error ? e.message : '请补全资料');
     }
   }
-  function reset() {
+  const standards: InterviewStandards = {
+    role,
+    requirements,
+    dimensionText,
+    focus,
+    scoringGuidance,
+    reportRequirements,
+  };
+  function setStandards(value: InterviewStandards) {
+    setRole(value.role);
+    setRequirements(value.requirements);
+    setDimensionText(value.dimensionText);
+    setFocus(value.focus);
+    setScoringGuidance(value.scoringGuidance);
+    setReportRequirements(value.reportRequirements);
+  }
+  function applyStandards(value: InterviewStandards) {
+    invalidate();
+    setStandards(value);
+  }
+  function reset(value: InterviewStandards) {
+    setStandards(value);
     recorder.reset();
     setCandidate('');
     setResumeText('');
@@ -449,11 +484,17 @@ export default function Home() {
           <ShieldCheck size={16} /> 当前设备 · 本地保存
         </span>
         <button
-          className="icon-button"
-          onClick={() => setSettings(true)}
-          aria-label="查看服务配置"
+          className="global-settings-entry text-button"
+          disabled={!library.ready || library.working || active || !!busy}
+          onClick={() =>
+            void localAction(async () => {
+              await library.refresh();
+              setPreferencesOpen(true);
+            })
+          }
+          aria-label="打开全局面试设置"
         >
-          <Settings2 size={19} />
+          <Settings2 size={19} /> 全局设置
         </button>
       </header>
       {(!library.ready || library.error) && (
@@ -1026,19 +1067,44 @@ export default function Home() {
           <aside className="panel context-panel">
             <p className="eyebrow">面试准备</p>
             <h2>给评估一个清晰的标准</h2>
-            <button
-              className="preference-button secondary-button"
-              disabled={!!busy || active}
-              onClick={() =>
-                void localAction(async () => {
-                  await library.refresh();
-                  setPreferencesOpen(true);
-                })
-              }
-            >
-              <Settings2 size={15} />
-              保存 / 使用偏好模板
-            </button>
+            <p className="small-note">
+              本场标准独立保存，全局修改不会覆盖这场面试。
+            </p>
+            <label className="session-template-picker">
+              选择岗位模板
+              <select
+                value=""
+                disabled={!!busy || active}
+                onChange={(e) => {
+                  const selected =
+                    e.target.value === '__common__'
+                      ? library.globalSettings.defaults
+                      : library.preferences.find(
+                          (p) => p.id === e.target.value,
+                        );
+                  if (selected) {
+                    applyStandards(normalizeStandards(selected));
+                    setNotice(
+                      '已将模板标准复制到本场面试；旧评估已清除，请重新确认结论。',
+                    );
+                  }
+                }}
+              >
+                <option value="" disabled>
+                  选择模板应用到本场…
+                </option>
+                <option value="__common__">通用默认标准</option>
+                {library.preferences.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="small-note">
+              模板在页头的“全局设置”中管理。应用模板将替换本场标准并清除旧 AI
+              评估。
+            </p>
             <fieldset disabled={!!busy || active}>
               <label>
                 候选人
@@ -1052,61 +1118,14 @@ export default function Home() {
                   placeholder="输入候选人姓名"
                 />
               </label>
-              <label>
-                应聘岗位 <span className="required">*</span>
-                <input
-                  value={role}
-                  maxLength={200}
-                  onChange={(e) => {
-                    invalidate();
-                    setRole(e.target.value);
-                  }}
-                  placeholder="例如：产品经理"
-                />
-              </label>
-              <label>
-                岗位要求 <span className="required">*</span>
-                <textarea
-                  value={requirements}
-                  maxLength={10000}
-                  onChange={(e) => {
-                    invalidate();
-                    setRequirements(e.target.value);
-                  }}
-                  rows={5}
-                  placeholder="填写核心职责、必须具备的能力和经验…"
-                />
-              </label>
-              <div className="divider" />
-              <label>
-                评估维度 <span className="required">*</span>
-                <textarea
-                  value={dimensionText}
-                  maxLength={480}
-                  rows={2}
-                  onChange={(e) => {
-                    invalidate();
-                    setDimensionText(e.target.value);
-                  }}
-                  aria-describedby="dimensions-help"
-                />
-              </label>
-              <p id="dimensions-help" className="small-note">
-                用顿号或换行分隔，支持 1–8 个维度。每个维度依据对话证据评估。
-              </p>
-              <label className="focus-field">
-                重点考察事项
-                <textarea
-                  rows={4}
-                  value={focus}
-                  maxLength={8000}
-                  onChange={(e) => {
-                    invalidate();
-                    setFocus(e.target.value);
-                  }}
-                  placeholder="例如：重点核实独立负责的项目、实际业绩与跨团队协作；优先追问简历中未说明的部分。"
-                />
-              </label>
+              <div className="session-standard-summary">
+                <strong>{role || '尚未选择岗位'}</strong>
+                <p>{dimensionText || '尚未设置评估维度'}</p>
+              </div>
+              <details className="session-standards-details">
+                <summary>查看 / 调整本场标准</summary>
+                <StandardsFields value={standards} onChange={applyStandards} />
+              </details>
             </fieldset>
             <div className="service-summary">
               <span
@@ -1152,21 +1171,14 @@ export default function Home() {
             throw new Error('请等待当前操作结束后管理本地记录');
         }}
       />
-      <PreferenceLibrary
-        open={preferencesOpen}
-        onClose={() => setPreferencesOpen(false)}
-        library={library}
-        current={{ role, requirements, dimensionText, focus }}
-        onError={setError}
-        onApply={(p) => {
-          invalidate();
-          setRole(p.role);
-          setRequirements(p.requirements);
-          setDimensionText(p.dimensionText);
-          setFocus(p.focus);
-          setNotice(`已应用面试偏好：${p.name}`);
-        }}
-      />
+      {preferencesOpen && (
+        <GlobalPreferences
+          initialSettings={library.globalSettings}
+          initialTemplates={library.preferences}
+          onSave={library.saveGlobalPreferences}
+          onClose={() => setPreferencesOpen(false)}
+        />
+      )}
       <Dialog open={settings} onOpenChange={setSettings}>
         <DialogContent className="settings-dialog" showCloseButton={false}>
           <div className="dialog-heading">
@@ -1215,7 +1227,7 @@ export default function Home() {
         <AlertDialogContent>
           <AlertDialogTitle>开始一场新的面试？</AlertDialogTitle>
           <AlertDialogDescription>
-            当前面试将保留在本地记录中。新面试沿用岗位与评估偏好，清空候选人资料和对话。
+            当前面试将保留在本地记录中。新面试带入已保存的全局默认标准或默认岗位模板，清空候选人资料和对话。
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>返回并保留</AlertDialogCancel>

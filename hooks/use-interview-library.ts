@@ -7,11 +7,16 @@ import {
   type Preference,
 } from '@/lib/local/store';
 import { useLocalAccess } from './use-local-access';
+import {
+  defaultStandards,
+  type GlobalSettings,
+  type InterviewStandards,
+} from '@/lib/standards';
 export type Draft = Omit<SavedInterview, 'id' | 'updatedAt'>;
 export function useInterviewLibrary(
   draft: Draft,
   restore: (session: SavedInterview) => Promise<void>,
-  clear: () => void,
+  clear: (standards: InterviewStandards) => void,
 ) {
   const access = useLocalAccess();
   const [id, setId] = useState('');
@@ -22,6 +27,11 @@ export function useInterviewLibrary(
   const [sessions, setSessions] = useState<SavedInterview[]>([]);
   const [audio, setAudio] = useState<AudioRecord[]>([]);
   const [preferences, setPreferences] = useState<Preference[]>([]);
+  const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
+    id: 'global',
+    defaultTemplateId: null,
+    defaults: { ...defaultStandards },
+  });
   const [storage, setStorage] = useState({
     usage: 0,
     quota: 0,
@@ -36,16 +46,25 @@ export function useInterviewLibrary(
   });
   async function refresh() {
     const store = localStore();
-    const [rows, audios, prefs, estimate, persistent] = await Promise.all([
-      store.listInterviews(),
-      store.listAudio(),
-      store.listPreferences(),
-      navigator.storage?.estimate().catch(() => ({ usage: 0, quota: 0 })),
-      navigator.storage?.persisted().catch(() => false),
-    ]);
+    const [rows, audios, prefs, estimate, persistent, settings] =
+      await Promise.all([
+        store.listInterviews(),
+        store.listAudio(),
+        store.listPreferences(),
+        navigator.storage?.estimate().catch(() => ({ usage: 0, quota: 0 })),
+        navigator.storage?.persisted().catch(() => false),
+        store.getSettings(),
+      ]);
     setSessions(rows.sort((a, b) => b.updatedAt - a.updatedAt));
     setAudio(audios);
     setPreferences(prefs);
+    setGlobalSettings(
+      settings || {
+        id: 'global',
+        defaultTemplateId: null,
+        defaults: { ...defaultStandards },
+      },
+    );
     setStorage({
       usage: estimate?.usage || 0,
       quota: estimate?.quota || 0,
@@ -64,7 +83,12 @@ export function useInterviewLibrary(
           await callbacks.current.restore(latest);
           if (disposed) return;
           setId(latest.id);
-        } else setId(crypto.randomUUID());
+        } else {
+          const standards = await localStore().getNewInterviewStandards();
+          if (disposed) return;
+          callbacks.current.clear(standards);
+          setId(crypto.randomUUID());
+        }
         await refresh();
         if (!disposed) setReady(true);
       } catch {
@@ -135,8 +159,9 @@ export function useInterviewLibrary(
     setWorking(true);
     try {
       await flush();
+      const standards = await localStore().getNewInterviewStandards();
       setReady(false);
-      callbacks.current.clear();
+      callbacks.current.clear(standards);
       setId(crypto.randomUUID());
       setSaved('');
       setReady(true);
@@ -148,6 +173,8 @@ export function useInterviewLibrary(
   async function remove(target: string) {
     setWorking(true);
     try {
+      const standards =
+        target === id ? await localStore().getNewInterviewStandards() : null;
       if (target === id) {
         setReady(false);
         if (timer.current) clearTimeout(timer.current);
@@ -156,7 +183,7 @@ export function useInterviewLibrary(
       await localStore().deleteInterview(target);
       if (target === id) {
         setReady(false);
-        callbacks.current.clear();
+        callbacks.current.clear(standards!);
         setId(crypto.randomUUID());
         setSaved('');
         setReady(true);
@@ -167,13 +194,13 @@ export function useInterviewLibrary(
       setWorking(false);
     }
   }
-  async function savePreference(value: Preference) {
-    await localStore().savePreference(value);
-    await refresh();
-  }
-  async function removePreference(target: string) {
-    await localStore().deletePreference(target);
-    await refresh();
+  async function saveGlobalPreferences(
+    settings: GlobalSettings,
+    templates: Preference[],
+  ) {
+    const saved = await localStore().savePreferencesConfig(settings, templates);
+    setGlobalSettings(saved.settings);
+    setPreferences(saved.templates);
   }
   async function persist() {
     await navigator.storage.persist();
@@ -188,14 +215,14 @@ export function useInterviewLibrary(
     sessions,
     audio,
     preferences,
+    globalSettings,
+    saveGlobalPreferences,
     storage,
     unsaved: saved !== id + signature,
     flush,
     open,
     create,
     remove,
-    savePreference,
-    removePreference,
     persist,
     refresh,
   };

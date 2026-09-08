@@ -5,6 +5,8 @@ export type InterviewInput = {
   dimensions: string[];
   resumeText?: string;
   focus?: string;
+  scoringGuidance?: string;
+  reportRequirements?: string;
 };
 export type Assessment = {
   name: string;
@@ -38,10 +40,15 @@ export function validateInput(value: unknown): InterviewInput {
   const dimensions = v.dimensions.map((d) => boundedString(d, 60, '评估维度'));
   if (new Set(dimensions).size !== dimensions.length)
     throw new Error('评估维度不能重复');
-  const extras: { resumeText?: string; focus?: string } = {};
+  const extras: Pick<
+    InterviewInput,
+    'resumeText' | 'focus' | 'scoringGuidance' | 'reportRequirements'
+  > = {};
   for (const [key, max] of [
     ['resumeText', 30000],
     ['focus', 8000],
+    ['scoringGuidance', 4000],
+    ['reportRequirements', 4000],
   ] as const) {
     if (v[key] !== undefined) {
       if (typeof v[key] !== 'string' || v[key].length > max)
@@ -113,6 +120,10 @@ export function exportMarkdown(
     input.dimensions.join('、'),
   ];
   if (input.focus) lines.push('', '## 重点考察事项', input.focus);
+  if (input.scoringGuidance)
+    lines.push('', '## 补充评分标准', input.scoringGuidance);
+  if (input.reportRequirements)
+    lines.push('', '## 报告要求', input.reportRequirements);
   if (input.resumeText)
     lines.push('', '## 候选人简历（自述背景，待面试核实）', input.resumeText);
   if (report) {
