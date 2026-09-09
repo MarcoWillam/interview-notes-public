@@ -36,7 +36,7 @@ const approvedBuiltInTemplates = [
     focus:
       '核实目标用户与分层、生命周期运营动作、长期用户价值、指标口径、增长假设、低成本实验、个人贡献和结果原因。重点追问主动发现问题、争取资源、推进执行与承担结果。',
     scoringGuidance:
-      '用户运营约占岗位能力判断的 60%，数据增长约占 40%，用于提问和结论组织，不机械计算总分。自驱力评分锚点与 AI 产品经理模板一致；活动规模、曝光量和用户数量不能脱离目标、个人动作与复盘单独证明能力。',
+      '用户运营约占岗位能力判断的 60%，数据增长约占 40%，用于提问和结论组织，不机械计算总分。自驱力中，仅按要求完成通常不高于 3 分；主动定义阶段目标、协调资源并闭环可评 4 分；发现无人负责的重要问题，在资源不足或路径不明时推动形成可验证成果可评 5 分。活动规模、曝光量和用户数量不能脱离目标、个人动作与复盘单独证明能力。',
     reportRequirements:
       '先总结自驱力和结果闭环，再按用户运营、数据增长、学习与挑战、团队协作组织结论。明确个人贡献、具体动作、数据和结果；未确认内容列入待核实事项。',
   },
@@ -141,6 +141,14 @@ void test('built-in campus templates expose the required roles, dimensions and g
   templateExports.builtInRoleTemplates.forEach((item) =>
     validateStandards(item, true),
   );
+  const operations = templateExports.builtInRoleTemplates.find(
+    ({ id }) => id === builtInIds.productOperations,
+  );
+  assert.ok(operations);
+  assert.match(operations.scoringGuidance, /不高于 3 分/);
+  assert.match(operations.scoringGuidance, /可评 4 分/);
+  assert.match(operations.scoringGuidance, /可评 5 分/);
+  assert.doesNotMatch(operations.scoringGuidance, /与 AI 产品经理模板一致/);
 });
 
 void test('a new database seeds two templates without selecting a default', async () => {
