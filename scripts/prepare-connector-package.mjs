@@ -1,20 +1,11 @@
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { zipSync, strToU8 } from 'fflate';
+import { connectorPackageFiles } from './connector-package-files.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const files = [
-  'server/connector.ts',
-  'server/queue/connector-client.ts',
-  'server/codex.ts',
-  'server/analysis.ts',
-  'lib/interview.ts',
-  'lib/resume-reading.ts',
-  'lib/standards.ts',
-  'lib/assessment.ts',
-];
 const archive = {};
-for (const file of files)
+for (const file of connectorPackageFiles)
   archive[`interview-connector/${file}`] = await readFile(join(root, file));
 
 archive['interview-connector/package.json'] = strToU8(
