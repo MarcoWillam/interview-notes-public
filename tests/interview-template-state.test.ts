@@ -8,6 +8,8 @@ import {
   markTemplateModified,
   normalizeInterviewTemplateState,
   resolveTemplateSelection,
+  resolveResumeOutlinePreflight,
+  resumeOutlineLocked,
   supportsWrittenTest,
   writtenTestDecision,
 } from '../lib/interview-template-state.ts';
@@ -154,6 +156,43 @@ void test('resume reading asks only when AI PM written-test status is unconfirme
     writtenTestDecision(BUILTIN_TEMPLATE_IDS.productOperations, false, true),
     false,
   );
+});
+
+void test('resume outline preflight requires AI PM written-test choice and normalizes operations', () => {
+  assert.deepEqual(
+    resolveResumeOutlinePreflight(
+      BUILTIN_TEMPLATE_IDS.aiProductManager,
+      true,
+    ),
+    {
+      templateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
+      hasWrittenTest: true,
+    },
+  );
+  assert.equal(
+    resolveResumeOutlinePreflight(
+      BUILTIN_TEMPLATE_IDS.aiProductManager,
+      null,
+    ),
+    null,
+  );
+  assert.deepEqual(
+    resolveResumeOutlinePreflight(
+      BUILTIN_TEMPLATE_IDS.productOperations,
+      null,
+    ),
+    {
+      templateId: BUILTIN_TEMPLATE_IDS.productOperations,
+      hasWrittenTest: false,
+    },
+  );
+  assert.equal(resolveResumeOutlinePreflight('custom-template', false), null);
+});
+
+void test('a persisted resume reading is the permanent outline lock', () => {
+  assert.equal(resumeOutlineLocked({ summary: '已生成' }), true);
+  assert.equal(resumeOutlineLocked(null), false);
+  assert.equal(resumeOutlineLocked(undefined), false);
 });
 
 void test('restored metadata infers legacy sources and removes impossible written-test state', () => {
