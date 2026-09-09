@@ -1,5 +1,6 @@
 'use client';
 import { importResume } from '@/lib/import-resume';
+import { reconcileCandidateName } from '@/lib/resume-workflow';
 import { ResumeReadingView } from '@/components/interview/resume-reading-view';
 import {
   validateResumeInput,
@@ -81,10 +82,16 @@ export default function Home() {
   const [resumeReading, setResumeReading] = useState<ResumeReading | null>(
     null,
   );
-  const [resumeChecked, setResumeChecked] = useState(false);
+  const [resumeBodyOpen, setResumeBodyOpen] = useState(true);
+  const candidateKeepButton = useRef<HTMLButtonElement>(null);
+  const [pendingCandidateName, setPendingCandidateName] = useState<{
+    current: string;
+    detected: string;
+  } | null>(null);
   const [pendingResume, setPendingResume] = useState<{
     text: string;
     name: string;
+    autoRead: boolean;
   } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
@@ -103,7 +110,13 @@ export default function Home() {
   >(null);
   const busyRef = useRef(false);
   const analysisController = useRef<AbortController | null>(null);
-  useEffect(() => () => analysisController.current?.abort(), []);
+  useEffect(
+    () => () => {
+      analysisController.current?.abort();
+      analysisController.current = null;
+    },
+    [],
+  );
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [services, setServices] = useState<{
@@ -114,6 +127,41 @@ export default function Home() {
   } | null>(null);
   const localCodex = services?.provider === 'codex-local';
   const queuedCodex = services?.provider === 'codex-queue';
+  // Imports and queue responses may finish after the render that started them.
+  const resumeContext = useRef({
+    candidate,
+    resumeText,
+    role,
+    requirements,
+    dimensionText,
+    focus,
+    scoringGuidance,
+    reportRequirements,
+    queuedCodex,
+  });
+  useEffect(() => {
+    resumeContext.current = {
+      candidate,
+      resumeText,
+      role,
+      requirements,
+      dimensionText,
+      focus,
+      scoringGuidance,
+      reportRequirements,
+      queuedCodex,
+    };
+  }, [
+    candidate,
+    resumeText,
+    role,
+    requirements,
+    dimensionText,
+    focus,
+    scoringGuidance,
+    reportRequirements,
+    queuedCodex,
+  ]);
   const [remoteJob, setRemoteJob] = useState<RemoteJob | null>(null);
   const cancelledRemotely = useRef(false);
   const [cancelling, setCancelling] = useState(false);
@@ -146,7 +194,6 @@ export default function Home() {
       resumeText,
       resumeName,
       resumeReading,
-      resumeChecked,
       transcript,
       transcriptName,
       reviewed,
@@ -155,6 +202,10 @@ export default function Home() {
       confirmed,
     },
     async (saved) => {
+      analysisController.current?.abort();
+      analysisController.current = null;
+      setPendingCandidateName(null);
+      setPendingResume(null);
       setCandidate(saved.candidate);
       setRole(saved.role);
       setRequirements(saved.requirements);
@@ -165,7 +216,7 @@ export default function Home() {
       setResumeText(saved.resumeText || '');
       setResumeName(saved.resumeName || '');
       setResumeReading(saved.resumeReading || null);
-      setResumeChecked(saved.resumeChecked || false);
+      setResumeBodyOpen(!saved.resumeText);
       setTranscript(saved.transcript);
       setTranscriptName(
         saved.transcriptName || (saved.transcript ? '历史面试记录' : ''),
@@ -216,62 +267,104 @@ export default function Home() {
     }
   }
   function editResume(text: string, name = '') {
+    analysisController.current?.abort();
+    analysisController.current = null;
     invalidate();
     setResumeText(text);
     setResumeName(name);
     setResumeReading(null);
-    setResumeChecked(false);
+    setPendingCandidateName(null);
+    setResumeBodyOpen(true);
+  }
+  async function applyImportedResume(text: string, name: string) {
+    editResume(text, name);
+    setPendingResume(null);
+    setResumeBodyOpen(false);
+    await runResumeReading(text, name);
   }
   async function resumeFile(file: File) {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy('import');
     setError('');
-    try {
-      const text = await importResume(file);
-      if (resumeText.trim()) setPendingResume({ text, name: file.name });
-      else {
-        editResume(text, file.name);
-        setNotice('简历已提取，请核对文字、段落与日期后再使用 Codex 阅读。');
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '简历提取失败，原内容已保留。');
-    } finally {
-      busyRef.current = false;
-      setBusy(null);
-    }
-  }
-  async function readResume() {
-    if (busyRef.current) return;
-    setError('');
-    let value;
-    try {
-      value = validateResumeInput({ resumeText, role, requirements });
-      if (!resumeChecked) throw new Error('请先核对简历正文并勾选确认。');
-      if (!queuedCodex)
-        throw new Error('请使用当前队列版工作台连接 Codex 后阅读简历。');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '请核对简历。');
-      return;
-    }
-    busyRef.current = true;
-    setBusy('resume-read');
-    setRemoteJob(null);
-    cancelledRemotely.current = false;
     const controller = new AbortController();
+    analysisController.current?.abort();
     analysisController.current = controller;
     try {
+      const text = await importResume(file);
+      if (analysisController.current !== controller) return;
+      controller.signal.throwIfAborted();
+      if (resumeContext.current.resumeText.trim())
+        setPendingResume({ text, name: file.name, autoRead: true });
+      else await applyImportedResume(text, file.name);
+    } catch (e) {
+      if (analysisController.current !== controller) return;
+      setResumeBodyOpen(true);
+      setError(e instanceof Error ? e.message : '简历提取失败，原内容已保留。');
+    } finally {
+      if (analysisController.current === controller) {
+        analysisController.current = null;
+        busyRef.current = false;
+        setBusy(null);
+      }
+    }
+  }
+  async function runResumeReading(resumeText: string, resumeName: string) {
+    analysisController.current?.abort();
+    const controller = new AbortController();
+    analysisController.current = controller;
+    busyRef.current = true;
+    setBusy('resume-read');
+    setError('');
+    setNotice('');
+    setResumeReading(null);
+    setPendingCandidateName(null);
+    setRemoteJob(null);
+    setCancelling(false);
+    cancelledRemotely.current = false;
+    try {
+      const context = resumeContext.current;
+      const value = validateResumeInput({
+        resumeText,
+        role: context.role,
+        requirements: context.requirements,
+        dimensionText: context.dimensionText,
+        focus: context.focus,
+        scoringGuidance: context.scoringGuidance,
+        reportRequirements: context.reportRequirements,
+      });
+      if (!context.queuedCodex)
+        throw new Error('请使用当前队列版工作台连接 Codex 后阅读简历。');
       const valueRead = await submitRemoteResume(
         value,
-        (candidate || resumeName || '未命名候选人').slice(0, 100),
+        (context.candidate || resumeName || '未命名候选人').slice(0, 100),
         controller.signal,
-        (job) => setRemoteJob({ ...job, report: null }),
+        (job) => {
+          if (
+            analysisController.current === controller &&
+            !controller.signal.aborted
+          )
+            setRemoteJob({ ...job, report: null });
+        },
       );
+      if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
       setResumeReading(valueRead);
-      setNotice('简历要点已整理，内容来自候选人自述，请结合原文核实。');
+      const resolution = reconcileCandidateName(
+        resumeContext.current.candidate,
+        valueRead.candidateName,
+      );
+      if (resolution.kind === 'fill') setCandidate(resolution.value);
+      else if (resolution.kind === 'confirm')
+        setPendingCandidateName(resolution);
+      setNotice(
+        valueRead.candidateName?.trim()
+          ? '简历要点已整理，内容来自候选人自述，请结合原文核实。'
+          : '简历要点已整理；未识别到明确姓名，可在本场标准中填写，不影响继续面试。',
+      );
       setTab('resume');
     } catch (e) {
+      if (analysisController.current !== controller) return;
       setError(
         controller.signal.aborted
           ? cancelledRemotely.current
@@ -282,9 +375,11 @@ export default function Home() {
             : '简历阅读失败。',
       );
     } finally {
-      analysisController.current = null;
-      busyRef.current = false;
-      setBusy(null);
+      if (analysisController.current === controller) {
+        analysisController.current = null;
+        busyRef.current = false;
+        setBusy(null);
+      }
     }
   }
   const hasContent = Boolean(
@@ -420,6 +515,7 @@ export default function Home() {
     const controller = new AbortController();
     analysisController.current = controller;
     setRemoteJob(null);
+    setCancelling(false);
     cancelledRemotely.current = false;
     try {
       let data: Report;
@@ -473,8 +569,9 @@ export default function Home() {
     }
   }
   async function cancelAnalysis() {
+    const controller = analysisController.current;
     if (!queuedCodex) {
-      analysisController.current?.abort();
+      controller?.abort();
       return;
     }
     if (!remoteJob || cancelling) return;
@@ -484,12 +581,18 @@ export default function Home() {
         '/api/jobs/' + encodeURIComponent(remoteJob.id),
         { method: 'DELETE' },
       );
+      if (analysisController.current !== controller) return;
       cancelledRemotely.current = job.state === 'cancelled';
-      analysisController.current?.abort();
+      controller?.abort();
     } catch (e) {
-      setError(e instanceof Error ? e.message : '取消失败，请重试。');
+      if (analysisController.current === controller)
+        setError(e instanceof Error ? e.message : '取消失败，请重试。');
     } finally {
-      setCancelling(false);
+      if (
+        !analysisController.current ||
+        analysisController.current === controller
+      )
+        setCancelling(false);
     }
   }
   function confirmConclusion() {
@@ -526,12 +629,15 @@ export default function Home() {
     setStandards(value);
   }
   function reset(value: InterviewStandards) {
+    analysisController.current?.abort();
+    analysisController.current = null;
     setStandards(value);
     setCandidate('');
     setResumeText('');
     setResumeName('');
     setResumeReading(null);
-    setResumeChecked(false);
+    setResumeBodyOpen(true);
+    setPendingCandidateName(null);
     setPendingResume(null);
     setTranscript('');
     setTranscriptName('');
@@ -711,8 +817,8 @@ export default function Home() {
                     <div>
                       <h2>候选人简历</h2>
                       <p className="section-description">
-                        上传 Word、文字版 PDF 或粘贴正文，核对后让 Codex
-                        整理要点。
+                        上传 Word 或文字版 PDF
+                        后自动整理要点；也可粘贴正文后阅读。
                       </p>
                     </div>
                     <span className="count">
@@ -747,29 +853,28 @@ export default function Home() {
                       {resumeName ? '已导入：' + resumeName + '。' : ''}
                       附件在浏览器提取文字，原文件不上传。扫描件暂不支持，提取后请核对段落和日期。
                     </p>
-                    <label htmlFor="resume-text" className="field-title">
-                      简历正文
-                    </label>
-                    <textarea
-                      id="resume-text"
-                      rows={12}
-                      maxLength={30000}
-                      disabled={!!busy}
-                      value={resumeText}
-                      onChange={(e) => {
-                        editResume(e.target.value, resumeName);
-                      }}
-                      placeholder="在这里粘贴简历文字。简历作为背景信息，项目经历与能力仍需通过面试核实。"
-                    />
-                    <label className="review-check" htmlFor="resume-reviewed">
-                      <Checkbox
-                        id="resume-reviewed"
-                        checked={resumeChecked}
-                        disabled={!!busy || !resumeText.trim()}
-                        onCheckedChange={(v) => setResumeChecked(v)}
+                    <button
+                      className="text-button"
+                      aria-expanded={resumeBodyOpen}
+                      aria-controls="resume-body"
+                      onClick={() => setResumeBodyOpen((open) => !open)}
+                    >
+                      {resumeBodyOpen ? '收起简历正文' : '查看或编辑简历正文'}
+                    </button>
+                    <div id="resume-body" hidden={!resumeBodyOpen}>
+                      <label htmlFor="resume-text" className="field-title">
+                        简历正文
+                      </label>
+                      <textarea
+                        id="resume-text"
+                        rows={12}
+                        maxLength={30000}
+                        disabled={!!busy}
+                        value={resumeText}
+                        onChange={(e) => editResume(e.target.value, resumeName)}
+                        placeholder="在这里粘贴简历文字。简历作为背景信息，项目经历与能力仍需通过面试核实。"
                       />
-                      <span>已核对简历正文，确认内容完整可读</span>
-                    </label>
+                    </div>
                     <div className="action-footer">
                       <span>
                         {queuedCodex
@@ -780,11 +885,14 @@ export default function Home() {
                         className="primary-button"
                         disabled={
                           !!busy ||
-                          !resumeChecked ||
+                          !resumeText.trim() ||
                           !queuedCodex ||
                           !services?.analysis
                         }
-                        onClick={() => void readResume()}
+                        onClick={() => {
+                          if (!busyRef.current)
+                            void runResumeReading(resumeText, resumeName);
+                        }}
                       >
                         {busy === 'resume-read' ? (
                           <LoaderCircle className="spin" size={16} />
@@ -1262,6 +1370,33 @@ export default function Home() {
         </DialogContent>
       </Dialog>
       <AlertDialog
+        open={!!pendingCandidateName}
+        onOpenChange={(open) => {
+          if (!open) setPendingCandidateName(null);
+        }}
+      >
+        <AlertDialogContent initialFocus={candidateKeepButton}>
+          <AlertDialogTitle>简历姓名与当前候选人不同</AlertDialogTitle>
+          <AlertDialogDescription>
+            默认保留当前姓名。请选择是否使用简历中识别的姓名；选择不会重新阅读简历。
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel ref={candidateKeepButton}>
+              保留当前姓名：{pendingCandidateName?.current}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingCandidateName)
+                  setCandidate(pendingCandidateName.detected);
+                setPendingCandidateName(null);
+              }}
+            >
+              使用简历姓名：{pendingCandidateName?.detected}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
         open={!!pendingResume}
         onOpenChange={(open) => {
           if (!open) setPendingResume(null);
@@ -1277,13 +1412,15 @@ export default function Home() {
             <AlertDialogCancel>取消，保留原文</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (pendingResume)
-                  editResume(pendingResume.text, pendingResume.name);
-                setPendingResume(null);
-                setNotice('简历已替换，请重新核对正文。');
+                if (!pendingResume || busyRef.current) return;
+                if (pendingResume.autoRead)
+                  void applyImportedResume(
+                    pendingResume.text,
+                    pendingResume.name,
+                  );
               }}
             >
-              替换并重新核对
+              替换并自动阅读
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

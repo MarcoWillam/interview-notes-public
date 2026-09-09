@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { IDBFactory } from 'fake-indexeddb';
 import { createLocalStore, type SavedInterview } from '../lib/local/store.ts';
 const builtInTemplateIds = [
@@ -28,6 +29,37 @@ void test('interview draft survives reopening the local store', async () => {
   await first.saveInterview(session);
   const reopened = createLocalStore(factory);
   assert.deepEqual(await reopened.getInterview('first'), session);
+});
+void test('new and updated resume records do not acquire a verification gate', async () => {
+  const factory = new IDBFactory();
+  const first = createLocalStore(factory);
+  await first.saveInterview(session);
+  const reopened = createLocalStore(factory);
+  const record = await reopened.getInterview(session.id);
+  assert.ok(record);
+  assert.equal(Object.hasOwn(record, 'resumeChecked'), false);
+  await reopened.saveInterview({
+    ...record,
+    candidate: '张晓明',
+    updatedAt: 2,
+  });
+  const updated = await createLocalStore(factory).getInterview(session.id);
+  assert.ok(updated);
+  assert.equal(updated.candidate, '张晓明');
+  assert.equal(Object.hasOwn(updated, 'resumeChecked'), false);
+});
+void test('legacy resume verification remains readable without adding it to new page drafts', async () => {
+  const factory = new IDBFactory();
+  const store = createLocalStore(factory);
+  const legacy = { ...session, resumeChecked: true };
+  await store.saveInterview(legacy);
+  const reopened = createLocalStore(factory);
+  assert.deepEqual(await reopened.getInterview(session.id), legacy);
+  const page = await readFile(
+    new URL('../app/page.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(page, /\bresumeChecked\b/);
 });
 void test('audio chunks reopen in recording order and deletion is isolated', async () => {
   const factory = new IDBFactory();

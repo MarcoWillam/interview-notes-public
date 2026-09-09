@@ -15,6 +15,7 @@ export type SavedInterview = {
   focus: string;
   resumeText: string;
   resumeName: string;
+  /** Historical records only; current drafts no longer require verification. */
   resumeChecked?: boolean;
   resumeReading?: import('../resume-reading.ts').ResumeReading | null;
   transcript: string;
