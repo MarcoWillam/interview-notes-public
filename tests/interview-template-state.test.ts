@@ -6,6 +6,7 @@ import {
   appliedTemplateState,
   inferTemplateSource,
   markTemplateModified,
+  normalizeInterviewTemplateState,
   resolveTemplateSelection,
   supportsWrittenTest,
 } from '../lib/interview-template-state.ts';
@@ -28,7 +29,7 @@ const template = {
   requirements: '理解用户',
 };
 
-test('infers only a unique exact source for a legacy snapshot', () => {
+void test('infers only a unique exact source for a legacy snapshot', () => {
   assert.deepEqual(inferTemplateSource(template, [template], common), {
     sourceTemplateId: 'pm',
     templateModified: false,
@@ -47,7 +48,7 @@ test('infers only a unique exact source for a legacy snapshot', () => {
   });
 });
 
-test('selection priority distinguishes modified, deleted and updated snapshots', () => {
+void test('selection priority distinguishes modified, deleted and updated snapshots', () => {
   assert.deepEqual(
     resolveTemplateSelection(template, 'pm', true, [template], common),
     {
@@ -85,7 +86,7 @@ test('selection priority distinguishes modified, deleted and updated snapshots',
   );
 });
 
-test('custom records display a stable non-action status option', () => {
+void test('custom records display a stable non-action status option', () => {
   assert.deepEqual(
     resolveTemplateSelection(template, null, true, [template], common),
     {
@@ -98,7 +99,7 @@ test('custom records display a stable non-action status option', () => {
   );
 });
 
-test('written-test support belongs only to the built-in AI PM source', () => {
+void test('written-test support belongs only to the built-in AI PM source', () => {
   assert.equal(
     supportsWrittenTest(BUILTIN_TEMPLATE_IDS.aiProductManager),
     true,
@@ -110,7 +111,7 @@ test('written-test support belongs only to the built-in AI PM source', () => {
   assert.equal(supportsWrittenTest(COMMON_TEMPLATE_ID), false);
 });
 
-test('template transitions preserve AI PM written-test state and clear it elsewhere', () => {
+void test('template transitions preserve AI PM written-test state and clear it elsewhere', () => {
   assert.deepEqual(markTemplateModified('pm'), {
     sourceTemplateId: 'pm',
     templateModified: true,
@@ -129,6 +130,43 @@ test('template transitions preserve AI PM written-test state and clear it elsewh
       sourceTemplateId: BUILTIN_TEMPLATE_IDS.productOperations,
       templateModified: false,
       hasWrittenTest: false,
+    },
+  );
+});
+
+void test('restored metadata infers legacy sources and removes impossible written-test state', () => {
+  assert.deepEqual(
+    normalizeInterviewTemplateState(
+      template,
+      { hasWrittenTest: true },
+      [template],
+      common,
+    ),
+    {
+      sourceTemplateId: 'pm',
+      templateModified: false,
+      hasWrittenTest: false,
+    },
+  );
+  const aiTemplate = {
+    ...template,
+    id: BUILTIN_TEMPLATE_IDS.aiProductManager,
+  };
+  assert.deepEqual(
+    normalizeInterviewTemplateState(
+      aiTemplate,
+      {
+        sourceTemplateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
+        templateModified: true,
+        hasWrittenTest: true,
+      },
+      [aiTemplate],
+      common,
+    ),
+    {
+      sourceTemplateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
+      templateModified: true,
+      hasWrittenTest: true,
     },
   );
 });

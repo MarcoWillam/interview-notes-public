@@ -50,7 +50,6 @@ import type { NewInterviewSeed } from '@/lib/local/store';
 import {
   COMMON_TEMPLATE_ID,
   appliedTemplateState,
-  inferTemplateSource,
   resolveTemplateSelection,
   supportsWrittenTest,
 } from '@/lib/interview-template-state';
@@ -87,9 +86,7 @@ export default function Home() {
   const [focus, setFocus] = useState('');
   const [scoringGuidance, setScoringGuidance] = useState('');
   const [reportRequirements, setReportRequirements] = useState('');
-  const [sourceTemplateId, setSourceTemplateId] = useState<
-    string | null | undefined
-  >(undefined);
+  const [sourceTemplateId, setSourceTemplateId] = useState<string | null>(null);
   const [templateModified, setTemplateModified] = useState(false);
   const [hasWrittenTest, setHasWrittenTest] = useState(false);
   const [resumeText, setResumeText] = useState('');
@@ -144,6 +141,8 @@ export default function Home() {
   } | null>(null);
   const localCodex = services?.provider === 'codex-local';
   const queuedCodex = services?.provider === 'codex-queue';
+  const effectiveHasWrittenTest =
+    supportsWrittenTest(sourceTemplateId) && hasWrittenTest;
   // Imports and queue responses may finish after the render that started them.
   const resumeContext = useRef({
     candidate,
@@ -154,7 +153,7 @@ export default function Home() {
     focus,
     scoringGuidance,
     reportRequirements,
-    hasWrittenTest,
+    hasWrittenTest: effectiveHasWrittenTest,
     queuedCodex,
   });
   useEffect(() => {
@@ -167,7 +166,7 @@ export default function Home() {
       focus,
       scoringGuidance,
       reportRequirements,
-      hasWrittenTest,
+      hasWrittenTest: effectiveHasWrittenTest,
       queuedCodex,
     };
   }, [
@@ -179,7 +178,7 @@ export default function Home() {
     focus,
     scoringGuidance,
     reportRequirements,
-    hasWrittenTest,
+    effectiveHasWrittenTest,
     queuedCodex,
   ]);
   const [remoteJob, setRemoteJob] = useState<RemoteJob | null>(null);
@@ -230,7 +229,7 @@ export default function Home() {
       confirmed,
       sourceTemplateId,
       templateModified,
-      hasWrittenTest,
+      hasWrittenTest: effectiveHasWrittenTest,
     },
     async (saved) => {
       analysisController.current?.abort();
@@ -244,7 +243,7 @@ export default function Home() {
       setFocus(saved.focus || '');
       setScoringGuidance(saved.scoringGuidance || '');
       setReportRequirements(saved.reportRequirements || '');
-      setSourceTemplateId(saved.sourceTemplateId);
+      setSourceTemplateId(saved.sourceTemplateId ?? null);
       setTemplateModified(saved.templateModified ?? false);
       setHasWrittenTest(saved.hasWrittenTest ?? false);
       setResumeText(saved.resumeText || '');
@@ -264,32 +263,6 @@ export default function Home() {
     },
     reset,
   );
-  useEffect(() => {
-    if (!library.ready || sourceTemplateId !== undefined) return;
-    const inferred = inferTemplateSource(
-      standards,
-      library.preferences,
-      library.globalSettings.defaults,
-    );
-    setSourceTemplateId(inferred.sourceTemplateId);
-    setTemplateModified(inferred.templateModified);
-    if (!supportsWrittenTest(inferred.sourceTemplateId))
-      setHasWrittenTest(false);
-  }, [
-    library.ready,
-    library.preferences,
-    library.globalSettings.defaults,
-    sourceTemplateId,
-    standards,
-  ]);
-  useEffect(() => {
-    if (
-      sourceTemplateId !== undefined &&
-      !supportsWrittenTest(sourceTemplateId) &&
-      hasWrittenTest
-    )
-      setHasWrittenTest(false);
-  }, [sourceTemplateId, hasWrittenTest]);
   async function localAction(action: () => Promise<void>) {
     if (busyRef.current) return;
     busyRef.current = true;
@@ -744,7 +717,7 @@ export default function Home() {
     disabled: !!busy,
     standardsOpen,
     templateSelection,
-    hasWrittenTest,
+    hasWrittenTest: effectiveHasWrittenTest,
     writtenTestSupported: supportsWrittenTest(sourceTemplateId),
     onStandardsOpenChange: setStandardsOpen,
     onCandidateChange: (value: string) => {
@@ -765,7 +738,7 @@ export default function Home() {
       if (selected) {
         invalidate();
         setStandards(normalizeStandards(selected));
-        const next = appliedTemplateState(id, hasWrittenTest);
+        const next = appliedTemplateState(id, effectiveHasWrittenTest);
         setSourceTemplateId(next.sourceTemplateId);
         setTemplateModified(next.templateModified);
         setHasWrittenTest(next.hasWrittenTest);
