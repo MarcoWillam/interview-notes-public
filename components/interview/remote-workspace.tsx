@@ -1,23 +1,17 @@
 import { useEffect, useState, type SyntheticEvent } from 'react';
-import {
-  Monitor,
-  LogOut,
-  X,
-  RefreshCw,
-  Link2,
-  Download,
-  UserPlus,
-} from 'lucide-react';
+import { Monitor, X, RefreshCw, Link2, Download, UserPlus } from 'lucide-react';
 import Home from '../../app/page';
 import { configureLocalStore } from '../../lib/local/store';
-import { remoteRequest, configureRemoteAccount } from '../../lib/remote-analysis';
+import {
+  remoteRequest,
+  configureRemoteAccount,
+} from '../../lib/remote-analysis';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogTitle,
 } from '../ui/dialog';
-import { TaskCenter } from './task-center';
 
 type Session = {
   user: { id: string; username: string } | null;
@@ -134,37 +128,19 @@ export function RemoteWorkspace() {
     );
   return (
     <>
-      <div className="remote-bar">
-        <span>
-          {session.preview ? '本机预览' : session.user.username}
-          <span className="remote-bar-note"> · 网页提交，电脑分析</span>
-        </span>
-        <div>
-          <button onClick={() => setPanel('devices')}>
-            <Monitor size={16} />
-            电脑连接
-          </button>
-          <TaskCenter />
-          {!session.preview && session.user.username === 'owner' && (
-            <button onClick={() => setAccountOpen(true)}>
-              <UserPlus size={16} />
-              账号配置
-            </button>
-          )}
-          {!session.preview && (
-            <button disabled={pending} onClick={() => void logout()}>
-              <LogOut size={15} />
-              退出
-            </button>
-          )}
-        </div>
-      </div>
-      {error && (
-        <p className="remote-error" role="alert">
-          {error}
-        </p>
-      )}
-      <Home />
+      <Home
+        workspaceAccount={{
+          id: session.preview ? 'preview' : session.user.id,
+          username: session.preview ? '本机预览' : session.user.username,
+          preview: session.preview,
+          owner: !session.preview && session.user.username === 'owner',
+          pending,
+          error,
+          onOpenDevices: () => setPanel('devices'),
+          onOpenAccount: () => setAccountOpen(true),
+          onLogout: () => void logout(),
+        }}
+      />
       <RemotePanel
         panel={panel}
         close={() => setPanel(null)}
@@ -194,8 +170,7 @@ function AccountSetupDialog({
     const form = new FormData(formElement);
     const rawUsername = form.get('username');
     const rawPassword = form.get('password');
-    const username =
-      typeof rawUsername === 'string' ? rawUsername.trim() : '';
+    const username = typeof rawUsername === 'string' ? rawUsername.trim() : '';
     const password = typeof rawPassword === 'string' ? rawPassword : '';
     setPending(true);
     setError('');
@@ -281,11 +256,7 @@ function AccountSetupDialog({
               {error}
             </p>
           )}
-          {success && (
-            <output className="remote-success">
-              {success}
-            </output>
-          )}
+          {success && <output className="remote-success">{success}</output>}
           <button className="primary-button" disabled={pending}>
             <UserPlus size={16} />
             {pending ? '正在创建…' : '创建账号'}
@@ -385,115 +356,115 @@ function RemotePanel({
           </p>
         )}
         <>
-            <div className="remote-section-label">
-              <h3>已配对电脑</h3>
-              <button className="text-button" onClick={() => void refresh()}>
-                <RefreshCw size={14} />
-                刷新
-              </button>
+          <div className="remote-section-label">
+            <h3>已配对电脑</h3>
+            <button className="text-button" onClick={() => void refresh()}>
+              <RefreshCw size={14} />
+              刷新
+            </button>
+          </div>
+          {!loaded && !error && <output>正在读取电脑状态…</output>}
+          {loaded && !devices.length && (
+            <div className="remote-empty">
+              <Monitor size={28} />
+              <p>还没有连接电脑</p>
+              <span>可以先提交评估，连接电脑后会自动开始。</span>
             </div>
-            {!loaded && !error && <output>正在读取电脑状态…</output>}
-            {loaded && !devices.length && (
-              <div className="remote-empty">
-                <Monitor size={28} />
-                <p>还没有连接电脑</p>
-                <span>可以先提交评估，连接电脑后会自动开始。</span>
+          )}
+          {devices.map((device) => (
+            <div className="remote-device" key={device.id}>
+              <Monitor size={20} />
+              <div>
+                <strong>{device.name}</strong>
+                <span>
+                  <i
+                    className={`service-dot ${device.online && device.ready ? 'ready' : ''}`}
+                  />
+                  {device.online
+                    ? device.ready
+                      ? '在线 · 可以分析'
+                      : '在线 · Codex 需登录'
+                    : '离线 · 等待连接'}
+                </span>
               </div>
-            )}
-            {devices.map((device) => (
-              <div className="remote-device" key={device.id}>
-                <Monitor size={20} />
-                <div>
-                  <strong>{device.name}</strong>
-                  <span>
-                    <i
-                      className={`service-dot ${device.online && device.ready ? 'ready' : ''}`}
-                    />
-                    {device.online
-                      ? device.ready
-                        ? '在线 · 可以分析'
-                        : '在线 · Codex 需登录'
-                      : '离线 · 等待连接'}
-                  </span>
-                </div>
-                <button
-                  disabled={pending}
-                  className="text-button"
-                  onClick={() =>
-                    void action(async () => {
-                      await remoteRequest(
-                        '/api/devices/' + encodeURIComponent(device.id),
-                        { method: 'DELETE' },
-                      );
-                    })
-                  }
-                >
-                  解除配对
-                </button>
-              </div>
-            ))}
-            <div className="remote-pair">
-              <h3>
-                <Link2 size={18} />
-                连接一台电脑
-              </h3>
-              <p>
-                新电脑先下载并解压专用连接器包，再使用自己的 ChatGPT 账号登录
-                Codex。连接器需要保持运行。
-              </p>
-              <a
-                className="secondary-button remote-connector-download"
-                href="/downloads/interview-connector.zip"
-                download
-              >
-                <Download size={16} />
-                下载连接器包
-              </a>
-              <p className="small-note">
-                终端提示符如果仍是 <code>~ %</code>，或提示找不到{' '}
-                <code>/Users/用户名/package.json</code>
-                ，说明当前不在连接器目录。请先进入解压后的{' '}
-                <code>interview-connector</code> 文件夹。
-              </p>
-              {preview && (
-                <p className="small-note">
-                  本机预览已自动启动一个连接器；部署后可用此处配对自己的电脑。
-                </p>
-              )}
               <button
-                className="secondary-button"
                 disabled={pending}
+                className="text-button"
                 onClick={() =>
                   void action(async () => {
-                    setPair(
-                      await remoteRequest('/api/pair', {
-                        method: 'POST',
-                        body: '{}',
-                      }),
+                    await remoteRequest(
+                      '/api/devices/' + encodeURIComponent(device.id),
+                      { method: 'DELETE' },
                     );
                   })
                 }
               >
-                {pair ? '重新生成配对码' : '生成配对码'}
+                解除配对
               </button>
-              {pair && (
-                <div className="remote-pair-code">
-                  <strong>配对码：{pair.code}</strong>
-                  <span>
-                    仅可使用一次，有效至{' '}
-                    {new Date(pair.expiresAt).toLocaleTimeString('zh-CN')}。
-                  </span>
-                  <p>进入解压后的连接器目录：</p>
-                  <pre>cd ~/Downloads/interview-connector</pre>
-                  <p>确认当前目录中能看到 package.json 后运行：</p>
-                  <pre>{`npm run connector -- --server ${window.location.origin} --pair ${pair.code}`}</pre>
-                  <p className="small-note">
-                    首次成功后，后续只需运行 npm run
-                    connector。请仅将配对码用于自己的电脑。
-                  </p>
-                </div>
-              )}
             </div>
+          ))}
+          <div className="remote-pair">
+            <h3>
+              <Link2 size={18} />
+              连接一台电脑
+            </h3>
+            <p>
+              新电脑先下载并解压专用连接器包，再使用自己的 ChatGPT 账号登录
+              Codex。连接器需要保持运行。
+            </p>
+            <a
+              className="secondary-button remote-connector-download"
+              href="/downloads/interview-connector.zip"
+              download
+            >
+              <Download size={16} />
+              下载连接器包
+            </a>
+            <p className="small-note">
+              终端提示符如果仍是 <code>~ %</code>，或提示找不到{' '}
+              <code>/Users/用户名/package.json</code>
+              ，说明当前不在连接器目录。请先进入解压后的{' '}
+              <code>interview-connector</code> 文件夹。
+            </p>
+            {preview && (
+              <p className="small-note">
+                本机预览已自动启动一个连接器；部署后可用此处配对自己的电脑。
+              </p>
+            )}
+            <button
+              className="secondary-button"
+              disabled={pending}
+              onClick={() =>
+                void action(async () => {
+                  setPair(
+                    await remoteRequest('/api/pair', {
+                      method: 'POST',
+                      body: '{}',
+                    }),
+                  );
+                })
+              }
+            >
+              {pair ? '重新生成配对码' : '生成配对码'}
+            </button>
+            {pair && (
+              <div className="remote-pair-code">
+                <strong>配对码：{pair.code}</strong>
+                <span>
+                  仅可使用一次，有效至{' '}
+                  {new Date(pair.expiresAt).toLocaleTimeString('zh-CN')}。
+                </span>
+                <p>进入解压后的连接器目录：</p>
+                <pre>cd ~/Downloads/interview-connector</pre>
+                <p>确认当前目录中能看到 package.json 后运行：</p>
+                <pre>{`npm run connector -- --server ${window.location.origin} --pair ${pair.code}`}</pre>
+                <p className="small-note">
+                  首次成功后，后续只需运行 npm run
+                  connector。请仅将配对码用于自己的电脑。
+                </p>
+              </div>
+            )}
+          </div>
         </>
       </DialogContent>
     </Dialog>

@@ -42,8 +42,8 @@ function downloadReport(job: Job) {
       '',
       `## ${dimension.name} · ${dimension.score === null ? '证据不足' : dimension.score + '/5'}`,
       dimension.assessment,
-      ...dimension.evidence.map((quote) =>
-        '> ' + quote.replaceAll('\n', '\n> '),
+      ...dimension.evidence.map(
+        (quote) => '> ' + quote.replaceAll('\n', '\n> '),
       ),
     ]),
     '',
@@ -56,8 +56,7 @@ function downloadReport(job: Job) {
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download =
-    job.label.replace(/[\\/:*?"<>|\r\n]/g, '_').slice(0, 60) +
-    '-辅助评估.md';
+    job.label.replace(/[\\/:*?"<>|\r\n]/g, '_').slice(0, 60) + '-辅助评估.md';
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -73,9 +72,8 @@ export function TaskCenter() {
 
   const activeCount = useMemo(
     () =>
-      jobs.filter((job) =>
-        ['queued', 'running', 'paused'].includes(job.state),
-      ).length,
+      jobs.filter((job) => ['queued', 'running', 'paused'].includes(job.state))
+        .length,
     [jobs],
   );
   const runningCount = useMemo(
@@ -133,7 +131,9 @@ export function TaskCenter() {
     try {
       const updated = await controlRemoteJob(job.id, action);
       setJobs((current) =>
-        current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
+        current.map((item) =>
+          item.id === updated.id ? { ...item, ...updated } : item,
+        ),
       );
       if (detail?.id === updated.id) setDetail(null);
       await refresh();
@@ -160,9 +160,15 @@ export function TaskCenter() {
 
   return (
     <>
-      <button className="task-center-trigger" onClick={() => setOpen(true)}>
+      <button
+        className="task-center-trigger"
+        onClick={(event) => {
+          event.currentTarget.closest('details')?.removeAttribute('open');
+          setOpen(true);
+        }}
+      >
         <ListChecks size={16} />
-        任务中心
+        <span className="workspace-action-copy">任务中心</span>
         {activeCount > 0 && <b>{activeCount}</b>}
         {runningCount > 0 && <i aria-label={`${runningCount} 个任务运行中`} />}
       </button>
@@ -213,7 +219,9 @@ export function TaskCenter() {
                   刷新
                 </button>
               </div>
-              {!loaded && <output className="task-loading">正在读取任务…</output>}
+              {!loaded && (
+                <output className="task-loading">正在读取任务…</output>
+              )}
               {loaded && (
                 <TaskCenterView
                   jobs={jobs}
@@ -252,7 +260,9 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
               <h4>
                 {dimension.name}
                 <span>
-                  {dimension.score === null ? '证据不足' : `${dimension.score}/5`}
+                  {dimension.score === null
+                    ? '证据不足'
+                    : `${dimension.score}/5`}
                 </span>
               </h4>
               <p>{dimension.assessment}</p>
@@ -271,7 +281,10 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
               </ul>
             </section>
           )}
-          <button className="primary-button" onClick={() => downloadReport(job)}>
+          <button
+            className="primary-button"
+            onClick={() => downloadReport(job)}
+          >
             <Download size={16} />
             下载评估 Markdown
           </button>
