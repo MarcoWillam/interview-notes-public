@@ -1,9 +1,6 @@
-import { ResumeReadingView } from './resume-reading-view';
-import type { ResumeReading } from '../../lib/resume-reading';
 import { useEffect, useState, type SyntheticEvent } from 'react';
 import {
   Monitor,
-  ListChecks,
   LogOut,
   X,
   RefreshCw,
@@ -13,17 +10,14 @@ import {
 } from 'lucide-react';
 import Home from '../../app/page';
 import { configureLocalStore } from '../../lib/local/store';
-import {
-  remoteRequest,
-  configureRemoteAccount,
-  type RemoteJob,
-} from '../../lib/remote-analysis';
+import { remoteRequest, configureRemoteAccount } from '../../lib/remote-analysis';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogTitle,
 } from '../ui/dialog';
+import { TaskCenter } from './task-center';
 
 type Session = {
   user: { id: string; username: string } | null;
@@ -36,49 +30,11 @@ type Device = {
   ready: boolean;
   lastSeen: number;
 };
-const states = {
-  queued: '等待电脑领取',
-  running: '电脑正在分析',
-  completed: '评估已完成',
-  failed: '任务失败',
-  cancelled: '已取消',
-};
-function saveReport(
-  job: RemoteJob<import('../../lib/interview').Report | ResumeReading>,
-) {
-  if (!job.report || !('dimensions' in job.report)) return;
-  const report = job.report;
-  const markdown = [
-    `# ${job.label}`,
-    '',
-    'AI 辅助评估 · 待人工核实',
-    '',
-    report.summary,
-    ...report.dimensions.flatMap((d) => [
-      '',
-      `## ${d.name} · ${d.score === null ? '证据不足' : d.score + '/5'}`,
-      d.assessment,
-      ...d.evidence.map((q) => '> ' + q.replaceAll('\n', '\n> ')),
-    ]),
-    '',
-    '## 待核实事项',
-    ...report.followUps.map((q) => '- ' + q),
-  ].join('\n');
-  const url = URL.createObjectURL(
-    new Blob([markdown], { type: 'text/markdown;charset=utf-8' }),
-  );
-  const a = document.createElement('a');
-  a.href = url;
-  a.download =
-    job.label.replace(/[\\/:*?"<>|\r\n]/g, '_').slice(0, 60) + '-辅助评估.md';
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
 export function RemoteWorkspace() {
   const [session, setSession] = useState<Session | null>(null),
     [error, setError] = useState(''),
     [pending, setPending] = useState(false);
-  const [panel, setPanel] = useState<'devices' | 'jobs' | null>(null);
+  const [panel, setPanel] = useState<'devices' | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
   async function loadSession() {
     try {
@@ -188,10 +144,7 @@ export function RemoteWorkspace() {
             <Monitor size={16} />
             电脑连接
           </button>
-          <button onClick={() => setPanel('jobs')}>
-            <ListChecks size={16} />
-            评估任务
-          </button>
+          <TaskCenter />
           {!session.preview && session.user.username === 'owner' && (
             <button onClick={() => setAccountOpen(true)}>
               <UserPlus size={16} />
@@ -345,17 +298,11 @@ function RemotePanel({
   close,
   preview,
 }: {
-  panel: 'devices' | 'jobs' | null;
+  panel: 'devices' | null;
   close: () => void;
   preview: boolean;
 }) {
-  const [devices, setDevices] = useState<Device[]>([]),
-    [jobs, setJobs] = useState<
-      RemoteJob<import('../../lib/interview').Report | ResumeReading>[]
-    >([]),
-    [detail, setDetail] = useState<RemoteJob<
-      import('../../lib/interview').Report | ResumeReading
-    > | null>(null);
+  const [devices, setDevices] = useState<Device[]>([]);
   const [pair, setPair] = useState<{ code: string; expiresAt: number } | null>(
       null,
     ),
@@ -367,13 +314,6 @@ function RemotePanel({
       if (target === 'devices') {
         const data = await remoteRequest<{ devices: Device[] }>('/api/devices');
         setDevices(data.devices);
-      } else if (target === 'jobs') {
-        const data = await remoteRequest<{
-          jobs: RemoteJob<
-            import('../../lib/interview').Report | ResumeReading
-          >[];
-        }>('/api/jobs');
-        setJobs(data.jobs);
       }
       setLoaded(true);
       setError('');
@@ -413,7 +353,6 @@ function RemotePanel({
       onOpenChange={(open) => {
         if (!open) {
           close();
-          setDetail(null);
           setLoaded(false);
           setPair(null);
         }
@@ -421,15 +360,12 @@ function RemotePanel({
     >
       <DialogContent className="remote-dialog">
         <div className="remote-dialog-heading">
-          <DialogTitle>
-            {panel === 'devices' ? '连接你的电脑' : '评估任务'}
-          </DialogTitle>
+          <DialogTitle>连接你的电脑</DialogTitle>
           <button
             className="icon-button"
             aria-label="关闭"
             onClick={() => {
               close();
-              setDetail(null);
               setLoaded(false);
               setPair(null);
             }}
@@ -438,17 +374,14 @@ function RemotePanel({
           </button>
         </div>
         <DialogDescription>
-          {panel === 'devices'
-            ? '连接器在电脑上领取当前账号的任务，使用该电脑登录的 Codex 完成分析。'
-            : '关闭网页不会取消已提交的任务。结果保留 7 天，请及时下载；工作台草稿与偏好仍保存在当前浏览器。'}
+          连接器在电脑上领取当前账号的任务，使用该电脑登录的 Codex 完成分析。
         </DialogDescription>
         {error && (
           <p className="remote-error" role="alert">
             {error}
           </p>
         )}
-        {panel === 'devices' ? (
-          <>
+        <>
             <div className="remote-section-label">
               <h3>已配对电脑</h3>
               <button className="text-button" onClick={() => void refresh()}>
@@ -558,133 +491,7 @@ function RemotePanel({
                 </div>
               )}
             </div>
-          </>
-        ) : (
-          <>
-            {detail ? (
-              <div className="remote-result">
-                <button className="text-button" onClick={() => setDetail(null)}>
-                  ← 返回任务列表
-                </button>
-                <h3>{detail.label}</h3>
-                <span className="badge">AI 辅助评估 · 待人工核实</span>
-                {detail.report && 'sections' in detail.report && (
-                  <ResumeReadingView value={detail.report} />
-                )}
-                {detail.report && 'dimensions' in detail.report && (
-                  <>
-                    <p>{detail.report.summary}</p>
-                    {detail.report.dimensions.map((d) => (
-                      <section key={d.name}>
-                        <h4>
-                          {d.name}
-                          <span>
-                            {d.score === null ? '证据不足' : `${d.score}/5`}
-                          </span>
-                        </h4>
-                        <p>{d.assessment}</p>
-                        {d.evidence.map((quote, index) => (
-                          <blockquote key={index}>{quote}</blockquote>
-                        ))}
-                      </section>
-                    ))}
-                    {detail.report.followUps.length > 0 && (
-                      <section>
-                        <h4>待核实事项</h4>
-                        <ul>
-                          {detail.report.followUps.map((q, index) => (
-                            <li key={index}>{q}</li>
-                          ))}
-                        </ul>
-                      </section>
-                    )}
-                    <button
-                      className="primary-button"
-                      onClick={() => saveReport(detail)}
-                    >
-                      <Download size={16} />
-                      下载评估 Markdown
-                    </button>
-                  </>
-                )}
-              </div>
-            ) : (
-              <>
-                <div className="remote-section-label">
-                  <h3>最近的任务</h3>
-                  <button
-                    className="text-button"
-                    onClick={() => void refresh()}
-                  >
-                    <RefreshCw size={14} />
-                    刷新
-                  </button>
-                </div>
-                {!loaded && !error && <output>正在读取任务…</output>}
-                {loaded && !jobs.length && (
-                  <div className="remote-empty">
-                    <ListChecks size={28} />
-                    <p>暂无评估任务</p>
-                    <span>
-                      粘贴简历、导入 .md 面试记录后，点击生成辅助评估。
-                    </span>
-                  </div>
-                )}
-                {jobs.map((job) => (
-                  <div className="remote-job" key={job.id}>
-                    <div>
-                      <strong>
-                        {job.kind === 'resume' ? '简历阅读 · ' : ''}
-                        {job.label}
-                      </strong>
-                      <span>
-                        {new Date(job.created).toLocaleString('zh-CN')} ·{' '}
-                        {states[job.state]}
-                      </span>
-                      {job.error && <p>{job.error}</p>}
-                    </div>
-                    {job.state === 'completed' ? (
-                      <button
-                        disabled={pending}
-                        className="secondary-button"
-                        onClick={() =>
-                          void action(async () => {
-                            setDetail(
-                              await remoteRequest(
-                                '/api/jobs/' + encodeURIComponent(job.id),
-                              ),
-                            );
-                          })
-                        }
-                      >
-                        查看结果
-                      </button>
-                    ) : ['queued', 'running'].includes(job.state) ? (
-                      <button
-                        disabled={pending}
-                        className="text-button"
-                        onClick={() =>
-                          void action(async () => {
-                            await remoteRequest(
-                              '/api/jobs/' + encodeURIComponent(job.id),
-                              { method: 'DELETE' },
-                            );
-                          })
-                        }
-                      >
-                        取消任务
-                      </button>
-                    ) : null}
-                  </div>
-                ))}
-                <p className="small-note">
-                  离线任务最多等待 24
-                  小时。执行中断的任务会标记失败；核实原因后，从原面试记录重新提交即可。
-                </p>
-              </>
-            )}
-          </>
-        )}
+        </>
       </DialogContent>
     </Dialog>
   );

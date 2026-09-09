@@ -219,9 +219,16 @@ void test('task controls post a typed action and preserve queue timing', async (
   };
   const fetcher: typeof fetch = async (url, options) => {
     calls.push({
-      url: String(url),
+      url:
+        typeof url === 'string'
+          ? url
+          : url instanceof URL
+            ? url.href
+            : url.url,
       method: options?.method || 'GET',
-      body: JSON.parse(String(options?.body)),
+      body: JSON.parse(
+        typeof options?.body === 'string' ? options.body : '{}',
+      ),
     });
     return Response.json(returned);
   };
