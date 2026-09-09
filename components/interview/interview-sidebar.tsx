@@ -55,6 +55,26 @@ export function InterviewSidebar(props: Props) {
     };
   }, []);
 
+  useEffect(() => {
+    const remoteBar = document.querySelector<HTMLElement>('.remote-bar');
+    if (!remoteBar) return;
+    const root = document.documentElement;
+    const update = () => {
+      root.style.setProperty(
+        '--remote-bar-height',
+        `${remoteBar.getBoundingClientRect().height}px`,
+      );
+    };
+    const observer = new ResizeObserver(update);
+    const frame = requestAnimationFrame(update);
+    observer.observe(remoteBar);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      root.style.removeProperty('--remote-bar-height');
+    };
+  }, []);
+
   const focusSidebarTrigger = useCallback(() => {
     queueMicrotask(() => triggerRef.current?.focus());
   }, []);
