@@ -1477,6 +1477,60 @@ fieldset label:last-of-type {
 .session-template-picker {
   margin-top: 16px;
 }
+.session-template-select {
+  position: relative;
+  display: block;
+  min-width: 0;
+  margin-top: 8px;
+}
+.session-template-picker .session-template-select select {
+  min-width: 0;
+  margin-top: 0;
+  padding-right: 36px;
+  appearance: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-template-select > svg {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--muted-foreground);
+}
+.written-test-toggle {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 0 14px !important;
+  padding: 10px 12px;
+  border: 1px solid #d9e7e1;
+  border-radius: 8px;
+  background: #f4f8f6;
+}
+.interview-preparation .written-test-toggle input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin: 3px 0 0;
+  accent-color: #087d70;
+}
+.written-test-toggle label {
+  min-width: 0;
+  margin: 0;
+}
+.written-test-toggle strong,
+.written-test-toggle small {
+  display: block;
+}
+.written-test-toggle small {
+  margin-top: 3px;
+  color: var(--muted-foreground);
+  font-weight: 400;
+  line-height: 1.6;
+}
 .session-standard-summary {
   padding: 14px 0;
   border-top: 1px solid var(--border);
@@ -1547,11 +1601,27 @@ fieldset label:last-of-type {
 }
 
 .resume-reading {
+  min-width: 0;
   margin: 22px 0;
   padding: 20px;
   border: 1px solid #d7e6df;
   border-radius: 10px;
   background: #fbfdfc;
+}
+
+.interview-guide {
+  min-width: 0;
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid #91c9b5;
+  border-left: 4px solid #087d70;
+  border-radius: 10px;
+  background: #eaf7f2;
+}
+.interview-guide > h4 {
+  margin: 0 0 14px;
+  color: #075e55;
+  font-size: 16px;
 }
 
 .interview-question-list {
@@ -1572,6 +1642,21 @@ fieldset label:last-of-type {
   font-size: 15px;
   line-height: 1.65;
 }
+.question-source-badge {
+  display: inline-flex;
+  margin: 0 0 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #d9eee6;
+  color: #075e55;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.question-source-badge.source-written-test {
+  background: #fff1c9;
+  color: #7a4b00;
+}
 .interview-question-dimensions {
   display: flex;
   flex-wrap: wrap;
@@ -1591,14 +1676,16 @@ fieldset label:last-of-type {
   border-top: 1px solid #e7eeea;
 }
 .interview-question-card summary,
-.resume-body-details summary {
+.resume-body-details summary,
+.resume-reading-details summary {
   cursor: pointer;
   color: #326351;
   font-size: 13px;
   line-height: 1.8;
 }
 .interview-question-card summary:focus-visible,
-.resume-body-details summary:focus-visible {
+.resume-body-details summary:focus-visible,
+.resume-reading-details summary:focus-visible {
   outline: 2px solid #087d70;
   outline-offset: 4px;
   border-radius: 3px;
@@ -1612,6 +1699,28 @@ fieldset label:last-of-type {
 .interview-question-card ul {
   margin: 6px 0;
   padding-left: 20px;
+}
+.resume-reading-details {
+  min-width: 0;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #cddfd7;
+}
+.resume-reading-details > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #244c40;
+  font-weight: 600;
+}
+.resume-reading-details > summary span:last-child {
+  color: #62746b;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.resume-reading-content {
+  margin-top: 16px;
 }
 .resume-body-details {
   min-width: 0;
@@ -1644,6 +1753,13 @@ fieldset label:last-of-type {
   }
   .interview-question-card {
     padding: 12px;
+  }
+  .interview-guide {
+    padding: 12px;
+  }
+  .resume-reading-details > summary {
+    align-items: flex-start;
+    flex-direction: column;
   }
   .resume-body-name {
     display: block;

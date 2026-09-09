@@ -80,21 +80,22 @@ export function InterviewPreparation({
           </span>
         </label>
         {writtenTestSupported && (
-          <label className="written-test-toggle">
+          <div className="written-test-toggle">
             <input
+              id="has-written-test"
               type="checkbox"
               checked={hasWrittenTest}
               onChange={(event) =>
                 onWrittenTestChange(event.target.checked)
               }
             />
-            <span>
+            <label htmlFor="has-written-test">
               <strong>候选人已完成笔试</strong>
               <small>
                 提纲第 2–4 题将用于复盘笔试中的判断与取舍
               </small>
-            </span>
-          </label>
+            </label>
+          </div>
         )}
         <p className="small-note">
           模板在页头的“全局设置”中管理。应用模板将替换本场标准并清除旧 AI 评估。
