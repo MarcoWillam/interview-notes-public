@@ -1399,7 +1399,7 @@ export default function Home({
                         <div>
                           <h2>面试记录</h2>
                           <p className="section-description">
-                            直接粘贴转写文本，或导入豆包整理后的 .md
+                            直接粘贴转写文本，或导入豆包整理后的 .md、.txt
                             文件，再校对内容和说话人。
                           </p>
                         </div>
@@ -1418,16 +1418,16 @@ export default function Home({
                               ? '正在读取面试记录…'
                               : transcriptName &&
                                   transcriptName !== MANUAL_TRANSCRIPT_SOURCE
-                                ? '重新导入 Markdown 面试记录'
-                                : '导入 Markdown 面试记录'}
+                                ? '重新导入面试记录文件'
+                                : '导入面试记录文件'}
                           </strong>
                           <span>
-                            仅支持 .md · UTF-8 · 最大 1 MB / 80,000 字
+                            支持 .md、.txt · UTF-8 · 最大 1 MB / 80,000 字
                           </span>
                           <input
                             id="transcript-file"
                             type="file"
-                            accept=".md"
+                            accept=".md,.txt"
                             disabled={!!busy}
                             onChange={(e) => {
                               const file = e.target.files?.[0];
