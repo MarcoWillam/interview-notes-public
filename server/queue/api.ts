@@ -197,9 +197,25 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
         }
       }
       if (path.startsWith('/api/jobs/')) {
-        const id = path.slice('/api/jobs/'.length);
+        const actionPath = path.endsWith('/action'),
+          id = path.slice(
+            '/api/jobs/'.length,
+            actionPath ? -'/action'.length : undefined,
+          );
+        if (actionPath && method === 'POST') {
+          const action = str('action', 10);
+          if (!['pause', 'resume', 'stop'].includes(action))
+            throw new QueueError('任务操作无效。');
+          return json(
+            store.action(
+              user.id,
+              id,
+              action as 'pause' | 'resume' | 'stop',
+            ),
+          );
+        }
         if (method === 'GET') return json(store.get(user.id, id));
-        if (method === 'DELETE') return json(store.cancel(user.id, id));
+        if (method === 'DELETE') return json(store.action(user.id, id, 'stop'));
       }
       throw new QueueError('接口不存在。', 404);
     } catch (e) {
