@@ -14,6 +14,7 @@ import {
   type GlobalSettings,
 } from '@/lib/standards';
 import { normalizeInterviewTemplateState } from '@/lib/interview-template-state';
+import { updateInterviewSummary } from '@/lib/interview-sidebar';
 export type Draft = Omit<SavedInterview, 'id' | 'updatedAt'>;
 export function useInterviewLibrary(
   draft: Draft,
@@ -120,18 +121,21 @@ export function useInterviewLibrary(
   }, [access]);
   function write(currentId: string, value: Draft) {
     const stamp = JSON.stringify(value);
+    const saved = {
+      ...value,
+      id: currentId,
+      updatedAt: Date.now(),
+    };
     const next = writes.current
       .catch(() => {})
-      .then(() =>
-        localStore().saveInterview({
-          ...value,
-          id: currentId,
-          updatedAt: Date.now(),
-        }),
-      );
-    writes.current = next;
+      .then(async () => {
+        await localStore().saveInterview(saved);
+        return saved;
+      });
+    writes.current = next.then(() => {});
     return next
-      .then(() => {
+      .then((saved) => {
+        setSessions((rows) => updateInterviewSummary(rows, saved));
         setSaved(currentId + stamp);
         setError('');
       })

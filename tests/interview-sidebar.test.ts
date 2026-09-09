@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import type { SavedInterview } from '../lib/local/store.ts';
 import {
   SIDEBAR_BREAKPOINT,
@@ -53,4 +54,15 @@ void test('sidebar preference accepts only the persisted collapsed value', () =>
   assert.equal(parseSidebarCollapsed('false'), false);
   assert.equal(parseSidebarCollapsed(null), false);
   assert.equal(SIDEBAR_BREAKPOINT, 1180);
+});
+
+void test('the interview library updates sidebar summaries after a successful save', async () => {
+  const source = await readFile(
+    new URL('../hooks/use-interview-library.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    source,
+    /setSessions\(\(rows\) => updateInterviewSummary\(rows, saved\)\)/,
+  );
 });
