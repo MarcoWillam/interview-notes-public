@@ -52,6 +52,16 @@ void test('saved interview metadata updates without reordering existing rows', (
   assert.equal(updated[1].candidate, '新姓名');
 });
 
+void test('autosave summary keeps an existing local group assignment', () => {
+  const grouped = { ...session('grouped', 20), groupId: 'campus' };
+  const autosaved = { ...session('grouped', 30), candidate: '更新后姓名' };
+
+  const [updated] = updateInterviewSummary([grouped], autosaved);
+
+  assert.equal(updated.candidate, '更新后姓名');
+  assert.equal(updated.groupId, 'campus');
+});
+
 void test('a newly saved interview is inserted at the start', () => {
   const current = session('new', 40);
   assert.deepEqual(
