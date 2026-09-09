@@ -10,7 +10,11 @@ import {
   exportResumeReading,
   type ResumeReading,
 } from '@/lib/resume-reading';
-import { submitRemoteResume } from '@/lib/remote-analysis';
+import {
+  submitRemoteResume,
+  submitRemoteWrittenTest,
+} from '@/lib/remote-analysis';
+import type { WrittenTestSupplementResult } from '@/lib/written-test-supplement';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FileText,
@@ -49,7 +53,9 @@ import { useInterviewLibrary } from '@/hooks/use-interview-library';
 import type { NewInterviewSeed } from '@/lib/local/store';
 import {
   COMMON_TEMPLATE_ID,
+  applyWrittenTestSupplement,
   appliedTemplateState,
+  canGenerateWrittenTestSupplement,
   resolveResumeOutlinePreflight,
   resolveResumeOutlineSetup,
   resolveTemplateSelection,
@@ -119,6 +125,8 @@ export default function Home() {
     templateId: string;
     writtenTest: boolean | null;
   } | null>(null);
+  const [pendingWrittenTestSupplement, setPendingWrittenTestSupplement] =
+    useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [preparationOpen, setPreparationOpen] = useState(false);
@@ -134,7 +142,12 @@ export default function Home() {
   const [conclusion, setConclusion] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState<
-    'import' | 'analyze' | 'resume-read' | 'prepare' | null
+    | 'import'
+    | 'analyze'
+    | 'resume-read'
+    | 'written-test'
+    | 'prepare'
+    | null
   >(null);
   const busyRef = useRef(false);
   const analysisController = useRef<AbortController | null>(null);
@@ -160,6 +173,13 @@ export default function Home() {
   const effectiveWrittenTestConfirmed =
     supportsWrittenTest(sourceTemplateId) && writtenTestConfirmed;
   const outlineLocked = resumeOutlineLocked(resumeReading);
+  const writtenTestSupplementEligible = canGenerateWrittenTestSupplement({
+    sourceTemplateId,
+    writtenTestConfirmed: effectiveWrittenTestConfirmed,
+    hasWrittenTest: effectiveHasWrittenTest,
+    hasResumeReading: !!resumeReading?.interviewQuestions,
+    hasSupplement: !!resumeReading?.writtenTestSupplement?.length,
+  });
   // Imports and queue responses may finish after the render that started them.
   const resumeContext = useRef({
     candidate,
@@ -261,6 +281,7 @@ export default function Home() {
       setPendingCandidateName(null);
       setPendingResume(null);
       setPendingResumeOutline(null);
+      setPendingWrittenTestSupplement(false);
       setCandidate(saved.candidate);
       setRole(saved.role);
       setRequirements(saved.requirements);
@@ -524,6 +545,94 @@ export default function Home() {
       resolved.hasWrittenTest,
     );
   }
+  async function runWrittenTestSupplement() {
+    const reading = resumeReading;
+    if (
+      busyRef.current ||
+      !reading?.interviewQuestions ||
+      !canGenerateWrittenTestSupplement({
+        sourceTemplateId,
+        writtenTestConfirmed: effectiveWrittenTestConfirmed,
+        hasWrittenTest: effectiveHasWrittenTest,
+        hasResumeReading: true,
+        hasSupplement: !!reading.writtenTestSupplement?.length,
+      })
+    ) {
+      setPendingWrittenTestSupplement(false);
+      setError('当前记录不能生成笔试复盘补充题。');
+      return;
+    }
+    setPendingWrittenTestSupplement(false);
+    analysisController.current?.abort();
+    const controller = new AbortController();
+    analysisController.current = controller;
+    busyRef.current = true;
+    setBusy('written-test');
+    setError('');
+    setNotice('');
+    setRemoteJob(null);
+    setCancelling(false);
+    cancelledRemotely.current = false;
+    try {
+      const context = resumeContext.current;
+      if (!context.queuedCodex)
+        throw new Error('请使用当前队列版工作台连接 Codex 后生成补充题。');
+      const value = await submitRemoteWrittenTest(
+        {
+          resumeText: context.resumeText,
+          role: context.role,
+          requirements: context.requirements,
+          dimensionText: context.dimensionText,
+          focus: context.focus,
+          scoringGuidance: context.scoringGuidance,
+          reportRequirements: context.reportRequirements,
+          existingQuestions: reading.interviewQuestions,
+        },
+        `${context.candidate || resumeName || '未命名候选人'} · 笔试复盘补充`.slice(
+          0,
+          100,
+        ),
+        controller.signal,
+        (job) => {
+          if (
+            analysisController.current === controller &&
+            !controller.signal.aborted
+          )
+            setRemoteJob({ ...job, report: null });
+        },
+      );
+      if (analysisController.current !== controller) return;
+      controller.signal.throwIfAborted();
+      const result: WrittenTestSupplementResult = value;
+      setResumeReading(applyWrittenTestSupplement(reading, result));
+      setHasWrittenTest(true);
+      setWrittenTestConfirmed(true);
+      resumeContext.current = {
+        ...resumeContext.current,
+        hasWrittenTest: true,
+        writtenTestConfirmed: true,
+      };
+      setNotice('已追加 3 道笔试复盘题，笔试情况已同步为“有笔试”。');
+      setTab('resume');
+    } catch (e) {
+      if (analysisController.current !== controller) return;
+      setError(
+        controller.signal.aborted
+          ? cancelledRemotely.current
+            ? '笔试复盘补充任务已取消，原提纲保留。'
+            : '已停止等待，可在任务中心查看结果。'
+          : e instanceof Error
+            ? e.message
+            : '笔试复盘补充题生成失败。',
+      );
+    } finally {
+      if (analysisController.current === controller) {
+        analysisController.current = null;
+        busyRef.current = false;
+        setBusy(null);
+      }
+    }
+  }
   const hasContent = Boolean(
     dimensionText !== defaultDimensions ||
     resumeText ||
@@ -785,6 +894,7 @@ export default function Home() {
     setPendingCandidateName(null);
     setPendingResume(null);
     setPendingResumeOutline(null);
+    setPendingWrittenTestSupplement(false);
     setTranscript('');
     setTranscriptName('');
     setPendingImport(null);
@@ -968,7 +1078,9 @@ export default function Home() {
             </button>
           </output>
         )}
-        {(busy === 'analyze' || busy === 'resume-read') && (
+        {(busy === 'analyze' ||
+          busy === 'resume-read' ||
+          busy === 'written-test') && (
           <output className="message">
             <LoaderCircle className="spin" size={18} />
             <span>
@@ -976,6 +1088,8 @@ export default function Home() {
                 ? remoteJob?.state === 'running'
                   ? busy === 'resume-read'
                     ? 'Codex 正在阅读简历。可以关闭网页，稍后从评估任务查看结果。'
+                    : busy === 'written-test'
+                      ? 'Codex 正在生成 3 道笔试复盘补充题。可以关闭网页，稍后从任务中心查看结果。'
                     : '电脑正在分析。可以关闭网页，稍后从评估任务查看结果。'
                   : remoteJob
                     ? '任务已提交，等待已配对的电脑领取。电脑离线时也会保留任务。'
@@ -1513,6 +1627,23 @@ export default function Home() {
           </button>
         </DialogContent>
       </Dialog>
+      <AlertDialog
+        open={pendingWrittenTestSupplement}
+        onOpenChange={setPendingWrittenTestSupplement}
+      >
+        <AlertDialogContent className="written-test-supplement-dialog">
+          <AlertDialogTitle>补充笔试复盘题</AlertDialogTitle>
+          <AlertDialogDescription>
+            Codex 将额外生成 3 道笔试复盘题，追加在原有 6 道提纲下方，不修改原提纲。成功后笔试情况会同步为“有笔试”，且不能再次生成。
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void runWrittenTestSupplement()}>
+              确认并生成 3 道题
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={!!pendingResumeOutline}
         onOpenChange={(open) => {

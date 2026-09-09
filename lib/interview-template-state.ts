@@ -3,6 +3,8 @@ import {
   normalizeStandards,
   type InterviewStandards,
 } from './standards.ts';
+import type { ResumeReading } from './resume-reading.ts';
+import type { WrittenTestSupplementResult } from './written-test-supplement.ts';
 
 export const COMMON_TEMPLATE_ID = '__common__';
 export const TEMPLATE_STATUS_VALUE = '__template_status__';
@@ -150,6 +152,29 @@ export function resolveResumeOutlineSetup(
 
 export function resumeOutlineLocked(reading: unknown) {
   return reading !== null && reading !== undefined;
+}
+
+export function canGenerateWrittenTestSupplement(value: {
+  sourceTemplateId: string | null | undefined;
+  writtenTestConfirmed: boolean;
+  hasWrittenTest: boolean;
+  hasResumeReading: boolean;
+  hasSupplement: boolean;
+}) {
+  return (
+    value.sourceTemplateId === BUILTIN_TEMPLATE_IDS.aiProductManager &&
+    value.writtenTestConfirmed &&
+    !value.hasWrittenTest &&
+    value.hasResumeReading &&
+    !value.hasSupplement
+  );
+}
+
+export function applyWrittenTestSupplement(
+  reading: ResumeReading,
+  result: WrittenTestSupplementResult,
+): ResumeReading {
+  return { ...reading, writtenTestSupplement: result.questions };
 }
 
 export function markTemplateModified(sourceTemplateId: string | null) {

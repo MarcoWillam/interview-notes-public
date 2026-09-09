@@ -98,6 +98,17 @@ void test('resume outline generation has one preflight entry and no repeat-readi
   assert.match(page, /确认提纲生成条件/);
   assert.doesNotMatch(page, /重新阅读简历|替换并自动阅读/);
 });
+void test('written-test supplement has a dedicated confirmation and remote task path', async () => {
+  const page = await readFile(
+    new URL('../app/page.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(page, /function runWrittenTestSupplement\(/);
+  assert.match(page, /submitRemoteWrittenTest\(/);
+  assert.match(page, /补充笔试复盘题/);
+  assert.match(page, /setHasWrittenTest\(true\)/);
+  assert.match(page, /setWrittenTestConfirmed\(true\)/);
+});
 void test('audio chunks reopen in recording order and deletion is isolated', async () => {
   const factory = new IDBFactory();
   const store = createLocalStore(factory);
