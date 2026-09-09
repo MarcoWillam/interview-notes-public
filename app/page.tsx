@@ -50,10 +50,16 @@ import type { NewInterviewSeed } from '@/lib/local/store';
 import {
   COMMON_TEMPLATE_ID,
   appliedTemplateState,
+  resolveResumeOutlinePreflight,
+  resolveResumeOutlineSetup,
   resolveTemplateSelection,
+  resumeOutlineLocked,
   supportsWrittenTest,
-  writtenTestDecision,
 } from '@/lib/interview-template-state';
+import {
+  BUILTIN_TEMPLATE_IDS,
+  builtInRoleTemplates,
+} from '@/lib/default-role-templates';
 import { LocalLibrary } from '@/components/interview/local-library';
 import { GlobalPreferences } from '@/components/interview/global-preferences';
 import { InterviewPreparation } from '@/components/interview/interview-preparation';
@@ -107,9 +113,11 @@ export default function Home() {
     name: string;
     autoRead: boolean;
   } | null>(null);
-  const [pendingWrittenTestReading, setPendingWrittenTestReading] = useState<{
+  const [pendingResumeOutline, setPendingResumeOutline] = useState<{
     text: string;
     name: string;
+    templateId: string;
+    writtenTest: boolean | null;
   } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
@@ -151,8 +159,7 @@ export default function Home() {
     supportsWrittenTest(sourceTemplateId) && hasWrittenTest;
   const effectiveWrittenTestConfirmed =
     supportsWrittenTest(sourceTemplateId) && writtenTestConfirmed;
-  const needsWrittenTestConfirmation =
-    supportsWrittenTest(sourceTemplateId) && !writtenTestConfirmed;
+  const outlineLocked = resumeOutlineLocked(resumeReading);
   // Imports and queue responses may finish after the render that started them.
   const resumeContext = useRef({
     candidate,
@@ -253,7 +260,7 @@ export default function Home() {
       analysisController.current = null;
       setPendingCandidateName(null);
       setPendingResume(null);
-      setPendingWrittenTestReading(null);
+      setPendingResumeOutline(null);
       setCandidate(saved.candidate);
       setRole(saved.role);
       setRequirements(saved.requirements);
@@ -319,6 +326,7 @@ export default function Home() {
     }
   }
   function editResume(text: string, name = '') {
+    if (outlineLocked) return;
     analysisController.current?.abort();
     analysisController.current = null;
     invalidate();
@@ -326,17 +334,39 @@ export default function Home() {
     setResumeName(name);
     setResumeReading(null);
     setPendingCandidateName(null);
-    setPendingWrittenTestReading(null);
+    setPendingResumeOutline(null);
     setResumeBodyOpen(true);
   }
   async function applyImportedResume(text: string, name: string) {
     editResume(text, name);
     setPendingResume(null);
     setResumeBodyOpen(false);
-    await runResumeReading(text, name);
+    openResumeOutlinePreflight(text, name);
+  }
+  function openResumeOutlinePreflight(text: string, name: string) {
+    if (resumeOutlineLocked(resumeReading)) {
+      setError('提纲已生成，本面试记录不能再次生成。');
+      return;
+    }
+    const templateId =
+      sourceTemplateId === BUILTIN_TEMPLATE_IDS.aiProductManager ||
+      sourceTemplateId === BUILTIN_TEMPLATE_IDS.productOperations
+        ? sourceTemplateId
+        : '';
+    setError('');
+    setPendingResumeOutline({
+      text,
+      name,
+      templateId,
+      writtenTest:
+        templateId === BUILTIN_TEMPLATE_IDS.aiProductManager &&
+        writtenTestConfirmed
+          ? hasWrittenTest
+          : null,
+    });
   }
   async function resumeFile(file: File) {
-    if (busyRef.current) return;
+    if (busyRef.current || outlineLocked) return;
     busyRef.current = true;
     setBusy('import');
     setError('');
@@ -368,22 +398,14 @@ export default function Home() {
   async function runResumeReading(
     resumeText: string,
     resumeName: string,
-    confirmedChoice?: boolean,
+    confirmedChoice: boolean,
   ) {
-    const startingContext = resumeContext.current;
-    const decision =
-      confirmedChoice ??
-      writtenTestDecision(
-        startingContext.sourceTemplateId,
-        startingContext.writtenTestConfirmed,
-        startingContext.hasWrittenTest,
-      );
-    if (decision === null) {
-      setError('');
-      setPendingWrittenTestReading({ text: resumeText, name: resumeName });
+    if (resumeOutlineLocked(resumeReading)) {
+      setError('提纲已生成，本面试记录不能再次生成。');
       return;
     }
-    setPendingWrittenTestReading(null);
+    const decision = confirmedChoice;
+    setPendingResumeOutline(null);
     analysisController.current?.abort();
     const controller = new AbortController();
     analysisController.current = controller;
@@ -391,7 +413,6 @@ export default function Home() {
     setBusy('resume-read');
     setError('');
     setNotice('');
-    setResumeReading(null);
     setPendingCandidateName(null);
     setRemoteJob(null);
     setCancelling(false);
@@ -424,14 +445,6 @@ export default function Home() {
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
-      if (
-        writtenTestDecision(
-          resumeContext.current.sourceTemplateId,
-          resumeContext.current.writtenTestConfirmed,
-          resumeContext.current.hasWrittenTest,
-        ) !== value.hasWrittenTest
-      )
-        return;
       setResumeReading(valueRead);
       const resolution = reconcileCandidateName(
         resumeContext.current.candidate,
@@ -465,20 +478,51 @@ export default function Home() {
       }
     }
   }
-  function confirmWrittenTestAndRead(value: boolean) {
-    const pending = pendingWrittenTestReading;
-    if (!pending || busyRef.current) return;
+  function confirmResumeOutlineGeneration() {
+    const pending = pendingResumeOutline;
+    if (!pending || busyRef.current || resumeOutlineLocked(resumeReading)) return;
+    const availableTemplates = builtInRoleTemplates.map(
+      (fallback) =>
+        library.preferences.find(({ id }) => id === fallback.id) || fallback,
+    );
+    const resolved = resolveResumeOutlineSetup(
+      pending.templateId,
+      pending.writtenTest,
+      availableTemplates,
+    );
+    if (!resolved) {
+      setError('请先确认岗位及适用的笔试情况。');
+      return;
+    }
+    const nextStandards = resolved.standards;
     invalidate();
-    setResumeReading(null);
-    setHasWrittenTest(value);
-    setWrittenTestConfirmed(true);
-    setPendingWrittenTestReading(null);
+    setRole(nextStandards.role);
+    setRequirements(nextStandards.requirements);
+    setDimensionText(nextStandards.dimensionText);
+    setFocus(nextStandards.focus);
+    setScoringGuidance(nextStandards.scoringGuidance);
+    setReportRequirements(nextStandards.reportRequirements);
+    setSourceTemplateId(resolved.templateId);
+    setTemplateModified(false);
+    setHasWrittenTest(resolved.hasWrittenTest);
+    setWrittenTestConfirmed(
+      resolved.templateId === BUILTIN_TEMPLATE_IDS.aiProductManager,
+    );
     resumeContext.current = {
       ...resumeContext.current,
-      hasWrittenTest: value,
-      writtenTestConfirmed: true,
+      resumeText: pending.text,
+      ...nextStandards,
+      sourceTemplateId: resolved.templateId,
+      hasWrittenTest: resolved.hasWrittenTest,
+      writtenTestConfirmed:
+        resolved.templateId === BUILTIN_TEMPLATE_IDS.aiProductManager,
     };
-    void runResumeReading(pending.text, pending.name, value);
+    setPendingResumeOutline(null);
+    void runResumeReading(
+      pending.text,
+      pending.name,
+      resolved.hasWrittenTest,
+    );
   }
   const hasContent = Boolean(
     dimensionText !== defaultDimensions ||
@@ -712,7 +756,6 @@ export default function Home() {
     }
   }
   function setStandards(value: InterviewStandards) {
-    setResumeReading(null);
     setRole(value.role);
     setRequirements(value.requirements);
     setDimensionText(value.dimensionText);
@@ -721,6 +764,7 @@ export default function Home() {
     setReportRequirements(value.reportRequirements);
   }
   function applyStandards(value: InterviewStandards) {
+    if (outlineLocked) return;
     invalidate();
     setStandards(value);
     setTemplateModified(true);
@@ -740,7 +784,7 @@ export default function Home() {
     setResumeBodyOpen(false);
     setPendingCandidateName(null);
     setPendingResume(null);
-    setPendingWrittenTestReading(null);
+    setPendingResumeOutline(null);
     setTranscript('');
     setTranscriptName('');
     setPendingImport(null);
@@ -777,6 +821,7 @@ export default function Home() {
     standards,
     templates: library.preferences,
     disabled: !!busy,
+    standardsLocked: outlineLocked,
     standardsOpen,
     templateSelection,
     hasWrittenTest: effectiveHasWrittenTest,
@@ -789,6 +834,7 @@ export default function Home() {
     },
     onStandardsChange: applyStandards,
     onApplyTemplate: (id: string) => {
+      if (outlineLocked) return;
       const selected =
         id === COMMON_TEMPLATE_ID
           ? library.globalSettings.defaults
@@ -992,7 +1038,9 @@ export default function Home() {
                     <label className="transcript-upload" htmlFor="resume-file">
                       <Upload size={24} />
                       <strong>
-                        {busy === 'import'
+                        {outlineLocked
+                          ? '简历与提纲已锁定'
+                          : busy === 'import'
                           ? '正在提取文件文字…'
                           : '上传候选人简历'}
                       </strong>
@@ -1004,7 +1052,7 @@ export default function Home() {
                         id="resume-file"
                         type="file"
                         accept=".doc,.docx,.pdf"
-                        disabled={!!busy}
+                        disabled={!!busy || outlineLocked}
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           e.target.value = '';
@@ -1022,13 +1070,14 @@ export default function Home() {
                         className="primary-button"
                         disabled={
                           !!busy ||
+                          outlineLocked ||
                           !resumeText.trim() ||
                           !queuedCodex ||
                           !services?.analysis
                         }
                         onClick={() => {
                           if (!busyRef.current)
-                            void runResumeReading(resumeText, resumeName);
+                            openResumeOutlinePreflight(resumeText, resumeName);
                         }}
                       >
                         {busy === 'resume-read' ? (
@@ -1038,15 +1087,15 @@ export default function Home() {
                         )}{' '}
                         {busy === 'resume-read'
                           ? '正在阅读…'
-                          : needsWrittenTestConfirmation
-                            ? '确认笔试情况并阅读'
-                            : resumeReading
-                            ? '重新阅读简历'
-                            : '用 Codex 阅读简历'}
+                          : outlineLocked
+                            ? '提纲已生成'
+                            : '确认岗位并生成提纲'}
                       </button>
                     </div>
                     <p className="small-note">
-                      附件仅在浏览器提取文字，原文件不上传。展开后编辑会清除旧的阅读和评估结果。
+                      {outlineLocked
+                        ? '提纲已生成，本面试记录不能再次生成或替换简历。'
+                        : '附件仅在浏览器提取文字，原文件不上传。生成前可展开编辑。'}
                     </p>
                     <details
                       className="resume-body-details"
@@ -1076,6 +1125,7 @@ export default function Home() {
                         rows={12}
                         maxLength={30000}
                         disabled={!!busy}
+                        readOnly={outlineLocked}
                         value={resumeText}
                         onChange={(e) => editResume(e.target.value, resumeName)}
                         placeholder="在这里粘贴简历文字。简历作为背景信息，项目经历与能力仍需通过面试核实。"
@@ -1094,7 +1144,7 @@ export default function Home() {
                       </button>
                       <button
                         className="text-button"
-                        disabled={!resumeText || !!busy}
+                        disabled={!resumeText || !!busy || outlineLocked}
                         onClick={() => {
                           editResume('');
                         }}
@@ -1464,24 +1514,95 @@ export default function Home() {
         </DialogContent>
       </Dialog>
       <AlertDialog
-        open={!!pendingWrittenTestReading}
+        open={!!pendingResumeOutline}
         onOpenChange={(open) => {
-          if (!open) setPendingWrittenTestReading(null);
+          if (!open) setPendingResumeOutline(null);
         }}
       >
-        <AlertDialogContent className="written-test-confirmation-dialog">
-          <AlertDialogTitle>阅读简历前确认笔试情况</AlertDialogTitle>
+        <AlertDialogContent className="resume-outline-confirmation-dialog">
+          <AlertDialogTitle>确认提纲生成条件</AlertDialogTitle>
           <AlertDialogDescription>
-            是否有笔试会直接影响 Codex 生成的面试提纲。请选择本场情况，确认后将立即开始阅读简历。
+            先确认本场岗位；AI 产品经理还需确认笔试情况。确认的完整岗位模板会同步到面试准备，再交给 Codex 生成提纲。
           </AlertDialogDescription>
-          <AlertDialogFooter className="written-test-confirmation-actions">
+          <div className="resume-outline-confirmation-form">
+            <label>
+              确认岗位
+              <select
+                value={pendingResumeOutline?.templateId || ''}
+                onChange={(event) =>
+                  setPendingResumeOutline((current) =>
+                    current
+                      ? {
+                          ...current,
+                          templateId: event.target.value,
+                          writtenTest:
+                            event.target.value ===
+                              BUILTIN_TEMPLATE_IDS.aiProductManager &&
+                            current.templateId === event.target.value
+                              ? current.writtenTest
+                              : null,
+                        }
+                      : null,
+                  )
+                }
+              >
+                <option value="">请选择岗位</option>
+                {builtInRoleTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {pendingResumeOutline?.templateId ===
+              BUILTIN_TEMPLATE_IDS.aiProductManager && (
+              <fieldset>
+                <legend>笔试情况</legend>
+                <label>
+                  <input
+                    type="radio"
+                    name="resume-outline-written-test"
+                    checked={pendingResumeOutline.writtenTest === true}
+                    onChange={() =>
+                      setPendingResumeOutline((current) =>
+                        current ? { ...current, writtenTest: true } : null,
+                      )
+                    }
+                  />
+                  有笔试
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="resume-outline-written-test"
+                    checked={pendingResumeOutline.writtenTest === false}
+                    onChange={() =>
+                      setPendingResumeOutline((current) =>
+                        current ? { ...current, writtenTest: false } : null,
+                      )
+                    }
+                  />
+                  无笔试
+                </label>
+              </fieldset>
+            )}
+            <p>
+              提纲成功生成后，本面试记录不能再次生成或替换简历。
+            </p>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => confirmWrittenTestAndRead(false)}
+              disabled={
+                !pendingResumeOutline ||
+                !resolveResumeOutlinePreflight(
+                  pendingResumeOutline.templateId,
+                  pendingResumeOutline.writtenTest,
+                )
+              }
+              onClick={confirmResumeOutlineGeneration}
             >
-              无笔试
-            </AlertDialogAction>
-            <AlertDialogAction onClick={() => confirmWrittenTestAndRead(true)}>
-              有笔试
+              确认并生成提纲
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1495,7 +1616,7 @@ export default function Home() {
         <AlertDialogContent initialFocus={candidateKeepButton}>
           <AlertDialogTitle>简历姓名与当前候选人不同</AlertDialogTitle>
           <AlertDialogDescription>
-            默认保留当前姓名。请选择是否使用简历中识别的姓名；选择不会重新阅读简历。
+            默认保留当前姓名。请选择是否使用简历中识别的姓名；选择不会重新生成提纲。
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel ref={candidateKeepButton}>
@@ -1523,7 +1644,7 @@ export default function Home() {
           <AlertDialogTitle>替换当前简历？</AlertDialogTitle>
           <AlertDialogDescription>
             将使用 {pendingResume?.name}{' '}
-            的文字替换现有简历，并清除旧的简历阅读、辅助评估与人工确认。面试对话和人工意见保留。
+            的文字替换现有简历，并清除旧的辅助评估与人工确认。替换后需要确认岗位，再生成唯一一次提纲。面试对话和人工意见保留。
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>取消，保留原文</AlertDialogCancel>
@@ -1537,7 +1658,7 @@ export default function Home() {
                   );
               }}
             >
-              替换并自动阅读
+              替换并确认岗位
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -136,6 +136,18 @@ export function resolveResumeOutlinePreflight(
   return null;
 }
 
+export function resolveResumeOutlineSetup(
+  templateId: string,
+  writtenTest: boolean | null,
+  templates: TemplateLike[],
+) {
+  const decision = resolveResumeOutlinePreflight(templateId, writtenTest);
+  const template = templates.find(({ id }) => id === decision?.templateId);
+  return decision && template
+    ? { ...decision, standards: normalizeStandards(template) }
+    : null;
+}
+
 export function resumeOutlineLocked(reading: unknown) {
   return reading !== null && reading !== undefined;
 }

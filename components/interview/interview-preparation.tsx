@@ -14,6 +14,7 @@ export function InterviewPreparation({
   standards,
   templates,
   disabled,
+  standardsLocked,
   standardsOpen,
   templateSelection,
   hasWrittenTest,
@@ -31,6 +32,7 @@ export function InterviewPreparation({
   standards: InterviewStandards;
   templates: { id: string; name: string }[];
   disabled: boolean;
+  standardsLocked: boolean;
   standardsOpen: boolean;
   templateSelection: TemplateSelection;
   hasWrittenTest: boolean;
@@ -57,6 +59,8 @@ export function InterviewPreparation({
             placeholder="输入候选人姓名"
           />
         </label>
+      </fieldset>
+      <fieldset disabled={disabled || standardsLocked}>
         <label className="session-template-picker">
           选择岗位模板
           <span className="session-template-select">
@@ -92,7 +96,9 @@ export function InterviewPreparation({
           </div>
         )}
         <p className="small-note">
-          模板在页头的“全局设置”中管理。应用模板将替换本场标准并清除旧 AI 评估。
+          {standardsLocked
+            ? '提纲已生成，岗位模板和本场标准已锁定。'
+            : '模板在页头的“全局设置”中管理。应用模板将替换本场标准并清除旧 AI 评估。'}
         </p>
         <div className="session-standard-summary">
           <strong>{standards.role || '尚未选择岗位'}</strong>

@@ -562,6 +562,15 @@ void test('resume jobs require an upgraded connector and validate against resume
     assert.deepEqual(s.get(a, job.id).report, report);
     assert.equal(s.get(a, job.id).kind, 'resume');
     assert.equal(s.get(a, job.id).state, 'completed');
+    const repeated = s.submit(
+      a,
+      'resume-repeat-123',
+      '简历阅读',
+      input,
+      'resume',
+    );
+    assert.equal(repeated.id, job.id);
+    assert.equal(repeated.state, 'completed');
   } finally {
     s.close();
   }

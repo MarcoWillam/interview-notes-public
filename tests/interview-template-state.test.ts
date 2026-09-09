@@ -9,6 +9,7 @@ import {
   normalizeInterviewTemplateState,
   resolveTemplateSelection,
   resolveResumeOutlinePreflight,
+  resolveResumeOutlineSetup,
   resumeOutlineLocked,
   supportsWrittenTest,
   writtenTestDecision,
@@ -193,6 +194,37 @@ void test('a persisted resume reading is the permanent outline lock', () => {
   assert.equal(resumeOutlineLocked({ summary: '已生成' }), true);
   assert.equal(resumeOutlineLocked(null), false);
   assert.equal(resumeOutlineLocked(undefined), false);
+});
+
+void test('resume outline setup carries the confirmed full role template', () => {
+  const result = resolveResumeOutlineSetup(
+    BUILTIN_TEMPLATE_IDS.aiProductManager,
+    false,
+    [
+      {
+        id: BUILTIN_TEMPLATE_IDS.aiProductManager,
+        name: 'AI 产品经理（校招）',
+        role: 'AI 产品经理（校招）',
+        requirements: '确认后的岗位要求',
+        dimensionText: '产品判断、自驱力',
+        focus: '重点考察主动推进',
+        scoringGuidance: '按证据评分',
+        reportRequirements: '区分事实与自述',
+      },
+    ],
+  );
+  assert.deepEqual(result, {
+    templateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
+    hasWrittenTest: false,
+    standards: {
+      role: 'AI 产品经理（校招）',
+      requirements: '确认后的岗位要求',
+      dimensionText: '产品判断、自驱力',
+      focus: '重点考察主动推进',
+      scoringGuidance: '按证据评分',
+      reportRequirements: '区分事实与自述',
+    },
+  });
 });
 
 void test('restored metadata infers legacy sources and removes impossible written-test state', () => {

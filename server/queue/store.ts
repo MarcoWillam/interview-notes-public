@@ -337,12 +337,14 @@ export class QueueStore {
         throw new QueueError('任务标识已用于其他材料。', 409);
       return this.get(user, String(previous.id));
     }
-    const active = this.db
+    const reusable = this.db
       .prepare(
-        "SELECT id FROM jobs WHERE user=? AND kind=? AND inputHash=? AND label=? AND state IN ('queued','running','paused') ORDER BY created LIMIT 1",
+        kind === 'resume'
+          ? "SELECT id FROM jobs WHERE user=? AND kind=? AND inputHash=? AND label=? AND state IN ('queued','running','paused','completed') ORDER BY created LIMIT 1"
+          : "SELECT id FROM jobs WHERE user=? AND kind=? AND inputHash=? AND label=? AND state IN ('queued','running','paused') ORDER BY created LIMIT 1",
       )
       .get(user, kind, digest, safeLabel) as Row | undefined;
-    if (active) return this.get(user, String(active.id));
+    if (reusable) return this.get(user, String(reusable.id));
     const count = this.db
       .prepare(
         "SELECT COUNT(*) AS n FROM jobs WHERE user=? AND state IN ('queued','running')",
