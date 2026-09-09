@@ -2463,7 +2463,7 @@ fieldset label:last-of-type {
 .workspace-tools {
   display: contents;
 }
-.workspace-tools > summary {
+.workspace-tools-trigger {
   display: none;
 }
 .workspace-tools-content {
@@ -2495,7 +2495,7 @@ fieldset label:last-of-type {
   position: relative;
 }
 .workspace-account-menu > summary,
-.workspace-tools > summary {
+.workspace-tools-trigger {
   align-items: center;
   gap: 5px;
   border-radius: 8px;
@@ -2510,12 +2510,11 @@ fieldset label:last-of-type {
   padding: 6px 8px;
   background: #f2f6f4;
 }
-.workspace-account-menu > summary::-webkit-details-marker,
-.workspace-tools > summary::-webkit-details-marker {
+.workspace-account-menu > summary::-webkit-details-marker {
   display: none;
 }
 .workspace-account-menu > summary:focus-visible,
-.workspace-tools > summary:focus-visible,
+.workspace-tools-trigger:focus-visible,
 .interview-sidebar-sort select:focus-visible {
   outline: 3px solid #35ab99;
   outline-offset: 2px;
@@ -2763,9 +2762,10 @@ fieldset label:last-of-type {
     position: relative;
     display: block;
   }
-  .workspace-tools > summary {
+  .workspace-tools-trigger {
     display: flex;
     padding: 6px 8px;
+    border: 0;
     background: #f2f6f4;
   }
   .workspace-tools-content {
@@ -2781,7 +2781,7 @@ fieldset label:last-of-type {
     background: #fff;
     box-shadow: 0 14px 36px #1c39301f;
   }
-  .workspace-tools:not([open]) .workspace-tools-content {
+  .workspace-tools:not([data-open]) .workspace-tools-content {
     display: none;
   }
   .workspace-tools-content > button {

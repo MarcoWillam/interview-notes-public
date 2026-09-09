@@ -231,6 +231,9 @@ void test('workbench renders remote and local actions in one account-aware heade
   assert.match(page, /export type WorkspaceAccount/);
   assert.match(page, /className="topbar-actions"/);
   assert.match(page, /className="workspace-tools"/);
+  assert.doesNotMatch(page, /<details className="workspace-tools"/);
+  assert.match(page, /data-open=\{toolsOpen \|\| undefined\}/);
+  assert.match(page, /setToolsOpen/);
   assert.match(page, /更多操作/);
   assert.match(page, /className="workspace-account-menu"/);
   assert.match(page, /<TaskCenter/);
