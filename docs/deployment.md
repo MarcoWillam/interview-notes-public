@@ -5,7 +5,7 @@
 ## 当前云服务器
 
 - 网站：`https://your-server-ip`，初始账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。其他面试官账号通过下述服务器命令创建。
-- 代码：当前版本为 `/opt/interview-notes/releases/20260909-12`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一版本 `20260909-11` 保留用于回滚。
+- 代码：当前版本为 `/opt/interview-notes/releases/20260909-13`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一版本 `20260909-12` 保留用于回滚。
 - 数据：`/var/lib/interview-notes/queue.sqlite`；环境配置：`/etc/interview-notes/server.env`；运行时：`/opt/node-v24.13.0-linux-x64/bin/node`。服务器只需已构建的 `dist/web` 和队列服务源码，无需安装模型或上传电脑上的 Codex 登录信息。
 - Nginx：`/etc/nginx/conf.d/interview-notes.conf`，对应仓库 `deploy/nginx-ip.conf`，HTTP 自动跳转 HTTPS，80 端口保留 ACME 验证路径。
 - 证书：Let's Encrypt IP 证书，由 acme.sh 3.1.2 的 `shortlived` profile 签发。使用 `--days 3`，`interview-cert-renew.timer` 每天两次检查续期；续期成功自动安装到 `/etc/nginx/ssl/interview/` 并检查、重载 Nginx。不要关闭公网 80 端口，否则续期验证会失败。
@@ -23,9 +23,9 @@ journalctl -u interview-notes -n 50 --no-pager
 
 发布更新前在本机运行 `npm test`、`npm run typecheck`、`npm run lint`、`npm run build` 和 `git diff --check`，均须退出 0。HTTP 测试需要本机 loopback 监听权限。生产采用 `dist/web` 静态入口，完整构建生成的 `dist/client`、`dist/server` 不上传。
 
-发布包采用明确白名单：`dist/web`、`server/start.ts`、`server/accounts.ts`、`server/queue/{api,http,store}.ts`、`lib/interview.ts`、`lib/resume-reading.ts`、`lib/standards.ts` 和 `package.json`。`lib/standards.ts` 是 `resume-reading.ts` 的运行时依赖；以上服务端 import 闭包仅另依赖 Node 内置模块，生产不需要 `node_modules`。包内不得包含 `.env*`、`.local`、简历源文件、浏览器数据、Codex credentials、`node_modules` 或 `.git`；后续增加服务端依赖时重新核对闭包。PDF CMap 与字体资源随 `dist/web` 一起发布。
+发布包采用明确白名单：`dist/web`、`server/start.ts`、`server/accounts.ts`、`server/queue/{api,http,store}.ts`、`lib/interview.ts`、`lib/interview-questions.ts`、`lib/resume-reading.ts`、`lib/standards.ts`、`lib/written-test-supplement.ts` 和 `package.json`。这些文件构成服务端 import 闭包，此外仅依赖 Node 内置模块，生产不需要 `node_modules`。包内不得包含 `.env*`、`.local`、简历源文件、浏览器数据、Codex credentials、`node_modules` 或 `.git`；后续增加服务端依赖时重新核对闭包。PDF CMap 与字体资源随 `dist/web` 一起发布。
 
-本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。本次 `20260909-12` 发布包 SHA-256 为 `0b9effbca5749075453ab56513ec8e8abbe688416071d3213d5dd696fe1fde0a`。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。
+本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。本次 `20260909-13` 发布包 SHA-256 为 `18da6f264b013a73ad6504d233c37489ac7c5a89b38be0ef854ea2cbaf9ac320`。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。本机端口健康探针必须带 `Host: your-server-ip`，否则正式环境的来源校验会返回 403；服务重启后在有限重试窗口内探测，不能把首次连接拒绝误判为启动失败。
 
 发布检查包括 `nginx -t`、`systemctl is-active interview-notes nginx interview-cert-renew.timer`、HTTPS `/api/session`，以及 HTTP 308 跳转、无需跳过校验的 TLS 证书、登录 Cookie 的 HttpOnly/Secure/SameSite=Strict、登录后工作台和实际构建清单中的 JS/CSS、PDF CMap/font 资源。账号和连接凭据仅由本机脚本读取，不打印值，不写入发布包；`.local/cloud-access.txt` 与 `.local/cloud-connector.json` 保持权限 600。
 
@@ -48,6 +48,8 @@ journalctl -u interview-notes -n 50 --no-pager
 `20260909-11` 增加当前账号范围内的全局任务中心，以及等待、运行、暂停、完成、失败和停止状态。任务支持暂停、从头恢复和不可恢复的停止；相同活动任务去重，简历阅读优先领取，列表返回排队位置与本轮执行时间。新版连接器心跳从 10 秒缩短为 5 秒，线上连接器包 SHA-256 为 `ddeebf575a6e9ddba55887b0b8ae55dc9dfcab29cbc8907e02d33a0ce669554b`，线上下载复核一致，连接器客户端内容与当前源码一致。本地 169 项测试、类型检查、代码检查和生产构建通过；生产 `current`、数据库迁移字段、静态资源、HTTPS、Nginx、应用服务及证书续期定时器经过只读检查，未创建真实生产任务。
 
 `20260909-12` 将每份面试记录的简历提纲限制为一次成功生成。生成前必须确认岗位，AI 产品经理还必须确认有无笔试；确认的完整模板同步到当前面试准备，成功后锁定简历、岗位和笔试状态，失败、暂停或停止仍可重试。服务器在七天保留期内复用内容与名称均相同的已完成简历任务，避免页面关闭后重复调用。本地 173 项测试、类型检查、代码检查和生产构建通过；线上连接器包 SHA-256 为 `9916a5a1fcc3d0a17ea29c74f49a415603d03003575042af7d5b7ba5afc7489c`，与本地构建一致。生产 `current`、静态资源、HTTPS、HTTP 308、Nginx、应用服务、数据库兼容性及证书续期定时器经过只读检查，未创建真实生产任务。
+
+`20260909-13` 为已生成常规提纲的 AI 产品经理面试增加一次性笔试复盘补充。仅最初确认“无笔试”、已有六题且尚未补充的记录显示入口；独立 Codex 任务生成恰好 3 道题并追加为第 7–9 题，成功后状态同步为“有笔试”，失败、暂停或停止可重试。任务中心、结果查看和 Markdown 导出均支持该类型。连接器包新增运行时依赖闭包自动测试，线上连接器包 SHA-256 为 `3b714121c338b1935aa80918afed41bbb8fe9a21d5efbc0f5d1c440a393e2b96`，与本地构建一致。本地 188 项测试、类型检查、代码检查、生产构建和浏览器交互检查通过；生产 `current`、静态资源、HTTPS、HTTP 308、TLS、Nginx、应用服务、数据库兼容性及证书续期定时器经过只读检查，未创建真实生产任务。
 
 ## 服务器
 
@@ -107,7 +109,7 @@ location / {
 
 排队原材料保留最多 24 小时；任务终止清除输入字段，结果/任务保留 7 天。数据库清理不覆盖历史备份。浏览器 IndexedDB 的完整面试记录、人工结论与全局偏好仍按浏览器和网站账号保存，不会自动同步到服务器；换地址或设备时需要提前导出。
 
-顶部任务中心只显示当前登录账号的任务。相同账号、任务类型、名称和输入的等待、运行或暂停任务会复用原任务；简历阅读在领取顺序中优先于尚未开始的结论评估。暂停保留输入并撤销当前租约，运行中的本地 Codex 通常在下一次 5 秒心跳时中断；恢复会重新排队并从头执行，已有模型用量不会退回。停止会清除服务器上的简历、岗位要求和面试记录且不能恢复。旧连接器仍可执行，但暂停或停止运行任务的响应时间取决于旧版心跳间隔，建议面试官重新下载当前连接器包。
+顶部任务中心只显示当前登录账号的任务。相同账号、任务类型、名称和输入的等待、运行或暂停任务会复用原任务；简历阅读和笔试复盘补充在领取顺序中优先于尚未开始的结论评估。暂停保留输入并撤销当前租约，运行中的本地 Codex 通常在下一次 5 秒心跳时中断；恢复会重新排队并从头执行，已有模型用量不会退回。停止会清除服务器上的简历、岗位要求和面试记录且不能恢复。旧连接器不认识笔试复盘补充任务，升级后面试官需重新下载并启动当前连接器包。
 
 当前只支持单实例 SQLite 服务。后续多人使用、负载均衡或企业账号接入需要单独扩展，不要让多个应用副本各自维护一份任务数据库。
 
@@ -116,6 +118,8 @@ location / {
 本次版本提供 AI 产品经理（校招）与产品运营（校招）两个内置模板。运营按用户运营 60% / 数据增长 40% 组织证据，两岗都单列并重点考察自驱力。简历提取后先确认岗位，AI PM 还必须明确选择“有笔试”或“无笔试”，不保存题目或答卷；有笔试时第 2–4 题按既有笔试考量框架生成复盘题，无笔试时不得生成笔试措辞。确认时把所选完整岗位模板和笔试状态写入当前面试准备，再使用同一快照提交 Codex。返回结果包含四类要点及六题、30–40 分钟的结构化面试提纲，每题包含来源、合法模板维度、原文依据、原因、观察点与追问。
 
 每份面试记录成功保存一次提纲后永久锁定简历上传、正文编辑、岗位模板和笔试状态，不再显示重新阅读入口。排队、失败、暂停或停止不产生锁，保留已确认的面试准备并允许重试。历史记录只要已有 `resumeReading` 就保持锁定；服务器在七天任务保留期内也复用相同账号、任务名称、输入和类型的已完成简历阅读结果，避免页面关闭后再次调用 Codex。界面优先展示高对比度提纲，简历阅读明细和简历正文默认收起。
+
+AI 产品经理在最初确认“无笔试”且已有六题提纲时，可发起一次独立的笔试复盘补充任务。Codex 依据同一岗位模板、简历和既有六题生成恰好 3 道新题，覆盖既有笔试考量框架，但不读取或假装知道候选人的真实答卷。成功结果作为第 7–9 题追加在原提纲下方，原六题保持不变，面试准备的笔试情况同步为“有笔试”；成功后不再显示入口，失败、暂停或停止后允许重试。任务中心可管理该任务，Markdown 导出包含追加题。
 
 上传附件后在浏览器自动提取文字并进入岗位确认，确认后提交 Codex 阅读；粘贴或编辑正文后也从同一确认入口生成提纲。原附件不上传；提取文字与岗位标准会发送到用户已配对电脑的本地 Codex，经队列服务器短期中转，再由本地 Codex 调用模型。正文默认折叠，可展开核对编辑。有效姓名必须有包含姓名的连续原文证据；空姓名自动填入，冲突默认保留当前姓名，只有明确选择才替换。约 1100px 及以下切单列，将面试准备放入弹窗；更窄屏支持导航和操作换行。
 
