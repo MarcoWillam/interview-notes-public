@@ -232,7 +232,10 @@ function AccountSetupDialog({
         if (!next) dismiss();
       }}
     >
-      <DialogContent className="remote-dialog remote-account-dialog">
+      <DialogContent
+        className="remote-dialog remote-account-dialog"
+        showCloseButton={false}
+      >
         <div className="remote-dialog-heading">
           <DialogTitle>配置面试官账号</DialogTitle>
           <button
@@ -358,7 +361,7 @@ function RemotePanel({
         }
       }}
     >
-      <DialogContent className="remote-dialog">
+      <DialogContent className="remote-dialog" showCloseButton={false}>
         <div className="remote-dialog-heading">
           <DialogTitle>连接你的电脑</DialogTitle>
           <button
