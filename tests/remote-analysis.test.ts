@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { submitRemoteAnalysis } from '../lib/remote-analysis.ts';
+import {
+  controlRemoteJob,
+  submitRemoteAnalysis,
+  type RemoteJob,
+} from '../lib/remote-analysis.ts';
 const resumeInput = {
   role: '产品经理',
   requirements: '用户研究与需求分析',
@@ -198,4 +202,36 @@ void test('resume result validation uses the normalized submission snapshot', as
     ),
     reading,
   );
+});
+
+void test('task controls post a typed action and preserve queue timing', async () => {
+  const calls: { url: string; method: string; body: unknown }[] = [];
+  const returned: RemoteJob = {
+    id: 'job-1',
+    label: '张三',
+    kind: 'resume',
+    state: 'paused',
+    created: 1,
+    updated: 4,
+    queuedAt: 2,
+    startedAt: 3,
+    position: null,
+  };
+  const fetcher: typeof fetch = async (url, options) => {
+    calls.push({
+      url: String(url),
+      method: options?.method || 'GET',
+      body: JSON.parse(String(options?.body)),
+    });
+    return Response.json(returned);
+  };
+  const result = await controlRemoteJob('job-1', 'pause', fetcher);
+  assert.deepEqual(result, returned);
+  assert.deepEqual(calls, [
+    {
+      url: '/api/jobs/job-1/action',
+      method: 'POST',
+      body: { action: 'pause' },
+    },
+  ]);
 });
