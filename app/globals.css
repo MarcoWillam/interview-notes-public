@@ -1838,22 +1838,72 @@ fieldset label:last-of-type {
   background: #fff1d6;
   color: #8b5b00;
 }
-.written-test-confirmation-dialog {
-  width: min(calc(100vw - 32px), 480px) !important;
-  max-width: 480px !important;
+.resume-outline-confirmation-dialog {
+  width: min(calc(100vw - 32px), 520px) !important;
+  max-width: 520px !important;
 }
-.written-test-confirmation-actions {
-  display: grid !important;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.resume-outline-confirmation-form {
+  display: grid;
+  gap: 16px;
+  padding: 4px 0;
 }
-.written-test-confirmation-actions > button {
+.resume-outline-confirmation-form > label,
+.resume-outline-confirmation-form legend {
+  font-size: 13px;
+  font-weight: 700;
+  color: #304740;
+}
+.resume-outline-confirmation-form select {
+  display: block;
   width: 100%;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  color: var(--foreground);
+  font: inherit;
+}
+.resume-outline-confirmation-form fieldset {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.resume-outline-confirmation-form legend {
+  grid-column: 1 / -1;
+  margin-bottom: 8px;
+}
+.resume-outline-confirmation-form fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
-  white-space: normal;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.resume-outline-confirmation-form input {
+  accent-color: var(--primary);
+}
+.resume-outline-confirmation-form > p {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff4df;
+  color: #7b5818;
+  font-size: 12px;
+  line-height: 1.6;
 }
 @media (max-width: 480px) {
-  .written-test-confirmation-actions {
+  .resume-outline-confirmation-form fieldset {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .resume-outline-confirmation-dialog [data-slot='alert-dialog-footer'] {
+    flex-direction: column-reverse;
+  }
+  .resume-outline-confirmation-dialog [data-slot='alert-dialog-footer'] > button {
+    width: 100%;
   }
 }
 .session-standard-summary {
