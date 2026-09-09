@@ -4,7 +4,7 @@
 
 ## 当前云服务器
 
-- 网站：`https://your-server-ip`，账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。
+- 网站：`https://your-server-ip`，初始账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。其他面试官账号通过下述服务器命令创建。
 - 代码：当前版本为 `/opt/interview-notes/releases/20260909-3`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一版本 `20260909-2` 保留用于回滚。
 - 数据：`/var/lib/interview-notes/queue.sqlite`；环境配置：`/etc/interview-notes/server.env`；运行时：`/opt/node-v24.13.0-linux-x64/bin/node`。服务器只需已构建的 `dist/web` 和队列服务源码，无需安装模型或上传电脑上的 Codex 登录信息。
 - Nginx：`/etc/nginx/conf.d/interview-notes.conf`，对应仓库 `deploy/nginx-ip.conf`，HTTP 自动跳转 HTTPS，80 端口保留 ACME 验证路径。
@@ -39,6 +39,23 @@ journalctl -u interview-notes -n 50 --no-pager
 4. 从项目目录运行 `INTERVIEW_ENV_FILE=/绝对路径/server.env npm run start:server`。服务器默认监听 `127.0.0.1:8787`，不会启动本地连接器或 Codex。首次创建账号成功后，可删除配置文件中的初始密码，账号哈希已保存在数据库中。
 5. 在同机 HTTPS 反向代理中，将整个网站转发到此端口，保留原始 `Host`。`INTERVIEW_PUBLIC_ORIGIN` 必须与浏览器地址完全匹配。服务器、代理和浏览器应使用同一域名，Cookie 采用 HttpOnly、Secure、SameSite=Strict。
 6. 用系统服务管理器保持 Node 进程运行，工作目录为项目根目录，使用专用非 root 账号。限制公网访问到 HTTPS 代理，不直接暴露 Node 端口。升级时重建网页并重启 Node；数据目录保留。
+
+## 面试官账号
+
+账号管理只在服务器命令行开放，没有公开注册或网页管理后台。进入当前 release 后执行以下命令，新增和重置密码时终端会隐藏输入内容：
+
+```sh
+cd /opt/interview-notes/current
+INTERVIEW_ENV_FILE=/etc/interview-notes/server.env /opt/node-v24.13.0-linux-x64/bin/node --experimental-strip-types server/accounts.ts list
+INTERVIEW_ENV_FILE=/etc/interview-notes/server.env /opt/node-v24.13.0-linux-x64/bin/node --experimental-strip-types server/accounts.ts add interviewer_zhang
+INTERVIEW_ENV_FILE=/etc/interview-notes/server.env /opt/node-v24.13.0-linux-x64/bin/node --experimental-strip-types server/accounts.ts reset-password interviewer_zhang
+INTERVIEW_ENV_FILE=/etc/interview-notes/server.env /opt/node-v24.13.0-linux-x64/bin/node --experimental-strip-types server/accounts.ts disable interviewer_zhang
+INTERVIEW_ENV_FILE=/etc/interview-notes/server.env /opt/node-v24.13.0-linux-x64/bin/node --experimental-strip-types server/accounts.ts enable interviewer_zhang
+```
+
+账号使用 2–80 字的中文、字母、数字或 `_@.-`，密码为 12–200 字。每个面试官登录网页后，在“电脑连接”中生成自己的配对码，并在自己的电脑项目目录运行页面给出的连接命令。一个账号的连接器不会领取其他账号的任务。
+
+停用账号会立即清除它的网页登录会话和配对凭据，终止排队或执行中的任务并清除其中的原始输入；重新启用后需要重新登录和配对。重置密码也会退出已有登录、撤销已有连接器并终止正在执行的任务，但保留尚未领取的排队任务。浏览器 IndexedDB 中的面试记录不会由服务器远程删除，也不会在账号之间共享。
 
 Nginx 的 HTTPS `server` 块可使用以下位置配置，证书与域名使用自己的实际配置：
 
