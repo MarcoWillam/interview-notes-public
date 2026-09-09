@@ -597,6 +597,58 @@ void test('resume jobs require an upgraded connector and validate against resume
   }
 });
 
+void test('completed resume work is reused only inside the same interview record', () => {
+  const { s, a } = setup();
+  try {
+    const device = s.redeem(s.pairing(a).code, '阅读电脑');
+    const first = s.submit(
+      a,
+      'resume-record-a-1',
+      '同一份简历',
+      resumeInput,
+      'resume',
+      'interview-record-a',
+    );
+    const claimed = s.claim(device.token, true, ['resume'])!;
+    s.finish(device.token, claimed.id, claimed.lease, reading);
+
+    const sameRecord = s.submit(
+      a,
+      'resume-record-a-2',
+      '同一份简历',
+      resumeInput,
+      'resume',
+      'interview-record-a',
+    );
+    const newRecord = s.submit(
+      a,
+      'resume-record-b-1',
+      '同一份简历',
+      resumeInput,
+      'resume',
+      'interview-record-b',
+    );
+
+    assert.equal(sameRecord.id, first.id);
+    assert.notEqual(newRecord.id, first.id);
+    assert.equal(newRecord.state, 'queued');
+    assert.throws(
+      () =>
+        s.submit(
+          a,
+          'scoped-interview-task',
+          '普通评估',
+          input,
+          'interview',
+          'interview-record-a',
+        ),
+      /不支持任务范围/,
+    );
+  } finally {
+    s.close();
+  }
+});
+
 void test('resume finish rejects fabricated question evidence against stored input', () => {
   const { s, a } = setup();
   try {

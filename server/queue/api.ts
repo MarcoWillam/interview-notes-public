@@ -200,6 +200,7 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
               str('label', 100),
               body.input,
               kind,
+              body.scope === undefined ? '' : str('scope', 100),
             ),
             202,
           );

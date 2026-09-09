@@ -92,12 +92,18 @@ async function submitRemoteTask<T>(
   label: string,
   signal: AbortSignal,
   onProgress: (job: RemoteJob<T>) => void,
-  dependencies = { fetcher: fetch, pollMs: 2000 },
+  dependencies: {
+    fetcher: typeof fetch;
+    pollMs: number;
+    scope?: string;
+  } = { fetcher: fetch, pollMs: 2000 },
 ): Promise<T> {
+  const scope = dependencies.scope?.trim() || '';
   const payload = JSON.stringify({
     ...(kind === 'interview' ? {} : { kind }),
     label,
     input,
+    ...(scope ? { scope } : {}),
   });
   const fingerprint = Array.from(
     new Uint8Array(
@@ -125,7 +131,13 @@ async function submitRemoteTask<T>(
       '/api/jobs',
       {
         method: 'POST',
-        body: JSON.stringify({ client, label, input, kind }),
+        body: JSON.stringify({
+          client,
+          label,
+          input,
+          kind,
+          ...(scope ? { scope } : {}),
+        }),
         signal,
       },
       dependencies.fetcher,
@@ -198,7 +210,11 @@ export function submitRemoteResume(
   label: string,
   signal: AbortSignal,
   onProgress: (job: RemoteJob<ResumeReading>) => void,
-  dependencies = { fetcher: fetch, pollMs: 2000 },
+  dependencies: {
+    fetcher: typeof fetch;
+    pollMs: number;
+    scope?: string;
+  } = { fetcher: fetch, pollMs: 2000 },
 ): Promise<ResumeReading> {
   const normalized = validateResumeInput(input);
   return submitRemoteTask(

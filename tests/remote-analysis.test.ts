@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import {
   controlRemoteJob,
   submitRemoteAnalysis,
@@ -38,6 +39,14 @@ const reading = {
   })),
   followUps: ['请补充项目时间范围。'],
 };
+
+void test('resume reading is scoped to the current local interview record', async () => {
+  const page = await readFile(
+    new URL('../app/page.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(page, /submitRemoteResume\([\s\S]*scope: library\.id/);
+});
 const writtenTestInput = {
   role: resumeInput.role,
   requirements: resumeInput.requirements,
@@ -181,9 +190,11 @@ void test('resume task is sent with its own kind and returns an unscored reading
     const body = JSON.parse(options?.body as string) as {
       kind: string;
       input: unknown;
+      scope?: string;
     };
     assert.equal(body.kind, 'resume');
     assert.deepEqual(body.input, input);
+    assert.equal(body.scope, 'interview-record-a');
     return Response.json({
       id: 'reading',
       kind: 'resume',
@@ -197,7 +208,7 @@ void test('resume task is sent with its own kind and returns an unscored reading
       'Resume',
       new AbortController().signal,
       () => {},
-      { fetcher, pollMs: 0 },
+      { fetcher, pollMs: 0, scope: 'interview-record-a' },
     ),
     report,
   );

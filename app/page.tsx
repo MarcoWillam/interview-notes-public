@@ -482,6 +482,7 @@ export default function Home({
           )
             setRemoteJob({ ...job, report: null });
         },
+        { fetcher: fetch, pollMs: 2000, scope: library.id },
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();

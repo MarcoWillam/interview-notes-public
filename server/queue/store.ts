@@ -322,10 +322,15 @@ export class QueueStore {
     label: string,
     value: unknown,
     kind: JobKind = 'interview',
+    scope = '',
   ) {
     this.sweep();
     if (!/^[a-zA-Z0-9-]{8,100}$/.test(client))
       throw new QueueError('任务标识无效。');
+    if (scope && !/^[a-zA-Z0-9-]{8,100}$/.test(scope))
+      throw new QueueError('任务范围无效。');
+    if (scope && kind !== 'resume')
+      throw new QueueError('该任务类型不支持任务范围。');
     const validatedInput =
         kind === 'resume'
           ? validateResumeInput(value)
@@ -333,7 +338,7 @@ export class QueueStore {
             ? validateWrittenTestSupplementInput(value)
             : validateInput(value),
       input = JSON.stringify(validatedInput),
-      digest = hash(kind + input),
+      digest = hash(kind + (scope ? '\n' + scope + '\n' : '') + input),
       safeLabel = label.slice(0, 100) || '未命名面试';
     const previous = this.db
       .prepare('SELECT id,inputHash FROM jobs WHERE user=? AND client=?')
