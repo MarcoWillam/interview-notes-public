@@ -15,7 +15,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FileText,
   ClipboardCheck,
-  ArrowUpRight,
   ShieldCheck,
   Download,
   Plus,
@@ -49,7 +48,7 @@ import { validateInput, exportMarkdown, type Report } from '@/lib/interview';
 import { useInterviewLibrary } from '@/hooks/use-interview-library';
 import { LocalLibrary } from '@/components/interview/local-library';
 import { GlobalPreferences } from '@/components/interview/global-preferences';
-import { StandardsFields } from '@/components/interview/standards-fields';
+import { InterviewPreparation } from '@/components/interview/interview-preparation';
 import {
   defaultStandards,
   normalizeStandards,
@@ -98,6 +97,8 @@ export default function Home() {
   } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [preparationOpen, setPreparationOpen] = useState(false);
+  const [standardsOpen, setStandardsOpen] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [transcriptName, setTranscriptName] = useState('');
   const [pendingImport, setPendingImport] = useState<{
@@ -672,6 +673,49 @@ export default function Home() {
       `${safeName}-面试记录.md`,
     );
   }
+  const preparationProps = {
+    candidate,
+    standards,
+    templates: library.preferences,
+    disabled: !!busy,
+    standardsOpen,
+    onStandardsOpenChange: setStandardsOpen,
+    onCandidateChange: (value: string) => {
+      invalidate();
+      setCandidate(value);
+    },
+    onStandardsChange: applyStandards,
+    onApplyTemplate: (id: string) => {
+      const selected =
+        id === '__common__'
+          ? library.globalSettings.defaults
+          : library.preferences.find((preference) => preference.id === id);
+      if (selected) {
+        applyStandards(normalizeStandards(selected));
+        setNotice('已将模板标准复制到本场面试；旧评估已清除，请重新确认结论。');
+      }
+    },
+    serviceReady: !!(
+      services?.analysis &&
+      (!queuedCodex || services.connected)
+    ),
+    serviceStatus: statusError
+      ? '服务状态获取失败'
+      : services === null
+        ? '正在检查服务…'
+        : services.analysis
+          ? queuedCodex
+            ? services.connected
+              ? '电脑已连接 · 可分析'
+              : '电脑未就绪 · 可排队'
+            : localCodex
+              ? '本地 Codex 已连接'
+              : '模型服务已配置'
+          : localCodex
+            ? '本地 Codex 需登录'
+            : '模型服务待配置',
+    onOpenService: () => setSettings(true),
+  };
   return (
     <div className="workbench">
       <header className="topbar">
@@ -718,16 +762,7 @@ export default function Home() {
         inert={!library.ready || library.working || busy === 'prepare'}
       >
         <div className="page-heading">
-          <div>
-            <p className="eyebrow">每一份判断，都有依据</p>
-            <h1>
-              {candidate
-                ? `${candidate}的面试记录`
-                : '从面试记录，到有依据的判断'}
-              <span>。</span>
-            </h1>
-            <p>粘贴简历，导入 Markdown 面试记录，按岗位标准梳理结论。</p>
-          </div>
+          <h1>{candidate ? `${candidate}的面试记录` : '当前面试'}</h1>
           <button
             className="secondary-button"
             disabled={!!busy}
@@ -806,20 +841,30 @@ export default function Home() {
         <div className="workspace-grid">
           <section className="main-column">
             <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
-              <TabsList className="work-tabs">
-                <TabsTrigger value="resume">
-                  <FileText />
-                  候选人简历
-                </TabsTrigger>
-                <TabsTrigger value="transcript">
-                  <FileText />
-                  面试记录{transcript && <span className="tab-dot" />}
-                </TabsTrigger>
-                <TabsTrigger value="report">
-                  <ClipboardCheck />
-                  结论评估{confirmed && <Check size={14} />}
-                </TabsTrigger>
-              </TabsList>
+              <div className="work-navigation">
+                <TabsList className="work-tabs">
+                  <TabsTrigger value="resume">
+                    <FileText />
+                    候选人简历
+                  </TabsTrigger>
+                  <TabsTrigger value="transcript">
+                    <FileText />
+                    面试记录{transcript && <span className="tab-dot" />}
+                  </TabsTrigger>
+                  <TabsTrigger value="report">
+                    <ClipboardCheck />
+                    结论评估{confirmed && <Check size={14} />}
+                  </TabsTrigger>
+                </TabsList>
+                <button
+                  className="secondary-button preparation-toggle"
+                  onClick={() => setPreparationOpen(true)}
+                  aria-haspopup="dialog"
+                  aria-expanded={preparationOpen}
+                >
+                  <Settings2 size={16} /> 面试准备
+                </button>
+              </div>
               <TabsContent value="resume">
                 <div className="panel text-panel">
                   <div className="panel-heading">
@@ -858,6 +903,37 @@ export default function Home() {
                         }}
                       />
                     </label>
+                    <div className="action-footer resume-reading-action">
+                      <span>
+                        {queuedCodex
+                          ? '将发送简历与岗位要求，由已配对电脑的 Codex 整理'
+                          : '简历阅读需使用队列版工作台连接 Codex'}
+                      </span>
+                      <button
+                        className="primary-button"
+                        disabled={
+                          !!busy ||
+                          !resumeText.trim() ||
+                          !queuedCodex ||
+                          !services?.analysis
+                        }
+                        onClick={() => {
+                          if (!busyRef.current)
+                            void runResumeReading(resumeText, resumeName);
+                        }}
+                      >
+                        {busy === 'resume-read' ? (
+                          <LoaderCircle className="spin" size={16} />
+                        ) : (
+                          <ClipboardCheck size={16} />
+                        )}{' '}
+                        {busy === 'resume-read'
+                          ? '正在阅读…'
+                          : resumeReading
+                            ? '重新阅读简历'
+                            : '用 Codex 阅读简历'}
+                      </button>
+                    </div>
                     <p className="small-note">
                       附件仅在浏览器提取文字，原文件不上传。展开后编辑会清除旧的阅读和评估结果。
                     </p>
@@ -894,37 +970,6 @@ export default function Home() {
                         placeholder="在这里粘贴简历文字。简历作为背景信息，项目经历与能力仍需通过面试核实。"
                       />
                     </details>
-                    <div className="action-footer">
-                      <span>
-                        {queuedCodex
-                          ? '将发送简历与岗位要求，由已配对电脑的 Codex 整理'
-                          : '简历阅读需使用队列版工作台连接 Codex'}
-                      </span>
-                      <button
-                        className="primary-button"
-                        disabled={
-                          !!busy ||
-                          !resumeText.trim() ||
-                          !queuedCodex ||
-                          !services?.analysis
-                        }
-                        onClick={() => {
-                          if (!busyRef.current)
-                            void runResumeReading(resumeText, resumeName);
-                        }}
-                      >
-                        {busy === 'resume-read' ? (
-                          <LoaderCircle className="spin" size={16} />
-                        ) : (
-                          <ClipboardCheck size={16} />
-                        )}{' '}
-                        {busy === 'resume-read'
-                          ? '正在阅读…'
-                          : resumeReading
-                            ? '重新阅读简历'
-                            : '用 Codex 阅读简历'}
-                      </button>
-                    </div>
                     {resumeReading && (
                       <ResumeReadingView value={resumeReading} />
                     )}
@@ -1175,109 +1220,10 @@ export default function Home() {
                 </div>
               </TabsContent>
             </Tabs>
-            <div className="process-strip">
-              <span>
-                <b>01</b> 粘贴候选人简历
-              </span>
-              <ArrowUpRight size={15} />
-              <span>
-                <b>02</b> 导入并校对 .md
-              </span>
-              <ArrowUpRight size={15} />
-              <span>
-                <b>03</b> 确认评估结论
-              </span>
-            </div>
           </section>
-          <aside className="panel context-panel">
-            <p className="eyebrow">面试准备</p>
-            <h2>给评估一个清晰的标准</h2>
-            <p className="small-note">
-              本场标准独立保存，全局修改不会覆盖这场面试。
-            </p>
-            <label className="session-template-picker">
-              选择岗位模板
-              <select
-                value=""
-                disabled={!!busy}
-                onChange={(e) => {
-                  const selected =
-                    e.target.value === '__common__'
-                      ? library.globalSettings.defaults
-                      : library.preferences.find(
-                          (p) => p.id === e.target.value,
-                        );
-                  if (selected) {
-                    applyStandards(normalizeStandards(selected));
-                    setNotice(
-                      '已将模板标准复制到本场面试；旧评估已清除，请重新确认结论。',
-                    );
-                  }
-                }}
-              >
-                <option value="" disabled>
-                  选择模板应用到本场…
-                </option>
-                <option value="__common__">通用默认标准</option>
-                {library.preferences.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="small-note">
-              模板在页头的“全局设置”中管理。应用模板将替换本场标准并清除旧 AI
-              评估。
-            </p>
-            <fieldset disabled={!!busy}>
-              <label>
-                候选人
-                <input
-                  value={candidate}
-                  maxLength={100}
-                  onChange={(e) => {
-                    invalidate();
-                    setCandidate(e.target.value);
-                  }}
-                  placeholder="输入候选人姓名"
-                />
-              </label>
-              <div className="session-standard-summary">
-                <strong>{role || '尚未选择岗位'}</strong>
-                <p>{dimensionText || '尚未设置评估维度'}</p>
-              </div>
-              <details className="session-standards-details">
-                <summary>查看 / 调整本场标准</summary>
-                <StandardsFields value={standards} onChange={applyStandards} />
-              </details>
-            </fieldset>
-            <div className="service-summary">
-              <span
-                className={`service-dot ${services?.analysis && (!queuedCodex || services.connected) ? 'ready' : ''}`}
-              />
-              <span>
-                {statusError
-                  ? '服务状态获取失败'
-                  : services === null
-                    ? '正在检查服务…'
-                    : services.analysis
-                      ? queuedCodex
-                        ? services.connected
-                          ? '电脑已连接 · 可分析'
-                          : '电脑未就绪 · 可排队'
-                        : localCodex
-                          ? '本地 Codex 已连接'
-                          : '模型服务已配置'
-                      : localCodex
-                        ? '本地 Codex 需登录'
-                        : '模型服务待配置'}
-              </span>
-              <button className="text-button" onClick={() => setSettings(true)}>
-                查看
-                <ArrowUpRight size={13} />
-              </button>
-            </div>
+          <aside className="panel context-panel" aria-label="面试准备">
+            <h2>面试准备</h2>
+            <InterviewPreparation {...preparationProps} />
           </aside>
         </div>
         <footer className="page-footer">
@@ -1292,6 +1238,24 @@ export default function Home() {
           </button>
         </footer>
       </main>
+      <Dialog open={preparationOpen} onOpenChange={setPreparationOpen}>
+        <DialogContent className="preparation-dialog" showCloseButton={false}>
+          <div className="dialog-heading">
+            <DialogTitle>面试准备</DialogTitle>
+            <button
+              className="icon-button"
+              aria-label="关闭面试准备"
+              onClick={() => setPreparationOpen(false)}
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <DialogDescription>
+            设置候选人与本场面试的岗位标准。
+          </DialogDescription>
+          <InterviewPreparation {...preparationProps} />
+        </DialogContent>
+      </Dialog>
       <LocalLibrary
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
