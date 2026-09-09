@@ -35,7 +35,7 @@ export class QueueStore {
       CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,user TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS pairs(hash TEXT PRIMARY KEY,user TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,user TEXT NOT NULL,name TEXT NOT NULL,hash TEXT UNIQUE NOT NULL,seen INTEGER NOT NULL,ready INTEGER NOT NULL DEFAULT 0,revoked INTEGER NOT NULL DEFAULT 0);
-      CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,UNIQUE(user,client));
+      CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,kind TEXT NOT NULL DEFAULT 'interview',queued INTEGER,started INTEGER,UNIQUE(user,client));
       CREATE INDEX IF NOT EXISTS jobs_owner_created ON jobs(user,created);
       CREATE INDEX IF NOT EXISTS jobs_claim ON jobs(user,state,created);
       CREATE INDEX IF NOT EXISTS devices_owner ON devices(user);`);
@@ -47,14 +47,18 @@ export class QueueStore {
       this.db.exec(
         'ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1',
       );
-    if (
-      !(this.db.prepare('PRAGMA table_info(jobs)').all() as Row[]).some(
-        (c) => c.name === 'kind',
-      )
-    )
+    let jobColumns = this.db.prepare('PRAGMA table_info(jobs)').all() as Row[];
+    if (!jobColumns.some((column) => column.name === 'kind')) {
       this.db.exec(
         "ALTER TABLE jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'interview'",
       );
+      jobColumns = this.db.prepare('PRAGMA table_info(jobs)').all() as Row[];
+    }
+    if (!jobColumns.some((column) => column.name === 'queued'))
+      this.db.exec('ALTER TABLE jobs ADD COLUMN queued INTEGER');
+    if (!jobColumns.some((column) => column.name === 'started'))
+      this.db.exec('ALTER TABLE jobs ADD COLUMN started INTEGER');
+    this.db.exec('UPDATE jobs SET queued=created WHERE queued IS NULL');
   }
   close() {
     this.db.close();
@@ -320,7 +324,8 @@ export class QueueStore {
     const input = JSON.stringify(
         kind === 'resume' ? validateResumeInput(value) : validateInput(value),
       ),
-      digest = hash(kind + input);
+      digest = hash(kind + input),
+      safeLabel = label.slice(0, 100) || '未命名面试';
     const previous = this.db
       .prepare('SELECT id,inputHash FROM jobs WHERE user=? AND client=?')
       .get(user, client) as Row | undefined;
@@ -332,6 +337,12 @@ export class QueueStore {
         throw new QueueError('任务标识已用于其他材料。', 409);
       return this.get(user, String(previous.id));
     }
+    const active = this.db
+      .prepare(
+        "SELECT id FROM jobs WHERE user=? AND kind=? AND inputHash=? AND label=? AND state IN ('queued','running','paused') ORDER BY created LIMIT 1",
+      )
+      .get(user, kind, digest, safeLabel) as Row | undefined;
+    if (active) return this.get(user, String(active.id));
     const count = this.db
       .prepare(
         "SELECT COUNT(*) AS n FROM jobs WHERE user=? AND state IN ('queued','running')",
@@ -342,18 +353,19 @@ export class QueueStore {
     const id = randomUUID();
     this.db
       .prepare(
-        "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind) VALUES(?,?,?,?,?,'queued',?,?,?,?)",
+        "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued) VALUES(?,?,?,?,?,'queued',?,?,?,?,?)",
       )
       .run(
         id,
         user,
         client,
         digest,
-        label.slice(0, 100) || '未命名面试',
+        safeLabel,
         input,
         this.now(),
         this.now(),
         kind,
+        this.now(),
       );
     return this.get(user, id);
   }
@@ -361,7 +373,7 @@ export class QueueStore {
     this.sweep();
     const row = this.db
       .prepare(
-        'SELECT id,label,kind,state,report,error,created,updated FROM jobs WHERE user=? AND id=?',
+        'SELECT id,label,kind,state,report,error,created,updated,queued,started FROM jobs WHERE user=? AND id=?',
       )
       .get(user, id) as Row | undefined;
     if (!row) throw new QueueError('任务不存在。', 404);
@@ -372,26 +384,96 @@ export class QueueStore {
       state: String(row.state),
       created: Number(row.created),
       updated: Number(row.updated),
+      queuedAt: Number(row.queued),
+      startedAt: row.started === null ? null : Number(row.started),
+      position:
+        row.state === 'queued' ? this.queuePosition(user, String(row.id)) : null,
       error: row.error,
       report: row.report ? (JSON.parse(String(row.report)) as unknown) : null,
     };
   }
+  private queuePosition(user: string, id: string) {
+    const rows = this.db
+      .prepare(
+        "SELECT id FROM jobs WHERE user=? AND state='queued' ORDER BY CASE WHEN kind='resume' THEN 0 ELSE 1 END,queued,created,rowid",
+      )
+      .all(user) as Row[];
+    const index = rows.findIndex((row) => row.id === id);
+    return index < 0 ? null : index + 1;
+  }
   list(user: string) {
     this.sweep();
-    return this.db
-      .prepare(
-        'SELECT id,label,kind,state,error,created,updated FROM jobs WHERE user=? ORDER BY created DESC LIMIT 100',
-      )
-      .all(user);
+    return (
+      this.db
+        .prepare(
+          'SELECT id,label,kind,state,error,created,updated,queued,started FROM jobs WHERE user=? ORDER BY created DESC LIMIT 100',
+        )
+        .all(user) as Row[]
+    ).map((row) => ({
+      id: String(row.id),
+      label: String(row.label),
+      kind: String(row.kind),
+      state: String(row.state),
+      created: Number(row.created),
+      updated: Number(row.updated),
+      queuedAt: Number(row.queued),
+      startedAt: row.started === null ? null : Number(row.started),
+      position:
+        row.state === 'queued' ? this.queuePosition(user, String(row.id)) : null,
+      error: row.error,
+    }));
+  }
+  action(
+    user: string,
+    id: string,
+    action: 'pause' | 'resume' | 'stop',
+  ) {
+    this.sweep();
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const row = this.db
+        .prepare('SELECT state FROM jobs WHERE user=? AND id=?')
+        .get(user, id) as Row | undefined;
+      if (!row) throw new QueueError('任务不存在。', 404);
+      const state = String(row.state);
+      if (action === 'pause') {
+        if (state !== 'paused') {
+          if (state !== 'queued' && state !== 'running')
+            throw new QueueError('当前任务不能暂停。', 409);
+          this.db
+            .prepare(
+              "UPDATE jobs SET state='paused',device=NULL,lease=NULL,until=NULL,updated=? WHERE user=? AND id=?",
+            )
+            .run(this.now(), user, id);
+        }
+      } else if (action === 'resume') {
+        if (state !== 'queued') {
+          if (state !== 'paused')
+            throw new QueueError('当前任务不能恢复。', 409);
+          this.db
+            .prepare(
+              "UPDATE jobs SET state='queued',queued=?,started=NULL,device=NULL,lease=NULL,until=NULL,updated=? WHERE user=? AND id=?",
+            )
+            .run(this.now(), this.now(), user, id);
+        }
+      } else if (state !== 'cancelled') {
+        if (!['queued', 'running', 'paused'].includes(state))
+          throw new QueueError('当前任务不能停止。', 409);
+        this.db
+          .prepare(
+            "UPDATE jobs SET state='cancelled',input=NULL,report=NULL,error=NULL,device=NULL,lease=NULL,until=NULL,started=NULL,updated=? WHERE user=? AND id=?",
+          )
+          .run(this.now(), user, id);
+      }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return this.get(user, id);
   }
   cancel(user: string, id: string) {
-    this.get(user, id);
-    this.db
-      .prepare(
-        "UPDATE jobs SET state='cancelled',input=NULL,error=NULL,updated=? WHERE user=? AND id=? AND state IN ('queued','running')",
-      )
-      .run(this.now(), user, id);
-    return this.get(user, id);
+    return this.action(user, id, 'stop');
   }
   claim(
     secret: string,
@@ -407,12 +489,13 @@ export class QueueStore {
     const lease = token();
     const row = this.db
       .prepare(
-        `UPDATE jobs SET state='running',device=?,lease=?,until=?,updated=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND (kind='interview' OR (kind='resume' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY created LIMIT 1) RETURNING id,input,kind`,
+        `UPDATE jobs SET state='running',device=?,lease=?,until=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND (kind='interview' OR (kind='resume' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY CASE WHEN kind='resume' THEN 0 ELSE 1 END,queued,created,rowid LIMIT 1) RETURNING id,input,kind`,
       )
       .get(
         device.id,
         lease,
         this.now() + 60000,
+        this.now(),
         this.now(),
         device.user,
         kinds.includes('resume') ? 1 : 0,
@@ -451,13 +534,18 @@ export class QueueStore {
     const device = this.device(secret);
     const job = this.db
       .prepare(
-        'SELECT * FROM jobs WHERE id=? AND user=? AND device=? AND lease=?',
+        'SELECT * FROM jobs WHERE id=? AND user=?',
       )
-      .get(id, device.user, device.id, lease) as Row | undefined;
+      .get(id, device.user) as Row | undefined;
     if (!job) throw new QueueError('任务不属于此连接器。', 403);
-    if (job.state === 'completed' || job.state === 'failed')
+    if (job.state === 'completed' || job.state === 'failed') {
+      if (job.device !== device.id || job.lease !== lease)
+        throw new QueueError('任务不属于此连接器。', 403);
       return { accepted: true };
+    }
     if (job.state !== 'running') return { accepted: false };
+    if (job.device !== device.id || job.lease !== lease)
+      throw new QueueError('任务不属于此连接器。', 403);
     let report: string | null = null,
       error: string | null = null;
     if (failed)
