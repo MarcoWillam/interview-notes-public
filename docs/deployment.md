@@ -29,6 +29,8 @@ journalctl -u interview-notes -n 50 --no-pager
 
 发布检查包括 `nginx -t`、`systemctl is-active interview-notes nginx interview-cert-renew.timer`、HTTPS `/api/session`，以及 HTTP 308 跳转、无需跳过校验的 TLS 证书、登录 Cookie 的 HttpOnly/Secure/SameSite=Strict、登录后工作台和实际构建清单中的 JS/CSS、PDF CMap/font 资源。账号和连接凭据仅由本机脚本读取，不打印值，不写入发布包；`.local/cloud-access.txt` 与 `.local/cloud-connector.json` 保持权限 600。
 
+`20260909-3` 已完成以上生产检查，并用虚构 AI 产品经理简历通过真实本地 Codex 链路验收：姓名及逐字证据有效，六题来源依次为简历、笔试、笔试、笔试、简历、简历，满足“已完成笔试”时第 2–4 题固定为笔试复盘题的约束。
+
 ## 服务器
 
 1. 准备 Node.js 24+、项目代码和可持久保存 SQLite 的本地磁盘。运行 `npm ci`、`npm run build:server`。
