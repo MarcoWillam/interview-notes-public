@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
+import { NativeSelect } from '@/components/ui/native-select';
 import {
   Dialog,
   DialogContent,
@@ -1666,7 +1667,8 @@ export default function Home() {
           <div className="resume-outline-confirmation-form">
             <label>
               确认岗位
-              <select
+              <NativeSelect
+                className="resume-outline-role-select"
                 value={pendingResumeOutline?.templateId || ''}
                 onChange={(event) =>
                   setPendingResumeOutline((current) =>
@@ -1691,13 +1693,13 @@ export default function Home() {
                     {template.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
             {pendingResumeOutline?.templateId ===
               BUILTIN_TEMPLATE_IDS.aiProductManager && (
               <fieldset>
                 <legend>笔试情况</legend>
-                <label>
+                <label className="resume-outline-written-test-option">
                   <input
                     type="radio"
                     name="resume-outline-written-test"
@@ -1710,7 +1712,7 @@ export default function Home() {
                   />
                   有笔试
                 </label>
-                <label>
+                <label className="resume-outline-written-test-option">
                   <input
                     type="radio"
                     name="resume-outline-written-test"

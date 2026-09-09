@@ -1856,13 +1856,20 @@ fieldset label:last-of-type {
 .resume-outline-confirmation-form select {
   display: block;
   width: 100%;
-  margin-top: 8px;
-  padding: 10px 12px;
+  padding: 10px 36px 10px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: white;
   color: var(--foreground);
   font: inherit;
+}
+.resume-outline-role-select {
+  width: 100%;
+  margin-top: 8px;
+}
+.resume-outline-role-select select {
+  height: auto;
+  margin-top: 0;
 }
 .resume-outline-confirmation-form fieldset {
   display: grid;
@@ -1876,15 +1883,36 @@ fieldset label:last-of-type {
 .resume-outline-confirmation-form fieldset label {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
   min-width: 0;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
 }
-.resume-outline-confirmation-form input {
+.resume-outline-confirmation-form fieldset label:has(input:checked) {
+  border-color: #75b8a9;
+  background: #eef8f4;
+  color: #075f55;
+}
+.resume-outline-confirmation-form input[type='radio'] {
+  flex: 0 0 16px;
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  box-shadow: none;
   accent-color: var(--primary);
+}
+.resume-outline-confirmation-form input[type='radio']:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 .resume-outline-confirmation-form > p {
   margin: 0;
