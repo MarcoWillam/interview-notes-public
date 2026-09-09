@@ -385,6 +385,54 @@ void test('API requires session and same-origin writes, connector tokens cannot 
     s.close();
   }
 });
+void test('only owner can create interviewer accounts from the web workspace', async () => {
+  const store = new QueueStore(':memory:');
+  try {
+    const owner = store.createUser('owner', 'owner-password-123').id;
+    const interviewer = store.createUser(
+      'interviewer',
+      'interviewer-password-123',
+    ).id;
+    const api = queueApi(store, { origin: 'https://interview.example' });
+    const create = (user: string, cookie: string, username: string) =>
+      api(
+        new Request('https://interview.example/api/accounts', {
+          method: 'POST',
+          headers: {
+            Origin: 'https://interview.example',
+            'Content-Type': 'application/json',
+            Cookie: cookie,
+            'X-Interview-Account': user,
+          },
+          body: JSON.stringify({
+            username,
+            password: 'new-account-password-123',
+          }),
+        }),
+      );
+
+    const denied = await create(
+      interviewer,
+      'interview_session=' + store.newSession(interviewer),
+      'should-not-exist',
+    );
+    assert.equal(denied.status, 403);
+    assert.equal(store.listUsers().length, 2);
+
+    const created = await create(
+      owner,
+      'interview_session=' + store.newSession(owner),
+      'new-interviewer',
+    );
+    assert.equal(created.status, 201);
+    assert.deepEqual(await created.json(), {
+      user: { username: 'new-interviewer' },
+    });
+    assert.ok(store.login('new-interviewer', 'new-account-password-123'));
+  } finally {
+    store.close();
+  }
+});
 void test('resume jobs require an upgraded connector and validate against resume text', () => {
   const { s, a } = setup();
   try {
