@@ -788,18 +788,6 @@ export default function Home() {
       setCandidate(value);
     },
     onStandardsChange: applyStandards,
-    onWrittenTestChange: (checked: boolean) => {
-      if (writtenTestConfirmed && hasWrittenTest === checked) return;
-      invalidate();
-      setResumeReading(null);
-      setHasWrittenTest(checked);
-      setWrittenTestConfirmed(true);
-      resumeContext.current = {
-        ...resumeContext.current,
-        hasWrittenTest: checked,
-        writtenTestConfirmed: true,
-      };
-    },
     onApplyTemplate: (id: string) => {
       const selected =
         id === COMMON_TEMPLATE_ID
@@ -1487,7 +1475,6 @@ export default function Home() {
             是否有笔试会直接影响 Codex 生成的面试提纲。请选择本场情况，确认后将立即开始阅读简历。
           </AlertDialogDescription>
           <AlertDialogFooter className="written-test-confirmation-actions">
-            <AlertDialogCancel>稍后确认</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => confirmWrittenTestAndRead(false)}
             >
