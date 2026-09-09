@@ -4,7 +4,10 @@ import {
   validateStandards,
   type GlobalSettings,
 } from '../standards.ts';
-import { builtInRoleTemplates } from '../default-role-templates.ts';
+import {
+  builtInRoleTemplates,
+  replacementForLegacyBuiltInRoleTemplate,
+} from '../default-role-templates.ts';
 export type SavedInterview = {
   id: string;
   updatedAt: number;
@@ -50,7 +53,7 @@ export function createLocalStore(
   name = 'interview-notes-local',
 ) {
   const connection = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = factory.open(name, 3);
+    const request = factory.open(name, 4);
     request.onupgradeneeded = (event) => {
       const db = request.result;
       if (event.oldVersion < 1) {
@@ -63,14 +66,25 @@ export function createLocalStore(
       }
       if (event.oldVersion < 2)
         db.createObjectStore('settings', { keyPath: 'id' });
-      if (event.oldVersion < 3) {
+      const migrateBuiltInTemplates = (addMissing: boolean) => {
         const preferences = request.transaction!.objectStore('preferences');
         for (const template of builtInRoleTemplates) {
           const existing = preferences.get(template.id);
           existing.onsuccess = () => {
-            if (existing.result === undefined) preferences.add(template);
+            if (existing.result === undefined) {
+              if (addMissing) preferences.add(template);
+              return;
+            }
+            const replacement = replacementForLegacyBuiltInRoleTemplate(
+              existing.result,
+            );
+            if (replacement) preferences.put(replacement);
           };
         }
+      };
+      if (event.oldVersion < 3) migrateBuiltInTemplates(true);
+      else if (event.oldVersion < 4) {
+        migrateBuiltInTemplates(false);
       }
     };
     request.onsuccess = () => {
