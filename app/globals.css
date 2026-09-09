@@ -2253,16 +2253,25 @@ fieldset label:last-of-type {
   color: #71847d;
   font-size: 11px;
 }
-.interview-sidebar-sort select {
+.interview-sidebar-sort-control[data-slot='native-select-wrapper'] {
   width: 100%;
   min-width: 0;
+}
+.interview-sidebar-sort-control [data-slot='native-select'] {
   height: 32px;
-  padding: 0 26px 0 9px;
+  padding: 0 30px 0 10px;
   border: 1px solid #d5e2de;
   border-radius: 8px;
   background: #fff;
   color: #36564d;
   font-size: 12px;
+  line-height: 30px;
+}
+.interview-sidebar-sort-control [data-slot='native-select-icon'] {
+  right: 8px;
+  width: 14px;
+  height: 14px;
+  color: #607870;
 }
 .interview-sidebar-create {
   width: 100%;
