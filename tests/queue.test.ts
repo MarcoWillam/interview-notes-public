@@ -13,6 +13,7 @@ const resumeInput = {
   scoringGuidance: '根据具体行动和结果判断证据充分性',
   reportRequirements: '列明待核实内容',
   resumeText: '姓名：张三。示例大学毕业。我访谈了五位用户。',
+  hasWrittenTest: false,
 };
 const reading = {
   candidateName: '张三',
@@ -30,6 +31,7 @@ const reading = {
     dimensions: [index % 2 === 0 ? '需求分析' : '沟通协作'],
     reason: '核实自驱力、具体行动与结果。',
     resumeEvidence: index === 5 ? null : '我访谈了五位用户。',
+    questionSource: index === 5 ? 'role' : 'resume',
     listenFor: ['个人行动', '结果与反思'],
     probes: ['你如何验证效果？'],
   })),
