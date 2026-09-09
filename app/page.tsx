@@ -46,6 +46,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { validateInput, exportMarkdown, type Report } from '@/lib/interview';
 import { useInterviewLibrary } from '@/hooks/use-interview-library';
+import type { NewInterviewSeed } from '@/lib/local/store';
 import { LocalLibrary } from '@/components/interview/local-library';
 import { GlobalPreferences } from '@/components/interview/global-preferences';
 import { InterviewPreparation } from '@/components/interview/interview-preparation';
@@ -638,10 +639,10 @@ export default function Home() {
     invalidate();
     setStandards(value);
   }
-  function reset(value: InterviewStandards) {
+  function reset(seed: NewInterviewSeed) {
     analysisController.current?.abort();
     analysisController.current = null;
-    setStandards(value);
+    setStandards(seed.standards);
     setCandidate('');
     setResumeText('');
     setResumeName('');

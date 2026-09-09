@@ -30,6 +30,30 @@ void test('interview draft survives reopening the local store', async () => {
   const reopened = createLocalStore(factory);
   assert.deepEqual(await reopened.getInterview('first'), session);
 });
+void test('template source and written-test state survive reopening', async () => {
+  const factory = new IDBFactory();
+  const store = createLocalStore(factory);
+  const enriched: SavedInterview = {
+    ...session,
+    sourceTemplateId: 'builtin-campus-ai-product-manager',
+    templateModified: true,
+    hasWrittenTest: true,
+  };
+  await store.saveInterview(enriched);
+  assert.deepEqual(
+    await createLocalStore(factory).getInterview(enriched.id),
+    enriched,
+  );
+});
+void test('legacy records remain readable without template metadata', async () => {
+  const store = createLocalStore(new IDBFactory());
+  await store.saveInterview(session);
+  const restored = await store.getInterview(session.id);
+  assert.ok(restored);
+  assert.equal(restored.sourceTemplateId, undefined);
+  assert.equal(restored.templateModified, undefined);
+  assert.equal(restored.hasWrittenTest, undefined);
+});
 void test('new and updated resume records do not acquire a verification gate', async () => {
   const factory = new IDBFactory();
   const first = createLocalStore(factory);

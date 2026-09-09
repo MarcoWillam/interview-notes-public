@@ -311,24 +311,37 @@ void test('version 2 upgrade never overwrites an existing stable template id', a
 void test('new interviews resolve saved global defaults and return isolated values', async () => {
   const store = createLocalStore(new IDBFactory());
   await store.saveSettings({ id: 'global', defaultTemplateId: null, defaults });
-  const first = await store.getNewInterviewStandards();
-  assert.deepEqual(first, defaults);
-  first.focus = '本场修改';
-  assert.equal((await store.getNewInterviewStandards()).focus, defaults.focus);
+  const first = await store.getNewInterviewSeed();
+  assert.deepEqual(first, {
+    standards: defaults,
+    sourceTemplateId: '__common__',
+  });
+  first.standards.focus = '本场修改';
+  assert.equal(
+    (await store.getNewInterviewSeed()).standards.focus,
+    defaults.focus,
+  );
 });
 void test('default template updates affect future snapshots only and deletion falls back', async () => {
   const factory = new IDBFactory();
   const store = createLocalStore(factory);
   await store.savePreference(template);
   await store.saveSettings({ id: 'global', defaultTemplateId: 'pm', defaults });
-  const snapshot = await store.getNewInterviewStandards();
+  const snapshot = await store.getNewInterviewSeed();
+  assert.equal(snapshot.sourceTemplateId, template.id);
   await store.savePreference({ ...template, focus: '新的要求' });
   const reopened = createLocalStore(factory);
-  assert.equal((await reopened.getNewInterviewStandards()).focus, '新的要求');
-  assert.equal(snapshot.focus, '说明决策过程');
+  assert.equal(
+    (await reopened.getNewInterviewSeed()).standards.focus,
+    '新的要求',
+  );
+  assert.equal(snapshot.standards.focus, '说明决策过程');
   await store.deletePreference('pm');
   assert.equal((await store.getSettings())?.defaultTemplateId, null);
-  assert.deepEqual(await store.getNewInterviewStandards(), defaults);
+  assert.deepEqual(await store.getNewInterviewSeed(), {
+    standards: defaults,
+    sourceTemplateId: '__common__',
+  });
 });
 void test('cannot save a default selection pointing to a missing template', async () => {
   const store = createLocalStore(new IDBFactory());
@@ -375,7 +388,10 @@ void test('version 1 upgrade preserves existing recordings and templates', async
     '产品一面',
   );
   await store.saveSettings({ id: 'global', defaultTemplateId: 'pm', defaults });
-  assert.equal((await store.getNewInterviewStandards()).role, '产品经理');
+  assert.equal(
+    (await store.getNewInterviewSeed()).standards.role,
+    '产品经理',
+  );
 });
 
 void test('saving all preferences is atomic and does not rewrite interview snapshots', async () => {
@@ -385,7 +401,7 @@ void test('saving all preferences is atomic and does not rewrite interview snaps
     [template],
   );
   const snapshot = {
-    ...(await store.getNewInterviewStandards()),
+    ...(await store.getNewInterviewSeed()).standards,
     id: 'interview',
     updatedAt: 1,
     candidate: '测试',
@@ -407,7 +423,10 @@ void test('saving all preferences is atomic and does not rewrite interview snaps
     [],
   );
   assert.deepEqual(await store.getInterview('interview'), snapshot);
-  assert.equal((await store.getNewInterviewStandards()).focus, '新通用标准');
+  assert.equal(
+    (await store.getNewInterviewSeed()).standards.focus,
+    '新通用标准',
+  );
   await assert.rejects(
     store.savePreferencesConfig(
       { id: 'global', defaults, defaultTemplateId: template.id },
