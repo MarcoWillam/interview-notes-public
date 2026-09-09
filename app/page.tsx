@@ -859,18 +859,28 @@ export default function Home() {
                       />
                     </label>
                     <p className="small-note">
-                      {resumeName ? '已导入：' + resumeName + '。' : ''}
-                      附件在浏览器提取文字，原文件不上传。扫描件暂不支持，提取后请核对段落和日期。
+                      附件仅在浏览器提取文字，原文件不上传。展开后编辑会清除旧的阅读和评估结果。
                     </p>
-                    <button
-                      className="text-button"
-                      aria-expanded={resumeBodyOpen}
-                      aria-controls="resume-body"
-                      onClick={() => setResumeBodyOpen((open) => !open)}
+                    <details
+                      className="resume-body-details"
+                      open={resumeBodyOpen}
+                      onToggle={(event) =>
+                        setResumeBodyOpen(event.currentTarget.open)
+                      }
                     >
-                      {resumeBodyOpen ? '收起简历正文' : '查看或编辑简历正文'}
-                    </button>
-                    <div id="resume-body" hidden={!resumeBodyOpen}>
+                      <summary>
+                        <span className="resume-body-title">
+                          {resumeText.trim()
+                            ? '简历正文 · 已提取'
+                            : '简历正文 · 待补充'}
+                        </span>
+                        {resumeName && (
+                          <span className="resume-body-name">{resumeName}</span>
+                        )}
+                        <span className="resume-body-count">
+                          {resumeText.length.toLocaleString()} 字符
+                        </span>
+                      </summary>
                       <label htmlFor="resume-text" className="field-title">
                         简历正文
                       </label>
@@ -883,11 +893,11 @@ export default function Home() {
                         onChange={(e) => editResume(e.target.value, resumeName)}
                         placeholder="在这里粘贴简历文字。简历作为背景信息，项目经历与能力仍需通过面试核实。"
                       />
-                    </div>
+                    </details>
                     <div className="action-footer">
                       <span>
                         {queuedCodex
-                          ? '将发送简历与岗位要求，由已配对电脑的 Codex 联网整理'
+                          ? '将发送简历与岗位要求，由已配对电脑的 Codex 整理'
                           : '简历阅读需使用队列版工作台连接 Codex'}
                       </span>
                       <button
