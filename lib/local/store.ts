@@ -4,6 +4,7 @@ import {
   validateStandards,
   type GlobalSettings,
 } from '../standards.ts';
+import { builtInRoleTemplates } from '../default-role-templates.ts';
 export type SavedInterview = {
   id: string;
   updatedAt: number;
@@ -45,7 +46,7 @@ export function createLocalStore(
   name = 'interview-notes-local',
 ) {
   const connection = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = factory.open(name, 2);
+    const request = factory.open(name, 3);
     request.onupgradeneeded = (event) => {
       const db = request.result;
       if (event.oldVersion < 1) {
@@ -58,6 +59,15 @@ export function createLocalStore(
       }
       if (event.oldVersion < 2)
         db.createObjectStore('settings', { keyPath: 'id' });
+      if (event.oldVersion < 3) {
+        const preferences = request.transaction!.objectStore('preferences');
+        for (const template of builtInRoleTemplates) {
+          const existing = preferences.get(template.id);
+          existing.onsuccess = () => {
+            if (existing.result === undefined) preferences.add(template);
+          };
+        }
+      }
     };
     request.onsuccess = () => {
       request.result.onversionchange = () => request.result.close();
