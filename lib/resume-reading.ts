@@ -64,7 +64,7 @@ function validateQuestions(
       .map((dimension) => dimension.trim())
       .filter(Boolean),
   );
-  return value.map((item: unknown) => {
+  const questions = value.map((item: unknown) => {
     if (!item || typeof item !== 'object')
       throw new Error('面试问题格式不正确。');
     const question = item as Record<string, unknown>;
@@ -86,6 +86,12 @@ function validateQuestions(
       probes: stringList(question.probes, 1, 2, 1000),
     };
   });
+  if (
+    new Set(questions.map((question) => question.question)).size !==
+    questions.length
+  )
+    throw new Error('面试问题不能重复。');
+  return questions;
 }
 
 export function validateResumeReading(
@@ -255,15 +261,23 @@ export function exportResumeReading(reading: ResumeReading): string {
           ...reading.interviewQuestions.flatMap((q, index) => [
             '',
             `### ${index + 1}. ${q.question}`,
+            '',
             `维度：${q.dimensions.join('、')}`,
+            '',
             `提问理由：${q.reason}`,
+            '',
             '简历证据：',
+            '',
             q.resumeEvidence === null
               ? '简历未提供明确依据。'
               : '> ' + q.resumeEvidence.replaceAll('\n', '\n> '),
+            '',
             '观察点：',
+            '',
             ...q.listenFor.map((item) => '- ' + item),
+            '',
             '追问：',
+            '',
             ...q.probes.map((probe) => '- ' + probe),
           ]),
         ]

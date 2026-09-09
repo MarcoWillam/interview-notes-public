@@ -164,6 +164,34 @@ void test('input validates all standards bounds and dimension rules', () => {
     assert.throws(() => validateResumeInput({ ...input, ...invalid }));
 });
 
+for (const padding of ['', ' \n\t']) {
+  void test(`questions reject duplicate stems with ${padding ? 'surrounding whitespace' : 'identical text'}`, () => {
+    const questions = structuredResult.interviewQuestions.map(
+      (question, index) =>
+        index === 5
+          ? {
+              ...question,
+              question:
+                padding +
+                structuredResult.interviewQuestions[0].question +
+                padding,
+            }
+          : question,
+    );
+    assert.throws(
+      () =>
+        validateResumeReading(
+          {
+            ...structuredResult,
+            interviewQuestions: questions,
+          },
+          input,
+        ),
+      /面试问题不能重复/,
+    );
+  });
+}
+
 void test('model schema requires identity and bounded structured questions', () => {
   assert.ok(resumeSchema.required.includes('candidateName'));
   assert.ok(resumeSchema.required.includes('candidateNameEvidence'));
@@ -213,6 +241,39 @@ void test('markdown exports numbered interview guide before remaining follow-ups
   const legacy = exportResumeReading(result);
   assert.ok(legacy.includes('## 建议追问\n- 请说明访谈后的决策。'));
   assert.ok(!legacy.includes('## 面试提纲'));
+});
+
+void test('markdown separates question paragraphs, evidence and follow-up lists', () => {
+  const markdown = exportResumeReading(structuredResult);
+  assert.ok(
+    markdown.includes(
+      [
+        `### 1. ${structuredResult.interviewQuestions[0].question}`,
+        '',
+        '维度：用户研究',
+        '',
+        '提问理由：核实岗位相关行动和结果',
+        '',
+        '简历证据：',
+        '',
+        '> 曾负责用户访谈，访谈了五位用户。',
+        '',
+        '观察点：',
+        '',
+        '- 个人行动',
+        '- 可核实的结果',
+        '',
+        '追问：',
+        '',
+        '- 你本人具体做了什么？',
+        '',
+        `### 2. ${structuredResult.interviewQuestions[1].question}`,
+      ].join('\n'),
+    ),
+  );
+  assert.ok(
+    markdown.includes('简历证据：\n\n简历未提供明确依据。\n\n观察点：'),
+  );
 });
 void test('reading rejects invented references and missing categories', () => {
   assert.throws(() =>
