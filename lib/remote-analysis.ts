@@ -26,9 +26,18 @@ export type RemoteJob<T = Report> = {
   kind?: 'interview' | 'resume';
   id: string;
   label: string;
-  state: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+  state:
+    | 'queued'
+    | 'running'
+    | 'paused'
+    | 'completed'
+    | 'failed'
+    | 'cancelled';
   created: number;
   updated: number;
+  queuedAt?: number;
+  startedAt?: number | null;
+  position?: number | null;
   report?: T | null;
   error?: string | null;
 };
@@ -58,6 +67,17 @@ export async function remoteRequest<T>(
       response.status,
     );
   return data;
+}
+export function controlRemoteJob(
+  id: string,
+  action: 'pause' | 'resume' | 'stop',
+  fetcher: typeof fetch = fetch,
+) {
+  return remoteRequest<RemoteJob>(
+    '/api/jobs/' + encodeURIComponent(id) + '/action',
+    { method: 'POST', body: JSON.stringify({ action }) },
+    fetcher,
+  );
 }
 async function submitRemoteTask<T>(
   input: InterviewInput | ResumeInput,
