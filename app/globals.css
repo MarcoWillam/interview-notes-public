@@ -1999,6 +1999,55 @@ fieldset label:last-of-type {
   font-size: 16px;
 }
 
+.written-test-supplement {
+  min-width: 0;
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid #e4c36d;
+  border-left: 4px solid #b87900;
+  border-radius: 10px;
+  background: #fff8e6;
+}
+.written-test-supplement > h4 {
+  margin: 0 0 6px;
+  color: #704700;
+  font-size: 16px;
+}
+.written-test-supplement > p {
+  margin: 0 0 14px;
+  color: #785d27;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.written-test-supplement-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid #e4c36d;
+  border-radius: 10px;
+  background: #fffaf0;
+}
+.written-test-supplement-action strong {
+  color: #704700;
+}
+.written-test-supplement-action p {
+  margin: 4px 0 0;
+  color: #785d27;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.written-test-supplement-action button {
+  flex: 0 0 auto;
+}
+.written-test-supplement-dialog {
+  width: min(calc(100vw - 32px), 520px) !important;
+  max-width: 520px !important;
+}
+
 .interview-question-list {
   display: grid;
   gap: 12px;
@@ -2132,6 +2181,9 @@ fieldset label:last-of-type {
   .interview-guide {
     padding: 12px;
   }
+  .written-test-supplement {
+    padding: 12px;
+  }
   .resume-reading-details > summary {
     align-items: flex-start;
     flex-direction: column;
@@ -2139,6 +2191,19 @@ fieldset label:last-of-type {
   .resume-body-name {
     display: block;
     margin-left: 0;
+  }
+}
+@media (max-width: 480px) {
+  .written-test-supplement-action {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .written-test-supplement-action button,
+  .written-test-supplement-dialog [data-slot='alert-dialog-footer'] > button {
+    width: 100%;
+  }
+  .written-test-supplement-dialog [data-slot='alert-dialog-footer'] {
+    flex-direction: column-reverse;
   }
 }
 

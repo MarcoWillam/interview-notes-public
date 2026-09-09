@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, ListChecks, RefreshCw, X } from 'lucide-react';
 import type { Report } from '../../lib/interview';
 import type { ResumeReading } from '../../lib/resume-reading';
+import type { WrittenTestSupplementResult } from '../../lib/written-test-supplement';
 import {
   controlRemoteJob,
   remoteRequest,
@@ -15,7 +16,10 @@ import {
   DialogDescription,
   DialogTitle,
 } from '../ui/dialog';
-import { ResumeReadingView } from './resume-reading-view';
+import {
+  ResumeReadingView,
+  WrittenTestSupplementView,
+} from './resume-reading-view';
 import {
   TaskCenterView,
   taskActionPrompt,
@@ -23,7 +27,7 @@ import {
   type TaskCenterJob,
 } from './task-center-view';
 
-type Job = RemoteJob<Report | ResumeReading>;
+type Job = RemoteJob<Report | ResumeReading | WrittenTestSupplementResult>;
 
 function downloadReport(job: Job) {
   if (!job.report || !('dimensions' in job.report)) return;
@@ -236,6 +240,9 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
       <span className="badge">AI 辅助结果 · 待人工核实</span>
       {job.report && 'sections' in job.report && (
         <ResumeReadingView value={job.report} />
+      )}
+      {job.report && 'questions' in job.report && (
+        <WrittenTestSupplementView questions={job.report.questions} />
       )}
       {job.report && 'dimensions' in job.report && (
         <>
