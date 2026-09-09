@@ -1,8 +1,13 @@
 'use client';
 
-import { ArrowUpRight } from 'lucide-react';
+import { ArrowUpRight, ChevronDown } from 'lucide-react';
 import { StandardsFields } from '@/components/interview/standards-fields';
 import type { InterviewStandards } from '@/lib/standards';
+import {
+  COMMON_TEMPLATE_ID,
+  TEMPLATE_STATUS_VALUE,
+  type TemplateSelection,
+} from '@/lib/interview-template-state';
 
 export function InterviewPreparation({
   candidate,
@@ -10,11 +15,15 @@ export function InterviewPreparation({
   templates,
   disabled,
   standardsOpen,
+  templateSelection,
+  hasWrittenTest,
+  writtenTestSupported,
   serviceReady,
   serviceStatus,
   onCandidateChange,
   onStandardsChange,
   onApplyTemplate,
+  onWrittenTestChange,
   onStandardsOpenChange,
   onOpenService,
 }: {
@@ -23,11 +32,15 @@ export function InterviewPreparation({
   templates: { id: string; name: string }[];
   disabled: boolean;
   standardsOpen: boolean;
+  templateSelection: TemplateSelection;
+  hasWrittenTest: boolean;
+  writtenTestSupported: boolean;
   serviceReady: boolean;
   serviceStatus: string;
   onCandidateChange: (value: string) => void;
   onStandardsChange: (value: InterviewStandards) => void;
   onApplyTemplate: (id: string) => void;
+  onWrittenTestChange: (checked: boolean) => void;
   onStandardsOpenChange: (open: boolean) => void;
   onOpenService: () => void;
 }) {
@@ -46,21 +59,43 @@ export function InterviewPreparation({
         </label>
         <label className="session-template-picker">
           选择岗位模板
-          <select
-            value=""
-            onChange={(event) => onApplyTemplate(event.target.value)}
-          >
-            <option value="" disabled>
-              选择模板应用到本场…
-            </option>
-            <option value="__common__">通用默认标准</option>
-            {templates.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.name}
-              </option>
-            ))}
-          </select>
+          <span className="session-template-select">
+            <select
+              value={templateSelection.selectValue}
+              onChange={(event) => onApplyTemplate(event.target.value)}
+            >
+              {templateSelection.selectValue === TEMPLATE_STATUS_VALUE && (
+                <option value={TEMPLATE_STATUS_VALUE} disabled>
+                  {templateSelection.label}
+                </option>
+              )}
+              <option value={COMMON_TEMPLATE_ID}>通用默认标准</option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={16} aria-hidden="true" />
+          </span>
         </label>
+        {writtenTestSupported && (
+          <label className="written-test-toggle">
+            <input
+              type="checkbox"
+              checked={hasWrittenTest}
+              onChange={(event) =>
+                onWrittenTestChange(event.target.checked)
+              }
+            />
+            <span>
+              <strong>候选人已完成笔试</strong>
+              <small>
+                提纲第 2–4 题将用于复盘笔试中的判断与取舍
+              </small>
+            </span>
+          </label>
+        )}
         <p className="small-note">
           模板在页头的“全局设置”中管理。应用模板将替换本场标准并清除旧 AI 评估。
         </p>
