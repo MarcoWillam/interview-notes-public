@@ -1795,10 +1795,11 @@ export default function Home({
                 Codex 生成提纲。
               </AlertDialogDescription>
               <div className="resume-outline-confirmation-form">
-                <label>
+                <label htmlFor="resume-outline-role-select">
                   确认岗位
                   <NativeSelect
-                    className="resume-outline-role-select"
+                    id="resume-outline-role-select"
+                    className="workbench-native-select resume-outline-role-select"
                     value={pendingResumeOutline?.templateId || ''}
                     onChange={(event) =>
                       setPendingResumeOutline((current) =>

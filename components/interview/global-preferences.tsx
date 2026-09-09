@@ -19,6 +19,7 @@ import {
 import { normalizeStandards, type GlobalSettings } from '@/lib/standards';
 import type { Preference } from '@/lib/local/store';
 import { StandardsFields } from './standards-fields';
+import { NativeSelect } from '@/components/ui/native-select';
 
 export function GlobalPreferences({
   initialSettings,
@@ -109,9 +110,14 @@ export function GlobalPreferences({
             统一管理岗位模板与通用标准，仅保存在当前浏览器。每场面试使用独立快照，修改全局设置不会改动历史结论。
           </DialogDescription>
           <fieldset disabled={pending} className="global-settings-body">
-            <label className="default-template-field">
+            <label
+              className="default-template-field"
+              htmlFor="default-template-select"
+            >
               新面试默认使用
-              <select
+              <NativeSelect
+                id="default-template-select"
+                className="workbench-native-select default-template-select"
                 value={settings.defaultTemplateId || ''}
                 onChange={(e) => {
                   setSettings({
@@ -127,7 +133,7 @@ export function GlobalPreferences({
                     {p.name || '未命名模板'}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
             <p className="small-note">
               选中岗位模板后，新面试使用该模板的完整标准；不选模板则使用下面的通用标准。

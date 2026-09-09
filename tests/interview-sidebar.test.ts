@@ -210,6 +210,55 @@ void test('workbench mounts the sidebar and reserves independent scrolling areas
   assert.match(css, /@media \(max-width:\s*1179px\)/);
 });
 
+void test('workbench dropdowns share one native select presentation contract', async () => {
+  const [preparation, preferences, page, css] = await Promise.all([
+    readFile(
+      new URL(
+        '../components/interview/interview-preparation.tsx',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+    readFile(
+      new URL(
+        '../components/interview/global-preferences.tsx',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+    readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(preparation, /<NativeSelect/);
+  assert.match(
+    preparation,
+    /className="workbench-native-select session-template-select"/,
+  );
+  assert.doesNotMatch(preparation, /<select/);
+  assert.doesNotMatch(preparation, /ChevronDown/);
+
+  assert.match(preferences, /<NativeSelect/);
+  assert.match(
+    preferences,
+    /className="workbench-native-select default-template-select"/,
+  );
+  assert.doesNotMatch(preferences, /<select/);
+
+  assert.match(
+    page,
+    /className="workbench-native-select resume-outline-role-select"/,
+  );
+  assert.match(
+    css,
+    /\.workbench-native-select\[data-slot='native-select-wrapper'\]/,
+  );
+  assert.match(
+    css,
+    /\.workbench-native-select \[data-slot='native-select-icon'\]/,
+  );
+});
+
 void test('workbench renders remote and local actions in one account-aware header', async () => {
   const [page, remote, taskCenter, css] = await Promise.all([
     readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
