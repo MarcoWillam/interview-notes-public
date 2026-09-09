@@ -61,7 +61,7 @@ function downloadReport(job: Job) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function TaskCenter() {
+export function TaskCenter({ onOpen }: { onOpen?: () => void } = {}) {
   const [open, setOpen] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [detail, setDetail] = useState<Job | null>(null);
@@ -164,6 +164,7 @@ export function TaskCenter() {
         className="task-center-trigger"
         onClick={(event) => {
           event.currentTarget.closest('details')?.removeAttribute('open');
+          onOpen?.();
           setOpen(true);
         }}
       >

@@ -151,6 +151,7 @@ export default function Home({
     useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [preparationOpen, setPreparationOpen] = useState(false);
   const [standardsOpen, setStandardsOpen] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -1015,36 +1016,42 @@ export default function Home({
             <ShieldCheck size={16} />
             <span>当前设备 · 本地保存</span>
           </span>
-          <details className="workspace-tools">
-            <summary aria-label="更多操作">
+          <div className="workspace-tools" data-open={toolsOpen || undefined}>
+            <button
+              type="button"
+              className="workspace-tools-trigger"
+              aria-label="更多操作"
+              aria-expanded={toolsOpen}
+              aria-controls="workspace-tools-menu"
+              onClick={() => setToolsOpen((open) => !open)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setToolsOpen(false);
+              }}
+            >
               <MoreHorizontal size={18} />
               <span>更多操作</span>
-            </summary>
-            <div className="workspace-tools-content">
+            </button>
+            <div id="workspace-tools-menu" className="workspace-tools-content">
               {workspaceAccount && (
                 <>
                   <button
                     className="text-button"
-                    onClick={(event) => {
-                      event.currentTarget
-                        .closest('details')
-                        ?.removeAttribute('open');
+                    onClick={() => {
+                      setToolsOpen(false);
                       workspaceAccount.onOpenDevices();
                     }}
                   >
                     <Monitor size={16} />
                     <span className="workspace-action-copy">电脑连接</span>
                   </button>
-                  <TaskCenter />
+                  <TaskCenter onOpen={() => setToolsOpen(false)} />
                 </>
               )}
               <button
                 className="global-settings-entry text-button"
                 disabled={!library.ready || library.working || !!busy}
-                onClick={(event) => {
-                  event.currentTarget
-                    .closest('details')
-                    ?.removeAttribute('open');
+                onClick={() => {
+                  setToolsOpen(false);
                   void localAction(async () => {
                     await library.refresh();
                     setPreferencesOpen(true);
@@ -1056,7 +1063,7 @@ export default function Home({
                 <span className="workspace-action-copy">全局设置</span>
               </button>
             </div>
-          </details>
+          </div>
           {workspaceAccount?.preview ? (
             <span className="workspace-account-label">本机预览</span>
           ) : workspaceAccount ? (
