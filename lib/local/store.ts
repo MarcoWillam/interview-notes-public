@@ -34,6 +34,7 @@ export type SavedInterview = {
   sourceTemplateId?: string | null;
   templateModified?: boolean;
   hasWrittenTest?: boolean;
+  writtenTestConfirmed?: boolean;
 };
 export type NewInterviewSeed = {
   standards: InterviewStandards;

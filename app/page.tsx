@@ -52,6 +52,7 @@ import {
   appliedTemplateState,
   resolveTemplateSelection,
   supportsWrittenTest,
+  writtenTestDecision,
 } from '@/lib/interview-template-state';
 import { LocalLibrary } from '@/components/interview/local-library';
 import { GlobalPreferences } from '@/components/interview/global-preferences';
@@ -89,6 +90,7 @@ export default function Home() {
   const [sourceTemplateId, setSourceTemplateId] = useState<string | null>(null);
   const [templateModified, setTemplateModified] = useState(false);
   const [hasWrittenTest, setHasWrittenTest] = useState(false);
+  const [writtenTestConfirmed, setWrittenTestConfirmed] = useState(false);
   const [resumeText, setResumeText] = useState('');
   const [resumeName, setResumeName] = useState('');
   const [resumeReading, setResumeReading] = useState<ResumeReading | null>(
@@ -104,6 +106,10 @@ export default function Home() {
     text: string;
     name: string;
     autoRead: boolean;
+  } | null>(null);
+  const [pendingWrittenTestReading, setPendingWrittenTestReading] = useState<{
+    text: string;
+    name: string;
   } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
@@ -143,6 +149,10 @@ export default function Home() {
   const queuedCodex = services?.provider === 'codex-queue';
   const effectiveHasWrittenTest =
     supportsWrittenTest(sourceTemplateId) && hasWrittenTest;
+  const effectiveWrittenTestConfirmed =
+    supportsWrittenTest(sourceTemplateId) && writtenTestConfirmed;
+  const needsWrittenTestConfirmation =
+    supportsWrittenTest(sourceTemplateId) && !writtenTestConfirmed;
   // Imports and queue responses may finish after the render that started them.
   const resumeContext = useRef({
     candidate,
@@ -154,6 +164,8 @@ export default function Home() {
     scoringGuidance,
     reportRequirements,
     hasWrittenTest: effectiveHasWrittenTest,
+    writtenTestConfirmed: effectiveWrittenTestConfirmed,
+    sourceTemplateId,
     queuedCodex,
   });
   useEffect(() => {
@@ -167,6 +179,8 @@ export default function Home() {
       scoringGuidance,
       reportRequirements,
       hasWrittenTest: effectiveHasWrittenTest,
+      writtenTestConfirmed: effectiveWrittenTestConfirmed,
+      sourceTemplateId,
       queuedCodex,
     };
   }, [
@@ -179,6 +193,8 @@ export default function Home() {
     scoringGuidance,
     reportRequirements,
     effectiveHasWrittenTest,
+    effectiveWrittenTestConfirmed,
+    sourceTemplateId,
     queuedCodex,
   ]);
   const [remoteJob, setRemoteJob] = useState<RemoteJob | null>(null);
@@ -230,12 +246,14 @@ export default function Home() {
       sourceTemplateId,
       templateModified,
       hasWrittenTest: effectiveHasWrittenTest,
+      writtenTestConfirmed: effectiveWrittenTestConfirmed,
     },
     async (saved) => {
       analysisController.current?.abort();
       analysisController.current = null;
       setPendingCandidateName(null);
       setPendingResume(null);
+      setPendingWrittenTestReading(null);
       setCandidate(saved.candidate);
       setRole(saved.role);
       setRequirements(saved.requirements);
@@ -246,6 +264,7 @@ export default function Home() {
       setSourceTemplateId(saved.sourceTemplateId ?? null);
       setTemplateModified(saved.templateModified ?? false);
       setHasWrittenTest(saved.hasWrittenTest ?? false);
+      setWrittenTestConfirmed(saved.writtenTestConfirmed ?? false);
       setResumeText(saved.resumeText || '');
       setResumeName(saved.resumeName || '');
       setResumeReading(saved.resumeReading || null);
@@ -307,6 +326,7 @@ export default function Home() {
     setResumeName(name);
     setResumeReading(null);
     setPendingCandidateName(null);
+    setPendingWrittenTestReading(null);
     setResumeBodyOpen(true);
   }
   async function applyImportedResume(text: string, name: string) {
@@ -335,14 +355,35 @@ export default function Home() {
       setResumeBodyOpen(true);
       setError(e instanceof Error ? e.message : '简历提取失败，原内容已保留。');
     } finally {
-      if (analysisController.current === controller) {
+      if (
+        analysisController.current === controller ||
+        analysisController.current === null
+      ) {
         analysisController.current = null;
         busyRef.current = false;
         setBusy(null);
       }
     }
   }
-  async function runResumeReading(resumeText: string, resumeName: string) {
+  async function runResumeReading(
+    resumeText: string,
+    resumeName: string,
+    confirmedChoice?: boolean,
+  ) {
+    const startingContext = resumeContext.current;
+    const decision =
+      confirmedChoice ??
+      writtenTestDecision(
+        startingContext.sourceTemplateId,
+        startingContext.writtenTestConfirmed,
+        startingContext.hasWrittenTest,
+      );
+    if (decision === null) {
+      setError('');
+      setPendingWrittenTestReading({ text: resumeText, name: resumeName });
+      return;
+    }
+    setPendingWrittenTestReading(null);
     analysisController.current?.abort();
     const controller = new AbortController();
     analysisController.current = controller;
@@ -365,7 +406,7 @@ export default function Home() {
         focus: context.focus,
         scoringGuidance: context.scoringGuidance,
         reportRequirements: context.reportRequirements,
-        hasWrittenTest: context.hasWrittenTest,
+        hasWrittenTest: decision,
       });
       if (!context.queuedCodex)
         throw new Error('请使用当前队列版工作台连接 Codex 后阅读简历。');
@@ -384,7 +425,11 @@ export default function Home() {
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
       if (
-        resumeContext.current.hasWrittenTest !== value.hasWrittenTest
+        writtenTestDecision(
+          resumeContext.current.sourceTemplateId,
+          resumeContext.current.writtenTestConfirmed,
+          resumeContext.current.hasWrittenTest,
+        ) !== value.hasWrittenTest
       )
         return;
       setResumeReading(valueRead);
@@ -419,6 +464,21 @@ export default function Home() {
         setBusy(null);
       }
     }
+  }
+  function confirmWrittenTestAndRead(value: boolean) {
+    const pending = pendingWrittenTestReading;
+    if (!pending || busyRef.current) return;
+    invalidate();
+    setResumeReading(null);
+    setHasWrittenTest(value);
+    setWrittenTestConfirmed(true);
+    setPendingWrittenTestReading(null);
+    resumeContext.current = {
+      ...resumeContext.current,
+      hasWrittenTest: value,
+      writtenTestConfirmed: true,
+    };
+    void runResumeReading(pending.text, pending.name, value);
   }
   const hasContent = Boolean(
     dimensionText !== defaultDimensions ||
@@ -672,6 +732,7 @@ export default function Home() {
     setSourceTemplateId(seed.sourceTemplateId);
     setTemplateModified(false);
     setHasWrittenTest(false);
+    setWrittenTestConfirmed(false);
     setCandidate('');
     setResumeText('');
     setResumeName('');
@@ -679,6 +740,7 @@ export default function Home() {
     setResumeBodyOpen(false);
     setPendingCandidateName(null);
     setPendingResume(null);
+    setPendingWrittenTestReading(null);
     setTranscript('');
     setTranscriptName('');
     setPendingImport(null);
@@ -718,6 +780,7 @@ export default function Home() {
     standardsOpen,
     templateSelection,
     hasWrittenTest: effectiveHasWrittenTest,
+    writtenTestConfirmed: effectiveWrittenTestConfirmed,
     writtenTestSupported: supportsWrittenTest(sourceTemplateId),
     onStandardsOpenChange: setStandardsOpen,
     onCandidateChange: (value: string) => {
@@ -726,9 +789,16 @@ export default function Home() {
     },
     onStandardsChange: applyStandards,
     onWrittenTestChange: (checked: boolean) => {
+      if (writtenTestConfirmed && hasWrittenTest === checked) return;
       invalidate();
       setResumeReading(null);
       setHasWrittenTest(checked);
+      setWrittenTestConfirmed(true);
+      resumeContext.current = {
+        ...resumeContext.current,
+        hasWrittenTest: checked,
+        writtenTestConfirmed: true,
+      };
     },
     onApplyTemplate: (id: string) => {
       const selected =
@@ -738,10 +808,11 @@ export default function Home() {
       if (selected) {
         invalidate();
         setStandards(normalizeStandards(selected));
-        const next = appliedTemplateState(id, effectiveHasWrittenTest);
+        const next = appliedTemplateState(id);
         setSourceTemplateId(next.sourceTemplateId);
         setTemplateModified(next.templateModified);
         setHasWrittenTest(next.hasWrittenTest);
+        setWrittenTestConfirmed(next.writtenTestConfirmed);
         setNotice('已将模板标准复制到本场面试；旧评估已清除，请重新确认结论。');
       }
     },
@@ -979,7 +1050,9 @@ export default function Home() {
                         )}{' '}
                         {busy === 'resume-read'
                           ? '正在阅读…'
-                          : resumeReading
+                          : needsWrittenTestConfirmation
+                            ? '确认笔试情况并阅读'
+                            : resumeReading
                             ? '重新阅读简历'
                             : '用 Codex 阅读简历'}
                       </button>
@@ -1402,6 +1475,30 @@ export default function Home() {
           </button>
         </DialogContent>
       </Dialog>
+      <AlertDialog
+        open={!!pendingWrittenTestReading}
+        onOpenChange={(open) => {
+          if (!open) setPendingWrittenTestReading(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>阅读简历前确认笔试情况</AlertDialogTitle>
+          <AlertDialogDescription>
+            是否有笔试会直接影响 Codex 生成的面试提纲。请选择本场情况，确认后将立即开始阅读简历。
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>暂不阅读</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => confirmWrittenTestAndRead(false)}
+            >
+              无笔试，开始阅读
+            </AlertDialogAction>
+            <AlertDialogAction onClick={() => confirmWrittenTestAndRead(true)}>
+              有笔试，开始阅读
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog
         open={!!pendingCandidateName}
         onOpenChange={(open) => {

@@ -38,6 +38,7 @@ void test('template source and written-test state survive reopening', async () =
     sourceTemplateId: 'builtin-campus-ai-product-manager',
     templateModified: true,
     hasWrittenTest: true,
+    writtenTestConfirmed: true,
   };
   await store.saveInterview(enriched);
   assert.deepEqual(
@@ -53,6 +54,7 @@ void test('legacy records remain readable without template metadata', async () =
   assert.equal(restored.sourceTemplateId, undefined);
   assert.equal(restored.templateModified, undefined);
   assert.equal(restored.hasWrittenTest, undefined);
+  assert.equal(restored.writtenTestConfirmed, undefined);
 });
 void test('new and updated resume records do not acquire a verification gate', async () => {
   const factory = new IDBFactory();

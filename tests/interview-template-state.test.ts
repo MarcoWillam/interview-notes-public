@@ -9,6 +9,7 @@ import {
   normalizeInterviewTemplateState,
   resolveTemplateSelection,
   supportsWrittenTest,
+  writtenTestDecision,
 } from '../lib/interview-template-state.ts';
 import { BUILTIN_TEMPLATE_IDS } from '../lib/default-role-templates.ts';
 
@@ -111,26 +112,47 @@ void test('written-test support belongs only to the built-in AI PM source', () =
   assert.equal(supportsWrittenTest(COMMON_TEMPLATE_ID), false);
 });
 
-void test('template transitions preserve AI PM written-test state and clear it elsewhere', () => {
+void test('template transitions require a fresh AI PM written-test confirmation', () => {
   assert.deepEqual(markTemplateModified('pm'), {
     sourceTemplateId: 'pm',
     templateModified: true,
   });
   assert.deepEqual(
-    appliedTemplateState(BUILTIN_TEMPLATE_IDS.aiProductManager, true),
+    appliedTemplateState(BUILTIN_TEMPLATE_IDS.aiProductManager),
     {
       sourceTemplateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
       templateModified: false,
-      hasWrittenTest: true,
+      hasWrittenTest: false,
+      writtenTestConfirmed: false,
     },
   );
   assert.deepEqual(
-    appliedTemplateState(BUILTIN_TEMPLATE_IDS.productOperations, true),
+    appliedTemplateState(BUILTIN_TEMPLATE_IDS.productOperations),
     {
       sourceTemplateId: BUILTIN_TEMPLATE_IDS.productOperations,
       templateModified: false,
       hasWrittenTest: false,
+      writtenTestConfirmed: false,
     },
+  );
+});
+
+void test('resume reading asks only when AI PM written-test status is unconfirmed', () => {
+  assert.equal(
+    writtenTestDecision(BUILTIN_TEMPLATE_IDS.aiProductManager, false, false),
+    null,
+  );
+  assert.equal(
+    writtenTestDecision(BUILTIN_TEMPLATE_IDS.aiProductManager, true, false),
+    false,
+  );
+  assert.equal(
+    writtenTestDecision(BUILTIN_TEMPLATE_IDS.aiProductManager, true, true),
+    true,
+  );
+  assert.equal(
+    writtenTestDecision(BUILTIN_TEMPLATE_IDS.productOperations, false, true),
+    false,
   );
 });
 
@@ -146,6 +168,7 @@ void test('restored metadata infers legacy sources and removes impossible writte
       sourceTemplateId: 'pm',
       templateModified: false,
       hasWrittenTest: false,
+      writtenTestConfirmed: false,
     },
   );
   const aiTemplate = {
@@ -167,6 +190,33 @@ void test('restored metadata infers legacy sources and removes impossible writte
       sourceTemplateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
       templateModified: true,
       hasWrittenTest: true,
+      writtenTestConfirmed: true,
     },
+  );
+  assert.equal(
+    normalizeInterviewTemplateState(
+      aiTemplate,
+      {
+        sourceTemplateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
+        hasWrittenTest: false,
+        resumeReading: { summary: '旧提纲' },
+      },
+      [aiTemplate],
+      common,
+    ).writtenTestConfirmed,
+    true,
+  );
+  assert.equal(
+    normalizeInterviewTemplateState(
+      aiTemplate,
+      {
+        sourceTemplateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
+        hasWrittenTest: true,
+        writtenTestConfirmed: false,
+      },
+      [aiTemplate],
+      common,
+    ).writtenTestConfirmed,
+    false,
   );
 });
