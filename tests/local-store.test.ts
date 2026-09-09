@@ -2,6 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { IDBFactory } from 'fake-indexeddb';
 import { createLocalStore, type SavedInterview } from '../lib/local/store.ts';
+const builtInTemplateIds = [
+  'builtin-campus-ai-product-manager',
+  'builtin-campus-product-operations',
+];
 const session: SavedInterview = {
   id: 'first',
   updatedAt: 1,
@@ -62,7 +66,24 @@ void test('preference templates persist without candidate fields', async () => {
     focus: '项目结果',
   };
   await store.savePreference(preference);
-  assert.deepEqual(await store.listPreferences(), [preference]);
+  assert.deepEqual(
+    (await store.listPreferences()).find(({ id }) => id === preference.id),
+    preference,
+  );
   await store.deletePreference('pm');
-  assert.deepEqual(await store.listPreferences(), []);
+  assert.equal(
+    (await store.listPreferences()).some(({ id }) => id === preference.id),
+    false,
+  );
+});
+void test('deleting a built-in template is durable across ordinary reopen', async () => {
+  const factory = new IDBFactory();
+  const first = createLocalStore(factory, 'deleted-built-in');
+  await first.deletePreference(builtInTemplateIds[0]);
+  const reopened = createLocalStore(factory, 'deleted-built-in');
+  assert.deepEqual(
+    (await reopened.listPreferences()).map(({ id }) => id),
+    [builtInTemplateIds[1]],
+  );
+  assert.equal(await reopened.getSettings(), undefined);
 });
