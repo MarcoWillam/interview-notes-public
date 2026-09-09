@@ -4,10 +4,11 @@ import { readFile } from 'node:fs/promises';
 import { importTranscript } from '../lib/import-transcript.ts';
 
 const file = (text: string, name = '面试.md') => new File([text], name);
-void test('imports Markdown as text and preserves speaker labels, timestamps and HTML literally', async () => {
+void test('imports Markdown and TXT as literal text with speaker labels preserved', async () => {
   const text =
     '# 面试记录\n\n[00:01] 面试官：介绍项目。\n候选人：负责开发。\n<script>alert(1)</script>';
   assert.equal(await importTranscript(file(text, '访谈.MD')), text);
+  assert.equal(await importTranscript(file(text, '访谈.TXT')), text);
 });
 void test('normalizes UTF-8 BOM and line endings', async () => {
   assert.equal(
@@ -15,11 +16,11 @@ void test('normalizes UTF-8 BOM and line endings', async () => {
     '# 面试\n候选人：回答\n下一行',
   );
 });
-void test('rejects other extensions even with Markdown MIME', async () => {
-  for (const name of ['x.pdf', 'x.docx', 'x.txt', 'x.md.exe']) {
+void test('rejects other extensions even with a text MIME type', async () => {
+  for (const name of ['x.pdf', 'x.docx', 'x.rtf', 'x.txt.exe']) {
     await assert.rejects(
-      importTranscript(new File(['正文'], name, { type: 'text/markdown' })),
-      /仅支持.*\.md/,
+      importTranscript(new File(['正文'], name, { type: 'text/plain' })),
+      /仅支持.*\.md.*\.txt/,
     );
   }
 });
@@ -79,4 +80,6 @@ void test('interview record accepts pasted text without requiring an imported fi
   assert.match(page, /disabled=\{!!busy\}/);
   assert.doesNotMatch(page, /disabled=\{!!busy \|\| !transcriptName\}/);
   assert.match(page, /手动粘贴 \/ 输入/);
+  assert.match(page, /accept="\.md,\.txt"/);
+  assert.match(page, /支持 \.md、\.txt/);
 });
