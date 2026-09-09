@@ -15,7 +15,7 @@ import {
 } from '@/lib/standards';
 import { normalizeInterviewTemplateState } from '@/lib/interview-template-state';
 import { updateInterviewSummary } from '@/lib/interview-sidebar';
-export type Draft = Omit<SavedInterview, 'id' | 'updatedAt'>;
+export type Draft = Omit<SavedInterview, 'id' | 'createdAt' | 'updatedAt'>;
 export function useInterviewLibrary(
   draft: Draft,
   restore: (session: SavedInterview) => Promise<void>,
@@ -41,6 +41,7 @@ export function useInterviewLibrary(
     persistent: false,
   });
   const callbacks = useRef({ draft, restore, clear });
+  const createdAt = useRef<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const writes = useRef(Promise.resolve());
   const signature = JSON.stringify(draft);
@@ -99,12 +100,14 @@ export function useInterviewLibrary(
         if (disposed) return;
         const latest = rows.sort((a, b) => b.updatedAt - a.updatedAt)[0];
         if (latest) {
+          createdAt.current = latest.createdAt ?? latest.updatedAt;
           await callbacks.current.restore(await normalizeSession(latest));
           if (disposed) return;
           setId(latest.id);
         } else {
           const seed = await localStore().getNewInterviewSeed();
           if (disposed) return;
+          createdAt.current = Date.now();
           callbacks.current.clear(seed);
           setId(crypto.randomUUID());
         }
@@ -121,10 +124,13 @@ export function useInterviewLibrary(
   }, [access]);
   function write(currentId: string, value: Draft) {
     const stamp = JSON.stringify(value);
+    const updatedAt = Date.now();
+    createdAt.current ??= updatedAt;
     const saved = {
       ...value,
       id: currentId,
-      updatedAt: Date.now(),
+      createdAt: createdAt.current,
+      updatedAt,
     };
     const next = writes.current
       .catch(() => {})
@@ -165,12 +171,18 @@ export function useInterviewLibrary(
       const row = await localStore().getInterview(nextId);
       if (!row) throw new Error('记录已不存在');
       setReady(false);
+      createdAt.current = row.createdAt ?? row.updatedAt;
       const restored = await normalizeSession(row);
       await callbacks.current.restore(restored);
       setId(nextId);
       setSaved(
         nextId +
-          JSON.stringify({ ...restored, id: undefined, updatedAt: undefined }),
+          JSON.stringify({
+            ...restored,
+            id: undefined,
+            createdAt: undefined,
+            updatedAt: undefined,
+          }),
       );
       setReady(true);
     } finally {
@@ -184,6 +196,7 @@ export function useInterviewLibrary(
       await flush();
       const seed = await localStore().getNewInterviewSeed();
       setReady(false);
+      createdAt.current = Date.now();
       callbacks.current.clear(seed);
       setId(crypto.randomUUID());
       setSaved('');
@@ -206,6 +219,7 @@ export function useInterviewLibrary(
       await localStore().deleteInterview(target);
       if (target === id) {
         setReady(false);
+        createdAt.current = Date.now();
         callbacks.current.clear(seed!);
         setId(crypto.randomUUID());
         setSaved('');

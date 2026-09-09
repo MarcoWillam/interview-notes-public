@@ -3,19 +3,29 @@
 import {
   ClipboardList,
   FolderOpen,
+  GripVertical,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   SIDEBAR_BREAKPOINT,
   SIDEBAR_STORAGE_KEY,
+  interviewCreatedAt,
+  moveManualInterview,
   parseSidebarCollapsed,
+  parseSidebarSortMode,
+  reconcileManualOrder,
+  sidebarOrderStorageKey,
+  sidebarSortStorageKey,
+  sortInterviewSessions,
+  type SidebarSortMode,
 } from '@/lib/interview-sidebar';
 import type { SavedInterview } from '@/lib/local/store';
 
 type Props = {
+  storageScope: string;
   sessions: SavedInterview[];
   currentId: string;
   disabled: boolean;
@@ -29,6 +39,8 @@ export function InterviewSidebar(props: Props) {
   const [compact, setCompact] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
+  const [sortMode, setSortMode] = useState<SidebarSortMode>('newest');
+  const [manualOrder, setManualOrder] = useState<string[]>([]);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const overlayRef = useRef<HTMLElement>(null);
 
@@ -43,8 +55,26 @@ export function InterviewSidebar(props: Props) {
         setCollapsed(
           parseSidebarCollapsed(localStorage.getItem(SIDEBAR_STORAGE_KEY)),
         );
+        setSortMode(
+          parseSidebarSortMode(
+            localStorage.getItem(sidebarSortStorageKey(props.storageScope)),
+          ),
+        );
+        const storedOrder = JSON.parse(
+          localStorage.getItem(sidebarOrderStorageKey(props.storageScope)) ||
+            '[]',
+        );
+        setManualOrder(
+          Array.isArray(storedOrder)
+            ? storedOrder.filter(
+                (value): value is string => typeof value === 'string',
+              )
+            : [],
+        );
       } catch {
         setCollapsed(false);
+        setSortMode('newest');
+        setManualOrder([]);
       }
       update();
     });
@@ -53,27 +83,17 @@ export function InterviewSidebar(props: Props) {
       window.clearTimeout(initialize);
       media.removeEventListener('change', update);
     };
-  }, []);
+  }, [props.storageScope]);
 
-  useEffect(() => {
-    const remoteBar = document.querySelector<HTMLElement>('.remote-bar');
-    if (!remoteBar) return;
-    const root = document.documentElement;
-    const update = () => {
-      root.style.setProperty(
-        '--remote-bar-height',
-        `${remoteBar.getBoundingClientRect().height}px`,
-      );
-    };
-    const observer = new ResizeObserver(update);
-    const frame = requestAnimationFrame(update);
-    observer.observe(remoteBar);
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      root.style.removeProperty('--remote-bar-height');
-    };
-  }, []);
+  const reconciledManualOrder = useMemo(
+    () => reconcileManualOrder(manualOrder, props.sessions),
+    [manualOrder, props.sessions],
+  );
+  const displayedSessions = useMemo(
+    () =>
+      sortInterviewSessions(props.sessions, sortMode, reconciledManualOrder),
+    [props.sessions, reconciledManualOrder, sortMode],
+  );
 
   const focusSidebarTrigger = useCallback(() => {
     queueMicrotask(() => triggerRef.current?.focus());
@@ -106,6 +126,36 @@ export function InterviewSidebar(props: Props) {
       // The layout still works when browser preference storage is unavailable.
     }
   }
+
+  function changeSortMode(next: SidebarSortMode) {
+    setSortMode(next);
+    try {
+      localStorage.setItem(sidebarSortStorageKey(props.storageScope), next);
+    } catch {
+      // The selected mode remains active for this page session.
+    }
+  }
+
+  function changeManualOrder(next: string[]) {
+    setManualOrder(next);
+    try {
+      localStorage.setItem(
+        sidebarOrderStorageKey(props.storageScope),
+        JSON.stringify(next),
+      );
+    } catch {
+      // Drag and keyboard ordering still works for this page session.
+    }
+  }
+
+  const panelProps = {
+    ...props,
+    sessions: displayedSessions,
+    sortMode,
+    manualOrder: reconciledManualOrder,
+    onSortModeChange: changeSortMode,
+    onManualOrderChange: changeManualOrder,
+  };
 
   const railVisible = compact || collapsed;
   return (
@@ -147,7 +197,10 @@ export function InterviewSidebar(props: Props) {
       )}
 
       {!compact && !collapsed && (
-        <SidebarPanel {...props} onCollapse={() => setWideCollapsed(true)} />
+        <SidebarPanel
+          {...panelProps}
+          onCollapse={() => setWideCollapsed(true)}
+        />
       )}
 
       {compact && overlayOpen && (
@@ -158,7 +211,7 @@ export function InterviewSidebar(props: Props) {
             onClick={closeOverlay}
           />
           <SidebarPanel
-            {...props}
+            {...panelProps}
             panelRef={overlayRef}
             overlay
             onCollapse={closeOverlay}
@@ -192,11 +245,30 @@ function SidebarPanel({
   onCollapse,
   overlay = false,
   panelRef,
+  sortMode,
+  manualOrder,
+  onSortModeChange,
+  onManualOrderChange,
 }: Props & {
   onCollapse: () => void;
   overlay?: boolean;
   panelRef?: React.Ref<HTMLElement>;
+  sortMode: SidebarSortMode;
+  manualOrder: string[];
+  onSortModeChange: (mode: SidebarSortMode) => void;
+  onManualOrderChange: (order: string[]) => void;
 }) {
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+
+  function moveWithKeyboard(id: string, offset: -1 | 1) {
+    const index = manualOrder.indexOf(id);
+    const target = index + offset;
+    if (index < 0 || target < 0 || target >= manualOrder.length) return;
+    const next = [...manualOrder];
+    [next[index], next[target]] = [next[target], next[index]];
+    onManualOrderChange(next);
+  }
+
   return (
     <aside
       ref={panelRef}
@@ -216,6 +288,20 @@ function SidebarPanel({
           <PanelLeftClose size={18} />
         </button>
       </div>
+      <label className="interview-sidebar-sort">
+        <span>排序</span>
+        <select
+          aria-label="记录排序"
+          value={sortMode}
+          onChange={(event) =>
+            onSortModeChange(parseSidebarSortMode(event.currentTarget.value))
+          }
+        >
+          <option value="newest">最近添加</option>
+          <option value="oldest">最早添加</option>
+          <option value="manual">自定义排序</option>
+        </select>
+      </label>
       <button
         className="interview-sidebar-create"
         disabled={disabled}
@@ -230,27 +316,78 @@ function SidebarPanel({
         ) : (
           sessions.map((session) => {
             const current = session.id === currentId;
+            const createdAt = interviewCreatedAt(session);
             return (
-              <button
+              <div
                 key={session.id}
-                className="interview-sidebar-record"
-                aria-current={current ? 'page' : undefined}
-                disabled={disabled}
-                onClick={() => {
-                  if (!current) onOpen(session.id);
+                className={`interview-sidebar-record-row${
+                  draggedId === session.id ? ' is-dragging' : ''
+                }`}
+                onDragOver={(event) => {
+                  if (sortMode === 'manual') event.preventDefault();
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (sortMode !== 'manual') return;
+                  const activeId =
+                    draggedId || event.dataTransfer.getData('text/plain');
+                  onManualOrderChange(
+                    moveManualInterview(manualOrder, activeId, session.id),
+                  );
+                  setDraggedId(null);
                 }}
               >
-                <strong>{session.candidate || '未命名面试'}</strong>
-                <span>{session.role || '未填写岗位'}</span>
-                <time dateTime={new Date(session.updatedAt).toISOString()}>
-                  {new Date(session.updatedAt).toLocaleString('zh-CN', {
-                    month: 'numeric',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </time>
-              </button>
+                <button
+                  className="interview-sidebar-record"
+                  aria-current={current ? 'page' : undefined}
+                  disabled={disabled}
+                  onClick={() => {
+                    if (!current) onOpen(session.id);
+                  }}
+                >
+                  <strong>{session.candidate || '未命名面试'}</strong>
+                  <span>{session.role || '未填写岗位'}</span>
+                  <time
+                    dateTime={new Date(createdAt).toISOString()}
+                    title="添加时间"
+                  >
+                    {new Date(createdAt).toLocaleString('zh-CN', {
+                      month: 'numeric',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </time>
+                </button>
+                {sortMode === 'manual' && (
+                  <button
+                    type="button"
+                    className="interview-sidebar-drag-handle"
+                    draggable={sortMode === 'manual'}
+                    disabled={disabled}
+                    aria-label={`调整${session.candidate || '未命名面试'}顺序`}
+                    title="拖动排序，也可使用上下方向键"
+                    onDragStart={(event) => {
+                      setDraggedId(session.id);
+                      event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData('text/plain', session.id);
+                    }}
+                    onDragEnd={() => setDraggedId(null)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        moveWithKeyboard(session.id, -1);
+                      }
+                      if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        moveWithKeyboard(session.id, 1);
+                      }
+                    }}
+                  >
+                    <GripVertical size={16} />
+                  </button>
+                )}
+              </div>
             );
           })
         )}

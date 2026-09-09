@@ -12,6 +12,7 @@ import {
 } from '../default-role-templates.ts';
 export type SavedInterview = {
   id: string;
+  createdAt?: number;
   updatedAt: number;
   candidate: string;
   role: string;
