@@ -98,6 +98,18 @@ void test('resume outline generation has one preflight entry and no repeat-readi
   assert.match(page, /确认提纲生成条件/);
   assert.doesNotMatch(page, /重新阅读简历|替换并自动阅读/);
 });
+void test('resume outline confirmation uses the styled select and fixed-size radio controls', async () => {
+  const [page, css] = await Promise.all([
+    readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+  ]);
+  assert.match(page, /确认岗位[\s\S]*<NativeSelect/);
+  assert.match(page, /className="resume-outline-written-test-option"/);
+  assert.match(
+    css,
+    /\.resume-outline-confirmation-form input\[type='radio'\][\s\S]*?width:\s*16px;[\s\S]*?padding:\s*0;/,
+  );
+});
 void test('written-test supplement has a dedicated confirmation and remote task path', async () => {
   const page = await readFile(
     new URL('../app/page.tsx', import.meta.url),
