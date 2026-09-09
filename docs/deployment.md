@@ -5,7 +5,7 @@
 ## 当前云服务器
 
 - 网站：`https://your-server-ip`，初始账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。其他面试官账号通过下述服务器命令创建。
-- 代码：当前版本为 `/opt/interview-notes/releases/20260909-10`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一版本 `20260909-9` 保留用于回滚。
+- 代码：当前版本为 `/opt/interview-notes/releases/20260909-11`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一版本 `20260909-10` 保留用于回滚。
 - 数据：`/var/lib/interview-notes/queue.sqlite`；环境配置：`/etc/interview-notes/server.env`；运行时：`/opt/node-v24.13.0-linux-x64/bin/node`。服务器只需已构建的 `dist/web` 和队列服务源码，无需安装模型或上传电脑上的 Codex 登录信息。
 - Nginx：`/etc/nginx/conf.d/interview-notes.conf`，对应仓库 `deploy/nginx-ip.conf`，HTTP 自动跳转 HTTPS，80 端口保留 ACME 验证路径。
 - 证书：Let's Encrypt IP 证书，由 acme.sh 3.1.2 的 `shortlived` profile 签发。使用 `--days 3`，`interview-cert-renew.timer` 每天两次检查续期；续期成功自动安装到 `/etc/nginx/ssl/interview/` 并检查、重载 Nginx。不要关闭公网 80 端口，否则续期验证会失败。
@@ -25,7 +25,7 @@ journalctl -u interview-notes -n 50 --no-pager
 
 发布包采用明确白名单：`dist/web`、`server/start.ts`、`server/accounts.ts`、`server/queue/{api,http,store}.ts`、`lib/interview.ts`、`lib/resume-reading.ts`、`lib/standards.ts` 和 `package.json`。`lib/standards.ts` 是 `resume-reading.ts` 的运行时依赖；以上服务端 import 闭包仅另依赖 Node 内置模块，生产不需要 `node_modules`。包内不得包含 `.env*`、`.local`、简历源文件、浏览器数据、Codex credentials、`node_modules` 或 `.git`；后续增加服务端依赖时重新核对闭包。PDF CMap 与字体资源随 `dist/web` 一起发布。
 
-本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。本次 `20260909-10` 发布包 SHA-256 为 `53c7789d8ee1ff58daa6165648b3da992da0d96a3c3c0bf58cca2aa3082be617`。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。
+本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。本次 `20260909-11` 发布包 SHA-256 为 `8a8247ae37b11740ad06ed47e244d616620536b4c448895dd3cc2b83d0d4ff03`。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。
 
 发布检查包括 `nginx -t`、`systemctl is-active interview-notes nginx interview-cert-renew.timer`、HTTPS `/api/session`，以及 HTTP 308 跳转、无需跳过校验的 TLS 证书、登录 Cookie 的 HttpOnly/Secure/SameSite=Strict、登录后工作台和实际构建清单中的 JS/CSS、PDF CMap/font 资源。账号和连接凭据仅由本机脚本读取，不打印值，不写入发布包；`.local/cloud-access.txt` 与 `.local/cloud-connector.json` 保持权限 600。
 
@@ -44,6 +44,8 @@ journalctl -u interview-notes -n 50 --no-pager
 `20260909-9` 增加不含凭据的成员连接器下载包和 ENOENT 目录错误提示。已验证包内 10 个文件、无 `.local`/`.env`、无需安装项目依赖即可执行 npm 脚本；线上下载包 SHA-256 与本地构建一致，HTTPS、登录、静态资源和本地 Codex 连接状态均通过检查。
 
 `20260909-10` 修复 macOS 成员连接器只能从 PATH 查找 Codex 的问题。未显式设置路径时，连接器会依次检查终端命令、ChatGPT 应用内置 CLI 和 Codex 应用内置 CLI，并选择已使用 ChatGPT 登录的实例；显式 `INTERVIEW_CODEX_BIN` 仍保持最高优先级。线上连接器包 SHA-256 为 `5177adc1b13d936535f342d8a57b8db8713bb7460d0ef805b5ace2aac21d798a`，与本地构建一致；HTTPS、Nginx、应用服务和证书续期定时器均通过检查。
+
+`20260909-11` 增加当前账号范围内的全局任务中心，以及等待、运行、暂停、完成、失败和停止状态。任务支持暂停、从头恢复和不可恢复的停止；相同活动任务去重，简历阅读优先领取，列表返回排队位置与本轮执行时间。新版连接器心跳从 10 秒缩短为 5 秒，线上连接器包 SHA-256 为 `ddeebf575a6e9ddba55887b0b8ae55dc9dfcab29cbc8907e02d33a0ce669554b`，线上下载复核一致，连接器客户端内容与当前源码一致。本地 169 项测试、类型检查、代码检查和生产构建通过；生产 `current`、数据库迁移字段、静态资源、HTTPS、Nginx、应用服务及证书续期定时器经过只读检查，未创建真实生产任务。
 
 ## 服务器
 
@@ -102,6 +104,8 @@ location / {
 数据库文件在 `INTERVIEW_DATA_DIR/queue.sqlite`，开启 WAL。需要一致备份时，停止服务后复制整个数据目录，或使用 SQLite 正式备份机制；不要只复制正在写入的主文件。代码发布只传代码与 `dist/web`，不要上传本机 `.local`、`.env` 或 Codex 认证目录。
 
 排队原材料保留最多 24 小时；任务终止清除输入字段，结果/任务保留 7 天。数据库清理不覆盖历史备份。浏览器 IndexedDB 的完整面试记录、人工结论与全局偏好仍按浏览器和网站账号保存，不会自动同步到服务器；换地址或设备时需要提前导出。
+
+顶部任务中心只显示当前登录账号的任务。相同账号、任务类型、名称和输入的等待、运行或暂停任务会复用原任务；简历阅读在领取顺序中优先于尚未开始的结论评估。暂停保留输入并撤销当前租约，运行中的本地 Codex 通常在下一次 5 秒心跳时中断；恢复会重新排队并从头执行，已有模型用量不会退回。停止会清除服务器上的简历、岗位要求和面试记录且不能恢复。旧连接器仍可执行，但暂停或停止运行任务的响应时间取决于旧版心跳间隔，建议面试官重新下载当前连接器包。
 
 当前只支持单实例 SQLite 服务。后续多人使用、负载均衡或企业账号接入需要单独扩展，不要让多个应用副本各自维护一份任务数据库。
 
