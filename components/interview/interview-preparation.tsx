@@ -1,7 +1,8 @@
 'use client';
 
-import { ArrowUpRight, ChevronDown } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 import { StandardsFields } from '@/components/interview/standards-fields';
+import { NativeSelect } from '@/components/ui/native-select';
 import type { InterviewStandards } from '@/lib/standards';
 import {
   COMMON_TEMPLATE_ID,
@@ -63,27 +64,29 @@ export function InterviewPreparation({
         </label>
       </fieldset>
       <fieldset disabled={disabled || standardsLocked}>
-        <label className="session-template-picker">
+        <label
+          className="session-template-picker"
+          htmlFor="session-template-select"
+        >
           选择岗位模板
-          <span className="session-template-select">
-            <select
-              value={templateSelection.selectValue}
-              onChange={(event) => onApplyTemplate(event.target.value)}
-            >
-              {templateSelection.selectValue === TEMPLATE_STATUS_VALUE && (
-                <option value={TEMPLATE_STATUS_VALUE} disabled>
-                  {templateSelection.label}
-                </option>
-              )}
-              <option value={COMMON_TEMPLATE_ID}>通用默认标准</option>
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={16} aria-hidden="true" />
-          </span>
+          <NativeSelect
+            id="session-template-select"
+            className="workbench-native-select session-template-select"
+            value={templateSelection.selectValue}
+            onChange={(event) => onApplyTemplate(event.target.value)}
+          >
+            {templateSelection.selectValue === TEMPLATE_STATUS_VALUE && (
+              <option value={TEMPLATE_STATUS_VALUE} disabled>
+                {templateSelection.label}
+              </option>
+            )}
+            <option value={COMMON_TEMPLATE_ID}>通用默认标准</option>
+            {templates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.name}
+              </option>
+            ))}
+          </NativeSelect>
         </label>
         {writtenTestSupported && (
           <div className="written-test-status">
