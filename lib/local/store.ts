@@ -12,6 +12,7 @@ import {
 } from '../default-role-templates.ts';
 export type SavedInterview = {
   id: string;
+  groupId?: string | null;
   createdAt?: number;
   updatedAt: number;
   candidate: string;
@@ -36,6 +37,12 @@ export type SavedInterview = {
   templateModified?: boolean;
   hasWrittenTest?: boolean;
   writtenTestConfirmed?: boolean;
+};
+export type InterviewGroup = {
+  id: string;
+  name: string;
+  createdAt: number;
+  order: number;
 };
 export type NewInterviewSeed = {
   standards: InterviewStandards;
@@ -64,7 +71,7 @@ export function createLocalStore(
   name = 'interview-notes-local',
 ) {
   const connection = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = factory.open(name, 4);
+    const request = factory.open(name, 5);
     request.onupgradeneeded = (event) => {
       const db = request.result;
       if (event.oldVersion < 1) {
@@ -77,6 +84,8 @@ export function createLocalStore(
       }
       if (event.oldVersion < 2)
         db.createObjectStore('settings', { keyPath: 'id' });
+      if (event.oldVersion < 5)
+        db.createObjectStore('interviewGroups', { keyPath: 'id' });
       const migrateBuiltInTemplates = (addMissing: boolean) => {
         const preferences = request.transaction!.objectStore('preferences');
         for (const template of builtInRoleTemplates) {
@@ -224,8 +233,71 @@ export function createLocalStore(
       };
     },
     saveInterview: (value: SavedInterview) => put('interviews', value),
+    saveInterviewDraft: (value: SavedInterview) =>
+      run<void>(['interviews'], 'readwrite', (tx) => {
+        const interviews = tx.objectStore('interviews');
+        const current = interviews.get(value.id);
+        current.onsuccess = () => {
+          const groupId = (current.result as SavedInterview | undefined)
+            ?.groupId;
+          interviews.put(groupId === undefined ? value : { ...value, groupId });
+        };
+      }),
     getInterview: (id: string) => read<SavedInterview>('interviews', id),
     listInterviews: () => all<SavedInterview>('interviews'),
+    listInterviewGroups: async () =>
+      (await all<InterviewGroup>('interviewGroups')).sort(
+        (a, b) =>
+          a.order - b.order ||
+          a.createdAt - b.createdAt ||
+          a.id.localeCompare(b.id),
+      ),
+    saveInterviewGroup: async (value: InterviewGroup) => {
+      const name = value.name.trim();
+      if (!name || name.length > 40)
+        throw new Error('分组名称长度需为 1–40 个字符');
+      if (!value.id || !Number.isFinite(value.createdAt))
+        throw new Error('分组信息无效');
+      const groups = await all<InterviewGroup>('interviewGroups');
+      const normalizedName = name.toLocaleLowerCase();
+      if (
+        groups.some(
+          (group) =>
+            group.id !== value.id &&
+            group.name.trim().toLocaleLowerCase() === normalizedName,
+        )
+      )
+        throw new Error('分组名称已存在');
+      const saved = {
+        ...value,
+        name,
+        order: Number.isFinite(value.order) ? value.order : groups.length,
+      };
+      await put('interviewGroups', saved);
+      return saved;
+    },
+    deleteInterviewGroup: (id: string) =>
+      run<void>(['interviewGroups', 'interviews'], 'readwrite', (tx) => {
+        tx.objectStore('interviewGroups').delete(id);
+        const interviews = tx.objectStore('interviews');
+        const records = interviews.getAll();
+        records.onsuccess = () => {
+          for (const record of records.result as SavedInterview[]) {
+            if (record.groupId === id)
+              interviews.put({ ...record, groupId: null });
+          }
+        };
+      }),
+    moveInterviewToGroup: async (
+      interviewId: string,
+      groupId: string | null,
+    ) => {
+      if (groupId && !(await read<InterviewGroup>('interviewGroups', groupId)))
+        throw new Error('分组已不存在，请刷新后重试');
+      const interview = await read<SavedInterview>('interviews', interviewId);
+      if (!interview) throw new Error('面试记录已不存在');
+      await put('interviews', { ...interview, groupId });
+    },
     listAudio: () => all<AudioRecord>('audio'),
     getAudio: (id: string) => read<AudioRecord>('audio', id),
     discardEmptyAudio: (id: string) =>
