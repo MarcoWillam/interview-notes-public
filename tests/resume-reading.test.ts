@@ -394,6 +394,16 @@ void test('markdown appends three written-test questions after the original outl
     ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
   );
 });
+void test('supplemented regular guides remain valid after status changes to written test', () => {
+  const supplemented = {
+    ...structuredResult,
+    writtenTestSupplement: supplementQuestions,
+  };
+  assert.deepEqual(
+    validateResumeReading(supplemented, { ...input, hasWrittenTest: true }),
+    supplemented,
+  );
+});
 void test('reading rejects invented references and missing categories', () => {
   assert.throws(() =>
     validateResumeReading(
