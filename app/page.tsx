@@ -1,6 +1,9 @@
 'use client';
 import { importResume } from '@/lib/import-resume';
-import { reconcileCandidateName } from '@/lib/resume-workflow';
+import {
+  applyCandidateNameChange,
+  reconcileCandidateName,
+} from '@/lib/resume-workflow';
 import { ResumeReadingView } from '@/components/interview/resume-reading-view';
 import {
   validateResumeInput,
@@ -354,7 +357,7 @@ export default function Home() {
         resumeContext.current.candidate,
         valueRead.candidateName,
       );
-      if (resolution.kind === 'fill') setCandidate(resolution.value);
+      if (resolution.kind === 'fill') applyDetectedCandidate(resolution.value);
       else if (resolution.kind === 'confirm')
         setPendingCandidateName(resolution);
       setNotice(
@@ -493,6 +496,12 @@ export default function Home() {
     setReport(null);
     setConfirmed(false);
     setError('');
+  }
+  function applyDetectedCandidate(name: string) {
+    applyCandidateNameChange(resumeContext.current.candidate, name, {
+      invalidate,
+      setCandidate,
+    });
   }
   function editTranscript(text: string) {
     invalidate();
@@ -1387,7 +1396,7 @@ export default function Home() {
             <AlertDialogAction
               onClick={() => {
                 if (pendingCandidateName)
-                  setCandidate(pendingCandidateName.detected);
+                  applyDetectedCandidate(pendingCandidateName.detected);
                 setPendingCandidateName(null);
               }}
             >
