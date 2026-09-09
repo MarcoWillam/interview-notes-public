@@ -129,3 +129,28 @@ export function appliedTemplateState(
       supportsWrittenTest(sourceTemplateId) && hasWrittenTest,
   };
 }
+
+export function normalizeInterviewTemplateState(
+  standards: InterviewStandards,
+  saved: {
+    sourceTemplateId?: string | null;
+    templateModified?: boolean;
+    hasWrittenTest?: boolean;
+  },
+  templates: TemplateLike[],
+  common: InterviewStandards,
+) {
+  const templateState =
+    saved.sourceTemplateId === undefined
+      ? inferTemplateSource(standards, templates, common)
+      : {
+          sourceTemplateId: saved.sourceTemplateId,
+          templateModified: saved.templateModified ?? false,
+        };
+  return {
+    ...templateState,
+    hasWrittenTest:
+      supportsWrittenTest(templateState.sourceTemplateId) &&
+      saved.hasWrittenTest === true,
+  };
+}

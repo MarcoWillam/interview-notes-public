@@ -10,8 +10,10 @@ import {
 import { useLocalAccess } from './use-local-access';
 import {
   defaultStandards,
+  normalizeStandards,
   type GlobalSettings,
 } from '@/lib/standards';
+import { normalizeInterviewTemplateState } from '@/lib/interview-template-state';
 export type Draft = Omit<SavedInterview, 'id' | 'updatedAt'>;
 export function useInterviewLibrary(
   draft: Draft,
@@ -41,6 +43,22 @@ export function useInterviewLibrary(
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const writes = useRef(Promise.resolve());
   const signature = JSON.stringify(draft);
+  async function normalizeSession(session: SavedInterview) {
+    const store = localStore();
+    const [templates, settings] = await Promise.all([
+      store.listPreferences(),
+      store.getSettings(),
+    ]);
+    return {
+      ...session,
+      ...normalizeInterviewTemplateState(
+        normalizeStandards(session),
+        session,
+        templates,
+        settings?.defaults || defaultStandards,
+      ),
+    };
+  }
   useEffect(() => {
     callbacks.current = { draft, restore, clear };
   });
@@ -80,7 +98,7 @@ export function useInterviewLibrary(
         if (disposed) return;
         const latest = rows.sort((a, b) => b.updatedAt - a.updatedAt)[0];
         if (latest) {
-          await callbacks.current.restore(latest);
+          await callbacks.current.restore(await normalizeSession(latest));
           if (disposed) return;
           setId(latest.id);
         } else {
@@ -143,11 +161,12 @@ export function useInterviewLibrary(
       const row = await localStore().getInterview(nextId);
       if (!row) throw new Error('记录已不存在');
       setReady(false);
-      await callbacks.current.restore(row);
+      const restored = await normalizeSession(row);
+      await callbacks.current.restore(restored);
       setId(nextId);
       setSaved(
         nextId +
-          JSON.stringify({ ...row, id: undefined, updatedAt: undefined }),
+          JSON.stringify({ ...restored, id: undefined, updatedAt: undefined }),
       );
       setReady(true);
     } finally {
