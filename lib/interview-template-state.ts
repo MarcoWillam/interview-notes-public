@@ -123,6 +123,23 @@ export function writtenTestDecision(
   return confirmed ? hasWrittenTest : null;
 }
 
+export function resolveResumeOutlinePreflight(
+  templateId: string,
+  writtenTest: boolean | null,
+) {
+  if (templateId === BUILTIN_TEMPLATE_IDS.aiProductManager)
+    return writtenTest === null
+      ? null
+      : { templateId, hasWrittenTest: writtenTest };
+  if (templateId === BUILTIN_TEMPLATE_IDS.productOperations)
+    return { templateId, hasWrittenTest: false };
+  return null;
+}
+
+export function resumeOutlineLocked(reading: unknown) {
+  return reading !== null && reading !== undefined;
+}
+
 export function markTemplateModified(sourceTemplateId: string | null) {
   return { sourceTemplateId, templateModified: true };
 }
