@@ -5,6 +5,8 @@ import { queueApi } from '../server/queue/api.ts';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { DatabaseSync } from 'node:sqlite';
+import { scryptSync } from 'node:crypto';
 const resumeInput = {
   role: '产品经理',
   requirements: '用户研究与需求分析',
@@ -69,6 +71,100 @@ const setup = () => {
     },
   };
 };
+void test('account administration lists users and rejects duplicate usernames', () => {
+  const { s } = setup();
+  try {
+    assert.deepEqual(s.listUsers(), [
+      { username: 'alice', active: true },
+      { username: 'bob', active: true },
+    ]);
+    assert.throws(
+      () => s.createUser('alice', 'another-password-123'),
+      /账号已存在/,
+    );
+  } finally {
+    s.close();
+  }
+});
+void test('legacy user tables gain active status without changing existing login', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'interview-user-migration-'));
+  const file = join(directory, 'queue.sqlite');
+  try {
+    const legacy = new DatabaseSync(file);
+    const salt = 'legacy-salt';
+    legacy.exec(
+      'CREATE TABLE users(id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, salt TEXT NOT NULL, password TEXT NOT NULL)',
+    );
+    legacy
+      .prepare('INSERT INTO users VALUES(?,?,?,?)')
+      .run(
+        'legacy-id',
+        'legacy-user',
+        salt,
+        Buffer.from(scryptSync('legacy-password-123', salt, 32)).toString('hex'),
+      );
+    legacy.close();
+
+    const migrated = new QueueStore(file);
+    assert.deepEqual(migrated.listUsers(), [
+      { username: 'legacy-user', active: true },
+    ]);
+    assert.ok(migrated.login('legacy-user', 'legacy-password-123'));
+    migrated.close();
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+void test('disabling an account revokes every session, connector and unfinished job', () => {
+  const { s, a } = setup();
+  try {
+    const session = s.newSession(a);
+    const device = s.redeem(s.pairing(a).code, 'Alice 的电脑');
+    const running = s.submit(a, 'disable-running', '进行中', input);
+    const queued = s.submit(a, 'disable-queued', '等待中', input);
+    assert.equal(s.claim(device.token, true)?.id, running.id);
+
+    s.setUserActive('alice', false);
+
+    assert.equal(s.session(session), undefined);
+    assert.throws(() => s.device(device.token), /连接器授权已失效/);
+    assert.throws(() => s.login('alice', 'password-alice-123'));
+    assert.equal(s.get(a, running.id).state, 'failed');
+    assert.equal(s.get(a, queued.id).state, 'failed');
+    assert.equal(
+      s.db.prepare('SELECT input FROM jobs WHERE user=? AND input IS NOT NULL').get(a),
+      undefined,
+    );
+    assert.deepEqual(s.listUsers()[0], { username: 'alice', active: false });
+
+    s.setUserActive('alice', true);
+    assert.ok(s.login('alice', 'password-alice-123'));
+    assert.throws(() => s.device(device.token), /连接器授权已失效/);
+  } finally {
+    s.close();
+  }
+});
+void test('resetting a password revokes access while preserving queued work', () => {
+  const { s, a } = setup();
+  try {
+    const session = s.newSession(a);
+    const device = s.redeem(s.pairing(a).code, 'Alice 的电脑');
+    const running = s.submit(a, 'reset-running', '进行中', input);
+    const queued = s.submit(a, 'reset-queued', '等待中', input);
+    assert.equal(s.claim(device.token, true)?.id, running.id);
+
+    s.resetUserPassword('alice', 'new-password-alice-123');
+
+    assert.equal(s.session(session), undefined);
+    assert.throws(() => s.device(device.token), /连接器授权已失效/);
+    assert.throws(() => s.login('alice', 'password-alice-123'));
+    assert.ok(s.login('alice', 'new-password-alice-123'));
+    assert.equal(s.get(a, running.id).state, 'failed');
+    assert.equal(s.get(a, queued.id).state, 'queued');
+  } finally {
+    s.close();
+  }
+});
 void test('stale account tabs cannot submit, pair, list devices or log out a different cookie account', async () => {
   const { s, a, b } = setup();
   try {

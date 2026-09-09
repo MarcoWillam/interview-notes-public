@@ -31,7 +31,7 @@ export class QueueStore {
     this.db = new DatabaseSync(path);
     this.db
       .exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
-      CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, salt TEXT NOT NULL, password TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, salt TEXT NOT NULL, password TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);
       CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,user TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS pairs(hash TEXT PRIMARY KEY,user TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,user TEXT NOT NULL,name TEXT NOT NULL,hash TEXT UNIQUE NOT NULL,seen INTEGER NOT NULL,ready INTEGER NOT NULL DEFAULT 0,revoked INTEGER NOT NULL DEFAULT 0);
@@ -39,6 +39,14 @@ export class QueueStore {
       CREATE INDEX IF NOT EXISTS jobs_owner_created ON jobs(user,created);
       CREATE INDEX IF NOT EXISTS jobs_claim ON jobs(user,state,created);
       CREATE INDEX IF NOT EXISTS devices_owner ON devices(user);`);
+    if (
+      !(this.db.prepare('PRAGMA table_info(users)').all() as Row[]).some(
+        (column) => column.name === 'active',
+      )
+    )
+      this.db.exec(
+        'ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1',
+      );
     if (
       !(this.db.prepare('PRAGMA table_info(jobs)').all() as Row[]).some(
         (c) => c.name === 'kind',
@@ -52,15 +60,14 @@ export class QueueStore {
     this.db.close();
   }
   createUser(username: string, password: string, id: string = randomUUID()) {
-    if (
-      !/^[\p{L}\p{N}_@.-]{2,80}$/u.test(username) ||
-      password.length < 12 ||
-      password.length > 200
-    )
-      throw new QueueError('账号需 2–80 字，密码需 12–200 字。');
+    this.validateUserInput(username, password);
+    if (this.db.prepare('SELECT 1 FROM users WHERE username=?').get(username))
+      throw new QueueError('账号已存在。', 409);
     const salt = token();
     this.db
-      .prepare('INSERT INTO users VALUES(?,?,?,?)')
+      .prepare(
+        'INSERT INTO users(id,username,salt,password,active) VALUES(?,?,?,?,1)',
+      )
       .run(
         id,
         username,
@@ -68,6 +75,93 @@ export class QueueStore {
         Buffer.from(scryptSync(password, salt, 32)).toString('hex'),
       );
     return { id, username };
+  }
+  private validateUserInput(username: string, password: string) {
+    if (
+      !/^[\p{L}\p{N}_@.-]{2,80}$/u.test(username) ||
+      password.length < 12 ||
+      password.length > 200
+    )
+      throw new QueueError('账号需 2–80 字，密码需 12–200 字。');
+  }
+  private userByName(username: string) {
+    const user = this.db
+      .prepare('SELECT id,username,active FROM users WHERE username=?')
+      .get(username) as Row | undefined;
+    if (!user) throw new QueueError('账号不存在。', 404);
+    return user;
+  }
+  private revokeUserAccess(
+    user: string,
+    unfinished: 'running' | 'all',
+    message: string,
+  ) {
+    this.db.prepare('DELETE FROM sessions WHERE user=?').run(user);
+    this.db.prepare('DELETE FROM pairs WHERE user=?').run(user);
+    this.db.prepare('UPDATE devices SET revoked=1 WHERE user=?').run(user);
+    const states =
+      unfinished === 'all'
+        ? "state IN ('queued','running')"
+        : "state='running'";
+    this.db
+      .prepare(
+        `UPDATE jobs SET state='failed',input=NULL,error=?,updated=? WHERE user=? AND ${states}`,
+      )
+      .run(message, this.now(), user);
+  }
+  listUsers() {
+    return (
+      this.db
+        .prepare('SELECT username,active FROM users ORDER BY username')
+        .all() as Row[]
+    ).map((user) => ({
+      username: String(user.username),
+      active: !!user.active,
+    }));
+  }
+  setUserActive(username: string, active: boolean) {
+    const user = this.userByName(username);
+    if (!!user.active === active) return;
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db
+        .prepare('UPDATE users SET active=? WHERE id=?')
+        .run(active ? 1 : 0, user.id);
+      if (!active)
+        this.revokeUserAccess(
+          String(user.id),
+          'all',
+          '账号已停用，任务已终止。',
+        );
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+  resetUserPassword(username: string, password: string) {
+    this.validateUserInput(username, password);
+    const user = this.userByName(username),
+      salt = token();
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db
+        .prepare('UPDATE users SET salt=?,password=? WHERE id=?')
+        .run(
+          salt,
+          Buffer.from(scryptSync(password, salt, 32)).toString('hex'),
+          user.id,
+        );
+      this.revokeUserAccess(
+        String(user.id),
+        'running',
+        '账号凭据已更新，请重新提交。',
+      );
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
   userCount() {
     return Number(
@@ -85,12 +179,19 @@ export class QueueStore {
     );
     if (
       !user ||
+      !user.active ||
       !timingSafeEqual(calculated, Buffer.from(String(user.password), 'hex'))
     )
       throw new QueueError('账号或密码错误。', 401);
     return this.newSession(String(user.id));
   }
   newSession(user: string) {
+    if (
+      !this.db
+        .prepare('SELECT 1 FROM users WHERE id=? AND active=1')
+        .get(user)
+    )
+      throw new QueueError('账号或密码错误。', 401);
     const value = token();
     this.db
       .prepare('INSERT INTO sessions VALUES(?,?,?)')
@@ -100,7 +201,7 @@ export class QueueStore {
   session(value: string) {
     return this.db
       .prepare(
-        'SELECT users.id,users.username FROM sessions JOIN users ON users.id=sessions.user WHERE sessions.hash=? AND expires>?',
+        'SELECT users.id,users.username FROM sessions JOIN users ON users.id=sessions.user WHERE sessions.hash=? AND expires>? AND users.active=1',
       )
       .get(hash(value), this.now()) as
       | { id: string; username: string }
@@ -110,6 +211,12 @@ export class QueueStore {
     this.db.prepare('DELETE FROM sessions WHERE hash=?').run(hash(value));
   }
   pairing(user: string) {
+    if (
+      !this.db
+        .prepare('SELECT 1 FROM users WHERE id=? AND active=1')
+        .get(user)
+    )
+      throw new QueueError('账号已停用。', 403);
     this.db
       .prepare('DELETE FROM pairs WHERE user=? OR expires<?')
       .run(user, this.now());
@@ -148,7 +255,9 @@ export class QueueStore {
   }
   device(secret: string) {
     const row = this.db
-      .prepare('SELECT id,user FROM devices WHERE hash=? AND revoked=0')
+      .prepare(
+        'SELECT devices.id,devices.user FROM devices JOIN users ON users.id=devices.user WHERE devices.hash=? AND devices.revoked=0 AND users.active=1',
+      )
       .get(hash(secret)) as { id: string; user: string } | undefined;
     if (!row) throw new QueueError('连接器授权已失效，请重新配对。', 401);
     return row;
