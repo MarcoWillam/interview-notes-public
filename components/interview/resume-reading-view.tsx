@@ -1,8 +1,24 @@
 import { Download } from 'lucide-react';
 import {
   exportResumeReading,
+  type InterviewQuestion,
+  type QuestionSource,
   type ResumeReading,
 } from '../../lib/resume-reading';
+
+const sourceLabels: Record<QuestionSource, string> = {
+  resume: '简历经历',
+  'written-test': '笔试复盘',
+  role: '岗位通用',
+};
+
+function resolvedSource(question: InterviewQuestion): QuestionSource {
+  return (
+    question.questionSource ||
+    (question.resumeEvidence === null ? 'role' : 'resume')
+  );
+}
+
 export function ResumeReadingView({ value }: { value: ResumeReading }) {
   function download() {
     const url = URL.createObjectURL(
@@ -16,91 +32,115 @@ export function ResumeReadingView({ value }: { value: ResumeReading }) {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+  const questions = value.interviewQuestions || [];
+  const hasWrittenTest = questions.some(
+    (question) => question.questionSource === 'written-test',
+  );
+  const itemCount = value.sections.reduce(
+    (total, section) => total + section.items.length,
+    0,
+  );
   return (
     <div className="remote-result resume-reading">
       <div className="remote-section-label">
-        <h3>Codex 简历阅读</h3>
+        <h3>Codex 面试准备</h3>
         <button type="button" className="text-button" onClick={download}>
           <Download size={15} />
-          下载要点
+          下载完整要点
         </button>
       </div>
-      <span className="badge">简历自述 · 待面试核实</span>
-      <p>{value.summary}</p>
-      {value.sections.map((section) => (
-        <section key={section.name}>
-          <h4>{section.name}</h4>
-          {section.items.length ? (
-            section.items.map((item, index) => (
-              <div key={index}>
-                <p>{item.text}</p>
-                <blockquote>{item.evidence}</blockquote>
-              </div>
-            ))
-          ) : (
-            <p className="small-note">简历未提供明确依据。</p>
-          )}
-        </section>
-      ))}
-      {!!value.interviewQuestions?.length && (
+      {!!questions.length && (
         <section className="interview-guide">
-          <h4>面试提纲 · 30–40 分钟</h4>
+          <h4>
+            {`面试提纲 · ${hasWrittenTest ? '含笔试复盘' : '常规'} · 30–40 分钟`}
+          </h4>
           <div className="interview-question-list">
-            {value.interviewQuestions.map((question, index) => (
-              <article
-                className="interview-question-card"
-                key={question.question}
-              >
-                <h5>{`${index + 1}. ${question.question}`}</h5>
-                <div
-                  className="interview-question-dimensions"
-                  aria-label="考察维度"
+            {questions.map((question, index) => {
+              const source = resolvedSource(question);
+              return (
+                <article
+                  className="interview-question-card"
+                  key={question.question}
                 >
-                  {question.dimensions.map((dimension) => (
-                    <span className="dimension-badge" key={dimension}>
-                      {dimension}
-                    </span>
-                  ))}
-                </div>
-                {question.resumeEvidence === null ? (
-                  <p className="small-note">岗位通用问题</p>
-                ) : (
-                  <blockquote>{question.resumeEvidence}</blockquote>
-                )}
-                <details>
-                  <summary>提问理由、观察点与追问</summary>
-                  <p>
-                    <strong>提问理由：</strong>
-                    {question.reason}
-                  </p>
-                  <p className="question-detail-label">观察点</p>
-                  <ul>
-                    {question.listenFor.map((point, pointIndex) => (
-                      <li key={pointIndex}>{point}</li>
+                  <span
+                    className={`question-source-badge source-${source}`}
+                  >
+                    {sourceLabels[source]}
+                  </span>
+                  <h5>{`${index + 1}. ${question.question}`}</h5>
+                  <div
+                    className="interview-question-dimensions"
+                    aria-label="考察维度"
+                  >
+                    {question.dimensions.map((dimension) => (
+                      <span className="dimension-badge" key={dimension}>
+                        {dimension}
+                      </span>
                     ))}
-                  </ul>
-                  <p className="question-detail-label">追问</p>
-                  <ul>
-                    {question.probes.map((probe, probeIndex) => (
-                      <li key={probeIndex}>{probe}</li>
-                    ))}
-                  </ul>
-                </details>
-              </article>
-            ))}
+                  </div>
+                  {question.resumeEvidence !== null && (
+                    <blockquote>{question.resumeEvidence}</blockquote>
+                  )}
+                  <details>
+                    <summary>提问理由、观察点与追问</summary>
+                    <p>
+                      <strong>提问理由：</strong>
+                      {question.reason}
+                    </p>
+                    <p className="question-detail-label">观察点</p>
+                    <ul>
+                      {question.listenFor.map((point, pointIndex) => (
+                        <li key={pointIndex}>{point}</li>
+                      ))}
+                    </ul>
+                    <p className="question-detail-label">追问</p>
+                    <ul>
+                      {question.probes.map((probe, probeIndex) => (
+                        <li key={probeIndex}>{probe}</li>
+                      ))}
+                    </ul>
+                  </details>
+                </article>
+              );
+            })}
           </div>
         </section>
       )}
-      {value.followUps.length > 0 && (
-        <section>
-          <h4>其他建议追问</h4>
-          <ul>
-            {value.followUps.map((q, index) => (
-              <li key={index}>{q}</li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <details className="resume-reading-details">
+        <summary>
+          <span>简历阅读结果</span>
+          <span>{itemCount} 条要点</span>
+        </summary>
+        <div className="resume-reading-content">
+          <span className="badge">简历自述 · 待面试核实</span>
+          <p>{value.summary}</p>
+          {value.sections.map((section) => (
+            <section key={section.name}>
+              <h4>{section.name}</h4>
+              {section.items.length ? (
+                section.items.map((item, index) => (
+                  <div key={index}>
+                    <p>{item.text}</p>
+                    <blockquote>{item.evidence}</blockquote>
+                  </div>
+                ))
+              ) : (
+                <p className="small-note">简历未提供明确依据。</p>
+              )}
+            </section>
+          ))}
+          {!!value.followUps.length && (
+            <section>
+              <h4>{questions.length ? '其他建议追问' : '建议追问'}</h4>
+              <ul>
+                {value.followUps.map((question, index) => (
+                  <li key={index}>{question}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+      </details>
     </div>
   );
 }
