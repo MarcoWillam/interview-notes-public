@@ -1,4 +1,4 @@
-import { QueueStore, QueueError } from './store.ts';
+import { QueueStore, QueueError, type JobKind } from './store.ts';
 export type QueueConfig = {
   origin: string;
   previewUser?: string;
@@ -133,8 +133,13 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
             job: store.claim(
               secret,
               body.ready === true,
-              Array.isArray(body.kinds) && body.kinds.includes('resume')
-                ? ['interview', 'resume']
+              Array.isArray(body.kinds)
+                ? body.kinds.filter(
+                    (kind): kind is JobKind =>
+                      kind === 'interview' ||
+                      kind === 'resume' ||
+                      kind === 'written-test',
+                  )
                 : ['interview'],
             ),
           });
@@ -181,13 +186,20 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
         return json({ jobs: store.list(user.id) });
       if (path === '/api/jobs' && method === 'POST') {
         try {
+          const kind =
+            body.kind === undefined
+              ? 'interview'
+              : body.kind === 'resume' || body.kind === 'written-test'
+                ? body.kind
+                : null;
+          if (!kind) throw new QueueError('任务类型无效。');
           return json(
             store.submit(
               user.id,
               str('client', 100),
               str('label', 100),
               body.input,
-              body.kind === 'resume' ? 'resume' : 'interview',
+              kind,
             ),
             202,
           );

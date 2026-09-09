@@ -3,6 +3,11 @@ import {
   resumeSchema,
   type ResumeInput,
 } from '../lib/resume-reading.ts';
+import {
+  writtenTestSupplementInstructions,
+  writtenTestSupplementSchema,
+  type WrittenTestSupplementInput,
+} from '../lib/written-test-supplement.ts';
 import { Buffer } from 'node:buffer';
 import { spawn } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -266,6 +271,17 @@ export async function readResumeWithCodex(
   signal: AbortSignal,
 ): Promise<unknown> {
   return runStructuredCodex(input, signal, resumeInstructions, resumeSchema);
+}
+export async function generateWrittenTestSupplementWithCodex(
+  input: WrittenTestSupplementInput,
+  signal: AbortSignal,
+): Promise<unknown> {
+  return runStructuredCodex(
+    input,
+    signal,
+    writtenTestSupplementInstructions,
+    writtenTestSupplementSchema,
+  );
 }
 async function runStructuredCodex(
   input: unknown,

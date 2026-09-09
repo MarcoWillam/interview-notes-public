@@ -12,6 +12,11 @@ import {
   validateResumeReading,
 } from '../../lib/resume-reading.ts';
 import { validateInput, validateReport } from '../../lib/interview.ts';
+import {
+  validateWrittenTestSupplement,
+  validateWrittenTestSupplementInput,
+} from '../../lib/written-test-supplement.ts';
+export type JobKind = 'interview' | 'resume' | 'written-test';
 export class QueueError extends Error {
   status: number;
   constructor(message: string, status = 400) {
@@ -316,14 +321,18 @@ export class QueueStore {
     client: string,
     label: string,
     value: unknown,
-    kind: 'interview' | 'resume' = 'interview',
+    kind: JobKind = 'interview',
   ) {
     this.sweep();
     if (!/^[a-zA-Z0-9-]{8,100}$/.test(client))
       throw new QueueError('任务标识无效。');
-    const input = JSON.stringify(
-        kind === 'resume' ? validateResumeInput(value) : validateInput(value),
-      ),
+    const validatedInput =
+        kind === 'resume'
+          ? validateResumeInput(value)
+          : kind === 'written-test'
+            ? validateWrittenTestSupplementInput(value)
+            : validateInput(value),
+      input = JSON.stringify(validatedInput),
       digest = hash(kind + input),
       safeLabel = label.slice(0, 100) || '未命名面试';
     const previous = this.db
@@ -339,7 +348,7 @@ export class QueueStore {
     }
     const reusable = this.db
       .prepare(
-        kind === 'resume'
+        kind !== 'interview'
           ? "SELECT id FROM jobs WHERE user=? AND kind=? AND inputHash=? AND label=? AND state IN ('queued','running','paused','completed') ORDER BY created LIMIT 1"
           : "SELECT id FROM jobs WHERE user=? AND kind=? AND inputHash=? AND label=? AND state IN ('queued','running','paused') ORDER BY created LIMIT 1",
       )
@@ -480,7 +489,7 @@ export class QueueStore {
   claim(
     secret: string,
     ready: boolean,
-    kinds: ('interview' | 'resume')[] = ['interview'],
+    kinds: JobKind[] = ['interview'],
   ) {
     this.sweep();
     const device = this.device(secret);
@@ -491,7 +500,7 @@ export class QueueStore {
     const lease = token();
     const row = this.db
       .prepare(
-        `UPDATE jobs SET state='running',device=?,lease=?,until=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND (kind='interview' OR (kind='resume' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY CASE WHEN kind='resume' THEN 0 ELSE 1 END,queued,created,rowid LIMIT 1) RETURNING id,input,kind`,
+        `UPDATE jobs SET state='running',device=?,lease=?,until=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY CASE WHEN kind IN ('resume','written-test') THEN 0 ELSE 1 END,queued,created,rowid LIMIT 1) RETURNING id,input,kind`,
       )
       .get(
         device.id,
@@ -501,6 +510,7 @@ export class QueueStore {
         this.now(),
         device.user,
         kinds.includes('resume') ? 1 : 0,
+        kinds.includes('written-test') ? 1 : 0,
         device.id,
       ) as Row | undefined;
     return row
@@ -554,16 +564,16 @@ export class QueueStore {
       error = '本地 Codex 未完成分析，请检查登录、网络或使用额度后重新提交。';
     else {
       try {
+        const storedInput = JSON.parse(String(job.input)) as unknown;
         report = JSON.stringify(
           job.kind === 'resume'
-            ? validateResumeReading(
-                result,
-                validateResumeInput(JSON.parse(String(job.input))),
-              )
-            : validateReport(
-                result,
-                validateInput(JSON.parse(String(job.input))),
-              ),
+            ? validateResumeReading(result, validateResumeInput(storedInput))
+            : job.kind === 'written-test'
+              ? validateWrittenTestSupplement(
+                  result,
+                  validateWrittenTestSupplementInput(storedInput),
+                )
+              : validateReport(result, validateInput(storedInput)),
         );
       } catch {
         error = '评估引用或结构校验失败，请核实后重新提交。';

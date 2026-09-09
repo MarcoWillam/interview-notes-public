@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   controlRemoteJob,
   submitRemoteAnalysis,
+  submitRemoteWrittenTest,
   type RemoteJob,
 } from '../lib/remote-analysis.ts';
 const resumeInput = {
@@ -36,6 +37,30 @@ const reading = {
     probes: ['你如何验证效果？'],
   })),
   followUps: ['请补充项目时间范围。'],
+};
+const writtenTestInput = {
+  role: resumeInput.role,
+  requirements: resumeInput.requirements,
+  dimensionText: resumeInput.dimensionText,
+  focus: resumeInput.focus,
+  scoringGuidance: resumeInput.scoringGuidance,
+  reportRequirements: resumeInput.reportRequirements,
+  resumeText: resumeInput.resumeText,
+  existingQuestions: reading.interviewQuestions.map((question) => ({
+    ...question,
+    questionSource: question.questionSource as 'resume' | 'role',
+  })),
+};
+const writtenTestResult = {
+  questions: Array.from({ length: 3 }, (_, index) => ({
+    question: `请复述笔试方案中的第 ${index + 1} 个关键判断与取舍。`,
+    questionSource: 'written-test' as const,
+    dimensions: [index % 2 === 0 ? '需求分析' : '沟通协作'],
+    reason: '核实候选人自己的判断。',
+    resumeEvidence: null,
+    listenFor: ['判断依据'],
+    probes: ['如果假设不成立，你会如何调整？'],
+  })),
 };
 const input = {
   role: '工程师',
@@ -201,6 +226,33 @@ void test('resume result validation uses the normalized submission snapshot', as
       { fetcher, pollMs: 0 },
     ),
     reading,
+  );
+});
+
+void test('written-test supplement uses its own kind and validates the completed result', async () => {
+  const fetcher: typeof fetch = async (_url, options) => {
+    const body = JSON.parse(options?.body as string) as {
+      kind: string;
+      input: unknown;
+    };
+    assert.equal(body.kind, 'written-test');
+    assert.deepEqual(body.input, writtenTestInput);
+    return Response.json({
+      id: 'written-test-job',
+      kind: 'written-test',
+      state: 'completed',
+      report: writtenTestResult,
+    });
+  };
+  assert.deepEqual(
+    await submitRemoteWrittenTest(
+      writtenTestInput,
+      '张三 · 笔试复盘补充',
+      new AbortController().signal,
+      () => {},
+      { fetcher, pollMs: 0 },
+    ),
+    writtenTestResult,
   );
 });
 

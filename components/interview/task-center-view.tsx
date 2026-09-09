@@ -1,6 +1,6 @@
 export type TaskCenterJob = {
   id: string;
-  kind?: 'interview' | 'resume';
+  kind?: 'interview' | 'resume' | 'written-test';
   label: string;
   state:
     | 'queued'

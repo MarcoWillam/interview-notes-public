@@ -4,8 +4,13 @@ import {
   validateResumeReading,
 } from '../../lib/resume-reading.ts';
 import {
+  validateWrittenTestSupplement,
+  validateWrittenTestSupplementInput,
+} from '../../lib/written-test-supplement.ts';
+import {
   analyzeWithCodex,
   codexStatus,
+  generateWrittenTestSupplementWithCodex,
   readResumeWithCodex,
 } from '../codex.ts';
 export type Credentials = { server: string; token: string; id: string };
@@ -106,6 +111,7 @@ export async function runConnector(
     analyze: typeof analyzeWithCodex;
     status: typeof codexStatus;
     readResume?: typeof readResumeWithCodex;
+    writeTest?: typeof generateWrittenTestSupplementWithCodex;
   } = { analyze: analyzeWithCodex, status: codexStatus },
   timings = { pollMs: 3000, heartbeatMs: 5000 },
 ) {
@@ -122,7 +128,7 @@ export async function runConnector(
       const response = await connectorRequest(
         server,
         '/api/worker/claim',
-        { ready, kinds: ['interview', 'resume'] },
+        { ready, kinds: ['interview', 'resume', 'written-test'] },
         credentials.token,
         signal,
       );
@@ -174,6 +180,13 @@ export async function runConnector(
                 dependencies.readResume || readResumeWithCodex
               )(input, taskSignal);
               report = validateResumeReading(reading, input);
+            } else if (job.kind === 'written-test') {
+              const input = validateWrittenTestSupplementInput(job.input);
+              const supplement = await (
+                dependencies.writeTest ||
+                generateWrittenTestSupplementWithCodex
+              )(input, taskSignal);
+              report = validateWrittenTestSupplement(supplement, input);
             } else {
               report = await dependencies.analyze(
                 validateInput(job.input),
