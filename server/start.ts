@@ -59,7 +59,16 @@ if (preview) {
     );
   store.createUser(user, password);
 }
-const server = queueHttp(store, { origin, previewUser }, resolve('dist/web'));
+const server = queueHttp(
+  store,
+  {
+    origin,
+    previewUser,
+    // Public HTTPS is served by the local Nginx proxy, which overwrites X-Real-IP.
+    trustProxy: !preview && url.protocol === 'https:',
+  },
+  resolve('dist/web'),
+);
 const port = Number(process.env.INTERVIEW_PORT || 8787);
 let connector: ReturnType<typeof spawn> | undefined,
   stopping = false;

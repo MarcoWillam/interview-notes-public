@@ -71,12 +71,12 @@ const until = async (check: () => boolean) => {
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 };
-async function fixture() {
+async function fixture(trustProxy?: boolean) {
   const dir = await mkdtemp(join(tmpdir(), 'interview-queue-test-'));
   await writeFile(join(dir, 'index.html'), '<h1>fixture</h1>');
   const store = new QueueStore(join(dir, 'queue.sqlite'));
   const user = store.createUser('tester', 'test-password-123').id;
-  const config = { origin: 'http://127.0.0.1' };
+  const config = { origin: 'http://127.0.0.1', trustProxy };
   const server = queueHttp(store, config, dir);
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
@@ -341,6 +341,138 @@ void test('connector fails resume work whose question evidence is absent from th
   } finally {
     controller.abort();
     await worker;
+    await f.close();
+  }
+});
+
+const authRequest = (
+  origin: string,
+  path: string,
+  body: unknown,
+  realIP?: string | string[],
+) =>
+  new Promise<number | undefined>((resolve, reject) => {
+    const request = httpRequest(
+      origin + path,
+      {
+        method: 'POST',
+        headers: {
+          Origin: origin,
+          'Content-Type': 'application/json',
+          ...(realIP === undefined ? {} : { 'X-Real-IP': realIP }),
+        },
+      },
+      (response) => {
+        response.resume();
+        response.on('end', () => resolve(response.statusCode));
+        response.on('error', reject);
+      },
+    );
+    request.on('error', reject);
+    request.end(JSON.stringify(body));
+  });
+
+for (const endpoint of ['login', 'pair'] as const) {
+  void test(`trusted loopback proxy isolates ${endpoint} rate limits by validated client IP`, async () => {
+    const f = await fixture(true);
+    const path = endpoint === 'login' ? '/api/login' : '/api/pair/redeem';
+    const invalid =
+      endpoint === 'login'
+        ? { username: 'tester', password: 'wrong-password' }
+        : { code: 'invalid-code', name: '电脑' };
+    const valid = () =>
+      endpoint === 'login'
+        ? { username: 'tester', password: 'test-password-123' }
+        : { code: f.store.pairing(f.user).code, name: '电脑' };
+    try {
+      for (let attempt = 0; attempt < 12; attempt++) {
+        assert.equal(
+          await authRequest(f.origin, path, invalid, '198.51.100.1'),
+          endpoint === 'login' ? 401 : 403,
+        );
+      }
+      assert.equal(
+        await authRequest(f.origin, path, valid(), '198.51.100.1'),
+        429,
+      );
+      assert.equal(
+        await authRequest(f.origin, path, valid(), '198.51.100.2'),
+        200,
+      );
+      assert.equal(
+        await authRequest(f.origin, path, valid(), '2001:db8::1'),
+        200,
+      );
+    } finally {
+      await f.close();
+    }
+  });
+}
+
+for (const trustProxy of [undefined, false]) {
+  void test(`direct HTTP ignores spoofed X-Real-IP when trustProxy is ${String(trustProxy)}`, async () => {
+    const f = await fixture(trustProxy);
+    try {
+      for (let attempt = 0; attempt < 12; attempt++) {
+        assert.equal(
+          await authRequest(
+            f.origin,
+            '/api/login',
+            { username: 'tester', password: 'wrong-password' },
+            `198.51.100.${attempt + 1}`,
+          ),
+          401,
+        );
+      }
+      assert.equal(
+        await authRequest(
+          f.origin,
+          '/api/login',
+          { username: 'tester', password: 'test-password-123' },
+          '2001:db8::2',
+        ),
+        429,
+      );
+    } finally {
+      await f.close();
+    }
+  });
+}
+
+void test('trusted proxy falls back to socket for missing, invalid and multiple X-Real-IP values', async () => {
+  const f = await fixture(true);
+  const values: (string | string[] | undefined)[] = [
+    undefined,
+    'not-an-ip',
+    '198.51.100.1, 198.51.100.2',
+    ['198.51.100.3', '198.51.100.4'],
+    '198.51.100.5:1234',
+    '[2001:db8::1]',
+  ];
+  try {
+    for (let attempt = 0; attempt < 12; attempt++) {
+      assert.equal(
+        await authRequest(
+          f.origin,
+          '/api/login',
+          { username: 'tester', password: 'wrong-password' },
+          values[attempt % values.length],
+        ),
+        401,
+      );
+    }
+    const valid = { username: 'tester', password: 'test-password-123' };
+    for (const value of values) {
+      assert.equal(
+        await authRequest(f.origin, '/api/login', valid, value),
+        429,
+      );
+    }
+    assert.equal(
+      await authRequest(f.origin, '/api/login', valid, '198.51.100.9'),
+      200,
+    );
+  } finally {
     await f.close();
   }
 });

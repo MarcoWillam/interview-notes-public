@@ -1,5 +1,9 @@
 import { QueueStore, QueueError } from './store.ts';
-export type QueueConfig = { origin: string; previewUser?: string };
+export type QueueConfig = {
+  origin: string;
+  previewUser?: string;
+  trustProxy?: boolean;
+};
 const json = (
   value: unknown,
   status = 200,

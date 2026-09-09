@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { Buffer } from 'node:buffer';
+import { isIP } from 'node:net';
 import { queueApi, type QueueConfig } from './api.ts';
 import { QueueStore } from './store.ts';
 export function queueHttp(
@@ -56,6 +57,20 @@ export function queueHttp(
           for (const [key, value] of Object.entries(req.headers))
             if (value)
               headers.set(key, Array.isArray(value) ? value.join(',') : value);
+          const socketAddress = req.socket.remoteAddress || 'unknown';
+          const realIP = req.headers['x-real-ip'];
+          const loopback =
+            socketAddress === '::1' ||
+            (isIP(socketAddress) === 4 && socketAddress.startsWith('127.')) ||
+            (isIP(socketAddress) === 6 &&
+              socketAddress.startsWith('::ffff:127.'));
+          const clientAddress =
+            config.trustProxy === true &&
+            loopback &&
+            typeof realIP === 'string' &&
+            isIP(realIP)
+              ? realIP
+              : socketAddress;
           const response = await api(
             new Request(url, {
               method: req.method,
@@ -64,7 +79,7 @@ export function queueHttp(
                 ? { body: Buffer.concat(chunks).toString('utf8') }
                 : {}),
             }),
-            req.socket.remoteAddress || 'unknown',
+            clientAddress,
           );
           res.writeHead(response.status, Object.fromEntries(response.headers));
           res.end(await response.text());
