@@ -9,6 +9,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { NativeSelect } from '@/components/ui/native-select';
 import {
   SIDEBAR_BREAKPOINT,
   SIDEBAR_STORAGE_KEY,
@@ -288,9 +289,15 @@ function SidebarPanel({
           <PanelLeftClose size={18} />
         </button>
       </div>
-      <label className="interview-sidebar-sort">
+      <label
+        className="interview-sidebar-sort"
+        htmlFor="interview-sidebar-sort"
+      >
         <span>排序</span>
-        <select
+        <NativeSelect
+          className="interview-sidebar-sort-control"
+          size="sm"
+          id="interview-sidebar-sort"
           aria-label="记录排序"
           value={sortMode}
           onChange={(event) =>
@@ -300,7 +307,7 @@ function SidebarPanel({
           <option value="newest">最近添加</option>
           <option value="oldest">最早添加</option>
           <option value="manual">自定义排序</option>
-        </select>
+        </NativeSelect>
       </label>
       <button
         className="interview-sidebar-create"

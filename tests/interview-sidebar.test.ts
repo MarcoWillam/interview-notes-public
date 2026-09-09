@@ -174,6 +174,7 @@ void test('sidebar exposes account-scoped time and custom drag ordering', async 
   assert.match(source, /最近添加/);
   assert.match(source, /最早添加/);
   assert.match(source, /自定义排序/);
+  assert.match(source, /<NativeSelect/);
   assert.match(source, /sortInterviewSessions/);
   assert.match(source, /reconcileManualOrder/);
   assert.match(source, /draggable=\{sortMode === 'manual'\}/);
@@ -247,6 +248,10 @@ void test('workbench renders remote and local actions in one account-aware heade
   assert.match(css, /\.workspace-tools-content/);
   assert.match(css, /\.workspace-account-menu/);
   assert.match(css, /\.interview-sidebar-sort/);
+  assert.match(
+    css,
+    /\.interview-sidebar-sort-control\[data-slot='native-select-wrapper'\]/,
+  );
   assert.match(css, /\.interview-sidebar-drag-handle/);
 });
 
