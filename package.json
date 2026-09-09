@@ -19,9 +19,9 @@
     "connector": "node --experimental-strip-types server/connector.ts",
     "accounts": "node --experimental-strip-types server/accounts.ts",
     "build:server": "vite build --config vite.queue.config.ts",
-    "prebuild": "node scripts/prepare-pdf-assets.mjs",
-    "prebuild:server": "node scripts/prepare-pdf-assets.mjs",
-    "predev": "node scripts/prepare-pdf-assets.mjs"
+    "prebuild": "node scripts/prepare-pdf-assets.mjs && node scripts/prepare-connector-package.mjs",
+    "prebuild:server": "node scripts/prepare-pdf-assets.mjs && node scripts/prepare-connector-package.mjs",
+    "predev": "node scripts/prepare-pdf-assets.mjs && node scripts/prepare-connector-package.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

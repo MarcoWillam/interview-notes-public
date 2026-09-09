@@ -49,11 +49,13 @@ npm start
 
 服务器构建后，配置独立数据目录、公开地址和首次管理员账号，运行 `npm run start:server`。首次创建账号后可移除环境中的初始密码。默认只初始化一个管理员账号，无公开注册入口。`npm start` 是本机免登录预览，不能作为正式启动命令；正式服务拒绝使用预览数据库。
 
-登录网页，在“电脑连接”生成一次性配对码，在自己电脑的项目目录运行：
+登录网页，在“电脑连接”下载并解压不含凭据的专用连接器包，生成一次性配对码，然后在解压后的 `interview-connector` 目录运行：
 
 ```sh
 npm run connector -- --server https://your-workspace.example --pair 网页上的配对码
 ```
+
+如果终端提示符仍是 `~ %`，或 npm 报错找不到 `/Users/用户名/package.json`，说明命令是在用户主目录执行。先执行 `cd ~/Downloads/interview-connector`；确认当前目录包含 `package.json` 后重新运行配对命令。若浏览器把解压目录改了名字，请用实际路径。配对码超过 10 分钟时需在网页重新生成。
 
 配对成功后，连接器凭据存于本机 `.local/connector.json`（仅当前用户可读写，已被 Git 忽略）。之后只需 `npm run connector`，保持运行即可。配对码有效 10 分钟且只能使用一次，重新生成会替换旧码；网页可以解除电脑配对。Codex 自身的认证由 CLI 管理，不复制到连接器文件或服务器。
 

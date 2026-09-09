@@ -502,8 +502,22 @@ function RemotePanel({
                 连接一台电脑
               </h3>
               <p>
-                在电脑上准备好本项目和已登录的
-                Codex，生成配对码后运行下面的命令。连接器需要保持运行。
+                新电脑先下载并解压专用连接器包，再使用自己的 ChatGPT 账号登录
+                Codex。连接器需要保持运行。
+              </p>
+              <a
+                className="secondary-button remote-connector-download"
+                href="/downloads/interview-connector.zip"
+                download
+              >
+                <Download size={16} />
+                下载连接器包
+              </a>
+              <p className="small-note">
+                终端提示符如果仍是 <code>~ %</code>，或提示找不到{' '}
+                <code>/Users/用户名/package.json</code>
+                ，说明当前不在连接器目录。请先进入解压后的{' '}
+                <code>interview-connector</code> 文件夹。
               </p>
               {preview && (
                 <p className="small-note">
@@ -533,7 +547,9 @@ function RemotePanel({
                     仅可使用一次，有效至{' '}
                     {new Date(pair.expiresAt).toLocaleTimeString('zh-CN')}。
                   </span>
-                  <p>在项目目录的终端运行：</p>
+                  <p>进入解压后的连接器目录：</p>
+                  <pre>cd ~/Downloads/interview-connector</pre>
+                  <p>确认当前目录中能看到 package.json 后运行：</p>
                   <pre>{`npm run connector -- --server ${window.location.origin} --pair ${pair.code}`}</pre>
                   <p className="small-note">
                     首次成功后，后续只需运行 npm run
