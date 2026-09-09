@@ -1006,7 +1006,7 @@ export default function Home({
               <ClipboardCheck size={23} />
             </span>
             <b>
-              面谈<span>INTERVIEW NOTES</span>
+              伯乐 AI<span>INTERVIEW COPILOT</span>
             </b>
           </div>
           <span className="workspace-label">面试工作台</span>
@@ -1625,7 +1625,7 @@ export default function Home({
               </section>
             </div>
             <footer className="page-footer">
-              <span>面谈 · 让面试判断有据可依</span>
+              <span>伯乐 AI · 让面试判断有据可依</span>
               <button
                 className="text-button"
                 disabled={!hasContent || !!busy}

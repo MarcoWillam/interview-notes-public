@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 export const metadata: Metadata = {
-  title: '面谈 · 面试评估工作台',
+  title: '伯乐 AI · 面试评估工作台',
   description:
     '粘贴候选人简历，导入 Markdown 面试记录，基于岗位标准和原文证据生成并确认结论评估。',
 };
