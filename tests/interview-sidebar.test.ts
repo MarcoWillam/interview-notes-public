@@ -8,9 +8,11 @@ import {
   interviewCreatedAt,
   moveManualInterview,
   parseSidebarCollapsed,
+  parseCollapsedGroupIds,
   parseSidebarSortMode,
   reconcileManualOrder,
   sidebarOrderStorageKey,
+  sidebarGroupCollapsedStorageKey,
   sidebarSortStorageKey,
   sortInterviewSessions,
   updateInterviewSummary,
@@ -117,6 +119,12 @@ void test('manual order prepends new records, drops deleted ids and moves determ
     sidebarOrderStorageKey('account-b'),
     'interview-sidebar-order:account-b',
   );
+  assert.equal(
+    sidebarGroupCollapsedStorageKey('account-c'),
+    'interview-sidebar-groups-collapsed:account-c',
+  );
+  assert.deepEqual(parseCollapsedGroupIds('["campus","campus",1]'), ['campus']);
+  assert.deepEqual(parseCollapsedGroupIds('invalid'), []);
 });
 
 void test('records are grouped in group order and sorted inside each section', () => {
@@ -231,7 +239,7 @@ void test('sidebar exposes account-scoped time and custom drag ordering', async 
   assert.match(source, /最早添加/);
   assert.match(source, /自定义排序/);
   assert.match(source, /<NativeSelect/);
-  assert.match(source, /sortInterviewSessions/);
+  assert.match(source, /groupInterviewSessions/);
   assert.match(source, /reconcileManualOrder/);
   assert.match(source, /draggable=\{sortMode === 'manual'\}/);
   assert.match(source, /onDragStart=/);
@@ -239,6 +247,33 @@ void test('sidebar exposes account-scoped time and custom drag ordering', async 
   assert.match(source, /onDrop=/);
   assert.match(source, /event\.key === 'ArrowUp'/);
   assert.match(source, /event\.key === 'ArrowDown'/);
+});
+
+void test('sidebar exposes local group management and record movement', async () => {
+  const [sidebar, page, css] = await Promise.all([
+    readFile(
+      new URL('../components/interview/interview-sidebar.tsx', import.meta.url),
+      'utf8',
+    ),
+    readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(sidebar, /groupInterviewSessions/);
+  assert.match(sidebar, /sidebarGroupCollapsedStorageKey/);
+  assert.match(sidebar, /新建分组/);
+  assert.match(sidebar, /重命名/);
+  assert.match(sidebar, /删除分组/);
+  assert.match(sidebar, /移动到分组/);
+  assert.match(sidebar, /未分组/);
+  assert.match(sidebar, /记录将移回“未分组”/);
+  assert.match(page, /groups=\{library\.groups\}/);
+  assert.match(page, /onCreateGroup=\{library\.createGroup\}/);
+  assert.match(page, /onRenameGroup=\{library\.renameGroup\}/);
+  assert.match(page, /onDeleteGroup=\{library\.deleteGroup\}/);
+  assert.match(page, /onMoveToGroup=\{library\.moveToGroup\}/);
+  assert.match(css, /\.interview-sidebar-group-header/);
+  assert.match(css, /\.interview-sidebar-move-menu/);
 });
 
 void test('local library is management-only and keeps destructive safeguards', async () => {

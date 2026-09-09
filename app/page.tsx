@@ -1115,6 +1115,7 @@ export default function Home({
         <InterviewSidebar
           storageScope={workspaceAccount?.id || 'standalone-preview'}
           sessions={library.sessions}
+          groups={library.groups}
           currentId={library.id}
           disabled={!library.ready || library.working || !!busy}
           saveStatus={
@@ -1131,6 +1132,10 @@ export default function Home({
               setHistoryOpen(true);
             })
           }
+          onCreateGroup={library.createGroup}
+          onRenameGroup={library.renameGroup}
+          onDeleteGroup={library.deleteGroup}
+          onMoveToGroup={library.moveToGroup}
         />
         <div className="workbench">
           {(!library.ready || library.error) && (

@@ -2274,6 +2274,76 @@ fieldset label:last-of-type {
   border-color: #83b9a5;
   background: #dcefe8;
 }
+.interview-sidebar-add-group {
+  width: 100%;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 5px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #54736a;
+  font-size: 12px;
+}
+.interview-sidebar-add-group:hover:not(:disabled),
+.interview-sidebar-add-group[aria-expanded='true'] {
+  background: #e5efeb;
+  color: #176c58;
+}
+.interview-sidebar-group-form {
+  display: grid;
+  gap: 5px;
+  margin: 6px 2px 2px;
+  padding: 8px;
+  border: 1px solid #d5e2de;
+  border-radius: 8px;
+  background: #fff;
+}
+.interview-sidebar-group-form > label {
+  color: #60776f;
+  font-size: 11px;
+  font-weight: 600;
+}
+.interview-sidebar-group-form > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px 28px;
+  gap: 4px;
+}
+.interview-sidebar-group-form input {
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #ccdcd6;
+  border-radius: 6px;
+  color: #294c42;
+  font-size: 12px;
+}
+.interview-sidebar-group-form button,
+.interview-sidebar-group-more,
+.interview-sidebar-row-action {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #607870;
+}
+.interview-sidebar-group-form button:hover:not(:disabled),
+.interview-sidebar-group-more:hover:not(:disabled),
+.interview-sidebar-row-action:hover:not(:disabled),
+.interview-sidebar-row-action[aria-expanded='true'] {
+  background: #e2efea;
+  color: #176c58;
+}
+.interview-sidebar-group-error {
+  margin: 6px 4px 0;
+  color: #a14436;
+  font-size: 11px;
+  line-height: 1.45;
+}
 .interview-sidebar-list {
   flex: 1 1 auto;
   min-height: 0;
@@ -2284,6 +2354,124 @@ fieldset label:last-of-type {
   padding-right: 4px;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+.interview-sidebar-group {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.interview-sidebar-group + .interview-sidebar-group {
+  margin-top: 5px;
+}
+.interview-sidebar-group-header {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 2px;
+}
+.interview-sidebar-group-toggle {
+  min-width: 0;
+  min-height: 30px;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 5px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #405f56;
+  text-align: left;
+}
+.interview-sidebar-group-toggle:hover,
+.interview-sidebar-group-toggle:focus-visible {
+  background: #e8f0ed;
+}
+.interview-sidebar-group-toggle strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.interview-sidebar-group-toggle span {
+  min-width: 20px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: #e1ece8;
+  color: #6f827b;
+  font-size: 10px;
+  text-align: center;
+}
+.interview-sidebar-group-more {
+  width: 28px;
+  height: 28px;
+}
+.interview-sidebar-group-actions {
+  display: grid;
+  gap: 4px;
+  margin: 0 2px 4px 19px;
+  padding: 6px;
+  border: 1px solid #d5e2de;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 5px 14px rgb(24 62 51 / 8%);
+}
+.interview-sidebar-group-actions > button {
+  min-height: 29px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #4d6a62;
+  font-size: 11px;
+  text-align: left;
+}
+.interview-sidebar-group-actions > button:hover:not(:disabled) {
+  background: #e9f1ee;
+  color: #176c58;
+}
+.interview-sidebar-group-actions .interview-sidebar-group-form {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.interview-sidebar-delete-group p {
+  margin: 2px 2px 7px;
+  color: #6f7f7a;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.interview-sidebar-delete-group > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+.interview-sidebar-delete-group button {
+  min-height: 29px;
+  border: 1px solid #d5e2de;
+  border-radius: 6px;
+  background: #fff;
+  color: #536d65;
+  font-size: 11px;
+}
+.interview-sidebar-delete-group button:first-child {
+  border-color: #e2c9c2;
+  color: #a14436;
+}
+.interview-sidebar-group-records {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.interview-sidebar-group-empty {
+  margin: 5px 8px 8px 20px;
+  color: #91a09b;
+  font-size: 11px;
 }
 .interview-sidebar-record {
   width: 100%;
@@ -2305,11 +2493,21 @@ fieldset label:last-of-type {
 .interview-sidebar-record-row.is-dragging {
   opacity: 0.5;
 }
-.interview-sidebar-record-row:not(:has(.interview-sidebar-drag-handle)) {
-  grid-template-columns: minmax(0, 1fr);
+.interview-sidebar-record-actions {
+  width: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.interview-sidebar-row-action {
+  width: 28px;
+  min-height: 28px;
+  flex: 1 1 auto;
 }
 .interview-sidebar-drag-handle {
-  width: 30px;
+  width: 28px;
+  min-height: 28px;
+  flex: 1 1 auto;
   display: grid;
   place-items: center;
   border: 0;
@@ -2325,6 +2523,41 @@ fieldset label:last-of-type {
 }
 .interview-sidebar-drag-handle:active {
   cursor: grabbing;
+}
+.interview-sidebar-move-menu {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 5px;
+  margin: 2px 0 5px 8px;
+  padding: 7px;
+  border: 1px solid #d5e2de;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 5px 14px rgb(24 62 51 / 8%);
+}
+.interview-sidebar-move-menu label {
+  color: #60776f;
+  font-size: 11px;
+  font-weight: 600;
+}
+.interview-sidebar-group-select[data-slot='native-select-wrapper'] {
+  width: 100%;
+  min-width: 0;
+}
+.interview-sidebar-group-select [data-slot='native-select'] {
+  height: 30px;
+  padding: 0 28px 0 8px;
+  border: 1px solid #ccdcd6;
+  border-radius: 6px;
+  background: #fff;
+  color: #36564d;
+  font-size: 11px;
+  line-height: 28px;
+}
+.interview-sidebar-group-select [data-slot='native-select-icon'] {
+  right: 7px;
+  width: 13px;
+  height: 13px;
 }
 .interview-sidebar-record:hover:not(:disabled) {
   background: #e9f1ee;

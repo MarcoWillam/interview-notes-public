@@ -21,6 +21,23 @@ export function sidebarOrderStorageKey(scope: string) {
   return `interview-sidebar-order:${encodeURIComponent(scope)}`;
 }
 
+export function sidebarGroupCollapsedStorageKey(scope: string) {
+  return `interview-sidebar-groups-collapsed:${encodeURIComponent(scope)}`;
+}
+
+export function parseCollapsedGroupIds(value: string | null) {
+  try {
+    const parsed = JSON.parse(value || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (id, index): id is string =>
+        typeof id === 'string' && parsed.indexOf(id) === index,
+    );
+  } catch {
+    return [];
+  }
+}
+
 export function parseSidebarSortMode(value: string | null): SidebarSortMode {
   return value === 'oldest' || value === 'manual' ? value : 'newest';
 }
