@@ -69,10 +69,7 @@ void test('the interview library updates sidebar summaries after a successful sa
 
 void test('sidebar exposes current state, responsive preference, and management actions', async () => {
   const source = await readFile(
-    new URL(
-      '../components/interview/interview-sidebar.tsx',
-      import.meta.url,
-    ),
+    new URL('../components/interview/interview-sidebar.tsx', import.meta.url),
     'utf8',
   );
   assert.match(source, /aria-current=\{current \? 'page' : undefined\}/);
@@ -96,4 +93,16 @@ void test('local library is management-only and keeps destructive safeguards', a
   assert.match(source, /删除这场本地面试/);
   assert.doesNotMatch(source, /<FolderOpen/);
   assert.doesNotMatch(source, />\s*打开\s*</);
+});
+
+void test('workbench mounts the sidebar and reserves independent scrolling areas', async () => {
+  const [page, css] = await Promise.all([
+    readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+  ]);
+  assert.match(page, /<InterviewSidebar/);
+  assert.doesNotMatch(page, />\s*本地面试记录\s*</);
+  assert.match(css, /\.workbench-shell\s*\{[\s\S]*?display:\s*flex/);
+  assert.match(css, /\.interview-sidebar-list\s*\{[\s\S]*?overflow-y:\s*auto/);
+  assert.match(css, /@media \(max-width:\s*1179px\)/);
 });

@@ -2237,9 +2237,225 @@ fieldset label:last-of-type {
   }
 }
 
-/* Keep the work area in document flow on laptop screens. */
+/* Global interview history navigation and laptop work area. */
+.remote-bar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.workbench-shell {
+  --remote-bar-height: 41px;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  min-height: calc(100dvh - var(--remote-bar-height));
+  position: relative;
+}
 .workbench {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow-wrap: anywhere;
+}
+.interview-sidebar-panel,
+.interview-sidebar-rail {
+  position: sticky;
+  top: var(--remote-bar-height);
+  height: calc(100dvh - var(--remote-bar-height));
+  flex: 0 0 auto;
+  border-right: 1px solid #dce6e2;
+  background: #f5f9f7;
+  color: #203d37;
+  z-index: 40;
+}
+.interview-sidebar-panel {
+  width: 252px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 10px;
+}
+.interview-sidebar-rail {
+  width: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+}
+.sidebar-icon-button {
+  width: 36px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #506d66;
+}
+.sidebar-icon-button:hover:not(:disabled) {
+  background: #e2efea;
+  color: #176c58;
+}
+.sidebar-rail-spacer {
+  flex: 1 1 auto;
+}
+.interview-sidebar-heading {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 4px 8px 8px;
+}
+.interview-sidebar-heading > span {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 650;
+}
+.interview-sidebar-create {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #bfd8cf;
+  border-radius: 9px;
+  background: #e6f3ee;
+  color: #176c58;
+  font-size: 13px;
+  font-weight: 600;
+}
+.interview-sidebar-create:hover:not(:disabled) {
+  border-color: #83b9a5;
+  background: #dcefe8;
+}
+.interview-sidebar-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 12px -2px 8px 0;
+  padding-right: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.interview-sidebar-record {
+  width: 100%;
+  display: grid;
+  gap: 1px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #587069;
+  text-align: left;
+}
+.interview-sidebar-record:hover:not(:disabled) {
+  background: #e9f1ee;
+}
+.interview-sidebar-record[aria-current='page'] {
+  border-color: #c5ded5;
+  background: #dcefe8;
+  color: #145f4e;
+}
+.interview-sidebar-record strong,
+.interview-sidebar-record span,
+.interview-sidebar-record time {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.interview-sidebar-record strong {
+  font-size: 13px;
+  font-weight: 650;
+}
+.interview-sidebar-record span,
+.interview-sidebar-record time {
+  font-size: 11px;
+  line-height: 1.45;
+}
+.interview-sidebar-record time {
+  color: #84958f;
+}
+.interview-sidebar-empty {
+  margin: 18px 8px;
+  color: #81928c;
+  font-size: 12px;
+  text-align: center;
+}
+.interview-sidebar-footer {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 6px;
+  padding: 10px 4px 0;
+  border-top: 1px solid #dce6e2;
+}
+.interview-sidebar-footer > span {
+  overflow: hidden;
+  color: #81928c;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.interview-sidebar-footer > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #506d66;
+  font-size: 13px;
+  text-align: left;
+}
+.interview-sidebar-footer > button:hover:not(:disabled) {
+  background: #e2efea;
+  color: #176c58;
+}
+.interview-sidebar-overlay {
+  position: fixed;
+  inset: var(--remote-bar-height) 0 0 0;
+  z-index: 45;
+  display: flex;
+}
+.interview-sidebar-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #17352f3d;
+}
+.interview-sidebar-panel.is-overlay {
+  position: relative;
+  top: 0;
+  z-index: 1;
+  height: 100%;
+  box-shadow: 16px 0 42px #18372e24;
+}
+@media (max-width: 1179px) {
+  .interview-sidebar-panel:not(.is-overlay) {
+    display: none;
+  }
+}
+@media (max-width: 600px) {
+  .workbench-shell {
+    --remote-bar-height: 58px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .interview-sidebar-panel,
+  .interview-sidebar-rail {
+    scroll-behavior: auto;
+  }
 }
 .topbar {
   min-height: 60px;
