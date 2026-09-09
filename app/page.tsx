@@ -89,6 +89,7 @@ import {
 } from '@/lib/remote-analysis';
 
 const defaultDimensions = defaultStandards.dimensionText;
+const MANUAL_TRANSCRIPT_SOURCE = '手动粘贴 / 输入';
 export type WorkspaceAccount = {
   id: string;
   username: string;
@@ -769,6 +770,10 @@ export default function Home({
   function editTranscript(text: string) {
     invalidate();
     setTranscript(text);
+    if (!transcriptName && text.trim())
+      setTranscriptName(MANUAL_TRANSCRIPT_SOURCE);
+    else if (transcriptName === MANUAL_TRANSCRIPT_SOURCE && !text.trim())
+      setTranscriptName('');
     setReviewed(false);
   }
   async function analyze() {
@@ -1394,7 +1399,8 @@ export default function Home({
                         <div>
                           <h2>面试记录</h2>
                           <p className="section-description">
-                            上传豆包转写后整理的 .md 文件，再校对内容和说话人。
+                            直接粘贴转写文本，或导入豆包整理后的 .md
+                            文件，再校对内容和说话人。
                           </p>
                         </div>
                         <span className="count">
@@ -1410,7 +1416,8 @@ export default function Home({
                           <strong>
                             {busy === 'import'
                               ? '正在读取面试记录…'
-                              : transcriptName
+                              : transcriptName &&
+                                  transcriptName !== MANUAL_TRANSCRIPT_SOURCE
                                 ? '重新导入 Markdown 面试记录'
                                 : '导入 Markdown 面试记录'}
                           </strong>
@@ -1434,18 +1441,18 @@ export default function Home({
                             来源：{transcriptName} · 以下为可编辑正文
                           </p>
                         )}
-                        <label htmlFor="transcript" className="sr-only">
-                          面试对话文本
+                        <label htmlFor="transcript" className="field-title">
+                          直接粘贴或输入面试记录
                         </label>
                         <textarea
                           id="transcript"
                           className="transcript-input"
-                          disabled={!!busy || !transcriptName}
+                          disabled={!!busy}
                           value={transcript}
                           maxLength={80000}
                           onChange={(e) => editTranscript(e.target.value)}
                           placeholder={
-                            '请先导入 .md 面试记录，再在这里预览和校对。\n\n建议按下面的格式整理：\n面试官：请介绍一个你负责的项目。\n候选人：……\n\n不确定的内容请标注“待核实”，不要补写未说过的话。'
+                            '可直接在这里粘贴完整转写文本。\n\n建议按下面的格式整理：\n面试官：请介绍一个你负责的项目。\n候选人：……\n\n不确定的内容请标注“待核实”，不要补写未说过的话。'
                           }
                         />
                         <label

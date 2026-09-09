@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { importTranscript } from '../lib/import-transcript.ts';
 
 const file = (text: string, name = '面试.md') => new File([text], name);
@@ -66,4 +67,16 @@ void test('reports file read failure', async () => {
     }),
     /无法读取/,
   );
+});
+
+void test('interview record accepts pasted text without requiring an imported file', async () => {
+  const page = await readFile(
+    new URL('../app/page.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(page, /直接粘贴或输入面试记录/);
+  assert.match(page, /disabled=\{!!busy\}/);
+  assert.doesNotMatch(page, /disabled=\{!!busy \|\| !transcriptName\}/);
+  assert.match(page, /手动粘贴 \/ 输入/);
 });
