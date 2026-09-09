@@ -107,7 +107,7 @@ export async function runConnector(
     status: typeof codexStatus;
     readResume?: typeof readResumeWithCodex;
   } = { analyze: analyzeWithCodex, status: codexStatus },
-  timings = { pollMs: 3000, heartbeatMs: 10000 },
+  timings = { pollMs: 3000, heartbeatMs: 5000 },
 ) {
   const server = validateServer(credentials.server);
   let ready = false,

@@ -203,7 +203,7 @@ void test('HTTP queue holds offline jobs, pairs a connector, and returns a valid
     await f.close();
   }
 });
-void test('explicit cancellation reaches the running connector and prevents late results', async () => {
+void test('pausing a running task aborts the connector and preserves resumable work', async () => {
   const f = await fixture();
   const controller = new AbortController();
   let worker: Promise<void> | undefined,
@@ -231,13 +231,67 @@ void test('explicit cancellation reaches the running connector and prevents late
       { pollMs: 10, heartbeatMs: 20 },
     );
     await until(() => f.store.get(f.user, job.id).state === 'running');
-    assert.equal((await f.api('/api/jobs/' + job.id, 'DELETE')).status, 200);
+    assert.equal(
+      (
+        await f.api('/api/jobs/' + job.id + '/action', 'POST', {
+          action: 'pause',
+        })
+      ).status,
+      200,
+    );
     await until(() => aborted);
-    assert.equal(f.store.get(f.user, job.id).state, 'cancelled');
+    assert.equal(f.store.get(f.user, job.id).state, 'paused');
     assert.equal(f.store.get(f.user, job.id).report, null);
+    assert.notEqual(
+      f.store.db.prepare('SELECT input FROM jobs WHERE id=?').get(job.id)
+        ?.input,
+      null,
+    );
   } finally {
     controller.abort();
     await worker;
+    await f.close();
+  }
+});
+void test('task action API pauses, resumes and stops only the signed-in account task', async () => {
+  const f = await fixture();
+  try {
+    const job = f.store.submit(f.user, 'actions-123', '面试', input);
+    const pause = await f.api('/api/jobs/' + job.id + '/action', 'POST', {
+      action: 'pause',
+    });
+    assert.equal(pause.status, 200);
+    assert.equal(((await pause.json()) as { state: string }).state, 'paused');
+    const resume = await f.api('/api/jobs/' + job.id + '/action', 'POST', {
+      action: 'resume',
+    });
+    assert.equal(resume.status, 200);
+    assert.equal(((await resume.json()) as { state: string }).state, 'queued');
+
+    const other = f.store.createUser('other-user', 'other-password-123').id;
+    const forbidden = await fetch(f.origin + '/api/jobs/' + job.id + '/action', {
+      method: 'POST',
+      headers: {
+        Origin: f.origin,
+        Cookie: 'interview_session=' + f.store.newSession(other),
+        'X-Interview-Account': other,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'stop' }),
+    });
+    assert.equal(forbidden.status, 404);
+    assert.equal(f.store.get(f.user, job.id).state, 'queued');
+
+    const stop = await f.api('/api/jobs/' + job.id + '/action', 'POST', {
+      action: 'stop',
+    });
+    assert.equal(stop.status, 200);
+    assert.equal(((await stop.json()) as { state: string }).state, 'cancelled');
+    const invalid = await f.api('/api/jobs/' + job.id + '/action', 'POST', {
+      action: 'restart',
+    });
+    assert.equal(invalid.status, 400);
+  } finally {
     await f.close();
   }
 });
