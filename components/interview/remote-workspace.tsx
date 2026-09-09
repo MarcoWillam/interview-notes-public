@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Link2,
   Download,
+  UserPlus,
 } from 'lucide-react';
 import Home from '../../app/page';
 import { configureLocalStore } from '../../lib/local/store';
@@ -78,6 +79,7 @@ export function RemoteWorkspace() {
     [error, setError] = useState(''),
     [pending, setPending] = useState(false);
   const [panel, setPanel] = useState<'devices' | 'jobs' | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
   async function loadSession() {
     try {
       const value = await remoteRequest<Session>('/api/session');
@@ -190,6 +192,12 @@ export function RemoteWorkspace() {
             <ListChecks size={16} />
             评估任务
           </button>
+          {!session.preview && session.user.username === 'owner' && (
+            <button onClick={() => setAccountOpen(true)}>
+              <UserPlus size={16} />
+              账号配置
+            </button>
+          )}
           {!session.preview && (
             <button disabled={pending} onClick={() => void logout()}>
               <LogOut size={15} />
@@ -209,7 +217,126 @@ export function RemoteWorkspace() {
         close={() => setPanel(null)}
         preview={session.preview}
       />
+      <AccountSetupDialog
+        open={accountOpen}
+        close={() => setAccountOpen(false)}
+      />
     </>
+  );
+}
+
+function AccountSetupDialog({
+  open,
+  close,
+}: {
+  open: boolean;
+  close: () => void;
+}) {
+  const [pending, setPending] = useState(false),
+    [error, setError] = useState(''),
+    [success, setSuccess] = useState('');
+  async function createAccount(event: SyntheticEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const rawUsername = form.get('username');
+    const rawPassword = form.get('password');
+    const username =
+      typeof rawUsername === 'string' ? rawUsername.trim() : '';
+    const password = typeof rawPassword === 'string' ? rawPassword : '';
+    setPending(true);
+    setError('');
+    setSuccess('');
+    try {
+      const result = await remoteRequest<{ user: { username: string } }>(
+        '/api/accounts',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            username,
+            password,
+          }),
+        },
+      );
+      formElement.reset();
+      setSuccess(`账号“${result.user.username}”已创建，可以直接登录。`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '账号创建失败。');
+    } finally {
+      setPending(false);
+    }
+  }
+  function dismiss() {
+    if (pending) return;
+    setError('');
+    setSuccess('');
+    close();
+  }
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) dismiss();
+      }}
+    >
+      <DialogContent className="remote-dialog remote-account-dialog">
+        <div className="remote-dialog-heading">
+          <DialogTitle>配置面试官账号</DialogTitle>
+          <button
+            className="icon-button"
+            aria-label="关闭账号配置"
+            disabled={pending}
+            onClick={dismiss}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <DialogDescription>
+          设置账号名和初始密码。创建后，将这两项单独交给对应面试官即可。
+        </DialogDescription>
+        <form className="remote-account-form" onSubmit={createAccount}>
+          <label htmlFor="new-account-username">账号名</label>
+          <input
+            id="new-account-username"
+            name="username"
+            autoComplete="off"
+            required
+            minLength={2}
+            maxLength={80}
+            pattern="[\p{L}\p{N}_@.\-]+"
+            title="支持中英文、数字及 _ @ . -"
+            disabled={pending}
+          />
+          <span>2–80 字，支持中英文、数字及 _ @ . -</span>
+          <label htmlFor="new-account-password">初始密码</label>
+          <input
+            id="new-account-password"
+            name="password"
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={12}
+            maxLength={200}
+            disabled={pending}
+          />
+          <span>至少 12 字；密码只会以安全哈希保存在服务器。</span>
+          {error && (
+            <p className="remote-error" role="alert">
+              {error}
+            </p>
+          )}
+          {success && (
+            <output className="remote-success">
+              {success}
+            </output>
+          )}
+          <button className="primary-button" disabled={pending}>
+            <UserPlus size={16} />
+            {pending ? '正在创建…' : '创建账号'}
+          </button>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

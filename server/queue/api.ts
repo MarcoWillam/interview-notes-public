@@ -88,6 +88,11 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
             409,
           );
       };
+      const requireOwner = () => {
+        requireAccount();
+        if (user?.username !== 'owner')
+          throw new QueueError('仅 owner 可以配置面试官账号。', 403);
+      };
       if (path === '/api/session' && method === 'GET') {
         if (!user && config.previewUser) {
           const value = store.newSession(config.previewUser);
@@ -106,6 +111,12 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
         requireAccount();
         store.logout(sessionToken);
         return json({ ok: true }, 200, { 'Set-Cookie': cookie('', 0) });
+      }
+      if (path === '/api/accounts' && method === 'POST') {
+        requireOwner();
+        limit('account:' + user!.id);
+        const created = store.createUser(str('username', 80), str('password'));
+        return json({ user: { username: created.username } }, 201);
       }
       if (path === '/api/pair/redeem' && method === 'POST') {
         limit('pair:' + clientAddress);
