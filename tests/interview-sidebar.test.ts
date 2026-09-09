@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import type { SavedInterview } from '../lib/local/store.ts';
 import {
+  groupInterviewSessions,
   SIDEBAR_BREAKPOINT,
   interviewCreatedAt,
   moveManualInterview,
@@ -14,6 +15,7 @@ import {
   sortInterviewSessions,
   updateInterviewSummary,
 } from '../lib/interview-sidebar.ts';
+import type { InterviewGroup } from '../lib/local/store.ts';
 
 function session(id: string, updatedAt: number): SavedInterview {
   return {
@@ -117,6 +119,54 @@ void test('manual order prepends new records, drops deleted ids and moves determ
   );
 });
 
+void test('records are grouped in group order and sorted inside each section', () => {
+  const groups: InterviewGroup[] = [
+    { id: 'later', name: '社招', createdAt: 20, order: 2 },
+    { id: 'first', name: '校招', createdAt: 10, order: 1 },
+  ];
+  const rows = [
+    { ...session('campus-old', 100), groupId: 'first', createdAt: 100 },
+    { ...session('campus-new', 300), groupId: 'first', createdAt: 300 },
+    { ...session('unknown', 250), groupId: 'deleted', createdAt: 250 },
+    { ...session('loose', 200), groupId: null, createdAt: 200 },
+  ];
+
+  const newest = groupInterviewSessions(rows, groups, 'newest', []);
+  assert.deepEqual(
+    newest.map(({ id, name, sessions }) => ({
+      id,
+      name,
+      sessions: sessions.map((row) => row.id),
+    })),
+    [
+      {
+        id: 'first',
+        name: '校招',
+        sessions: ['campus-new', 'campus-old'],
+      },
+      { id: 'later', name: '社招', sessions: [] },
+      { id: null, name: '未分组', sessions: ['unknown', 'loose'] },
+    ],
+  );
+
+  const manual = groupInterviewSessions(rows, groups, 'manual', [
+    'campus-old',
+    'loose',
+    'campus-new',
+    'unknown',
+  ]);
+  assert.deepEqual(
+    manual.map(({ sessions }) => sessions.map((row) => row.id)),
+    [['campus-old', 'campus-new'], [], ['loose', 'unknown']],
+  );
+  assert.deepEqual(
+    groupInterviewSessions([session('legacy', 1)], [], 'oldest', []).map(
+      ({ id, name }) => ({ id, name }),
+    ),
+    [{ id: null, name: '未分组' }],
+  );
+});
+
 void test('the interview library updates sidebar summaries after a successful save', async () => {
   const source = await readFile(
     new URL('../hooks/use-interview-library.ts', import.meta.url),
@@ -145,6 +195,12 @@ void test('the interview library preserves one creation time for every record id
   assert.match(hook, /const createdAt = useRef<number \| null>\(null\)/);
   assert.match(hook, /createdAt: createdAt\.current/);
   assert.match(hook, /createdAt\.current = .*\.createdAt \?\? .*\.updatedAt/);
+  assert.match(hook, /saveInterviewDraft\(saved\)/);
+  assert.match(hook, /listInterviewGroups\(\)/);
+  assert.match(hook, /createGroup/);
+  assert.match(hook, /renameGroup/);
+  assert.match(hook, /deleteGroup/);
+  assert.match(hook, /moveToGroup/);
 });
 
 void test('sidebar exposes current state, responsive preference, and management actions', async () => {

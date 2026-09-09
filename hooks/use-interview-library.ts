@@ -4,6 +4,7 @@ import {
   localStore,
   type SavedInterview,
   type AudioRecord,
+  type InterviewGroup,
   type NewInterviewSeed,
   type Preference,
 } from '@/lib/local/store';
@@ -28,6 +29,7 @@ export function useInterviewLibrary(
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
   const [sessions, setSessions] = useState<SavedInterview[]>([]);
+  const [groups, setGroups] = useState<InterviewGroup[]>([]);
   const [audio, setAudio] = useState<AudioRecord[]>([]);
   const [preferences, setPreferences] = useState<Preference[]>([]);
   const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
@@ -66,9 +68,10 @@ export function useInterviewLibrary(
   });
   async function refresh() {
     const store = localStore();
-    const [rows, audios, prefs, estimate, persistent, settings] =
+    const [rows, groupRows, audios, prefs, estimate, persistent, settings] =
       await Promise.all([
         store.listInterviews(),
+        store.listInterviewGroups(),
         store.listAudio(),
         store.listPreferences(),
         navigator.storage?.estimate().catch(() => ({ usage: 0, quota: 0 })),
@@ -76,6 +79,7 @@ export function useInterviewLibrary(
         store.getSettings(),
       ]);
     setSessions(rows.sort((a, b) => b.updatedAt - a.updatedAt));
+    setGroups(groupRows);
     setAudio(audios);
     setPreferences(prefs);
     setGlobalSettings(
@@ -135,7 +139,7 @@ export function useInterviewLibrary(
     const next = writes.current
       .catch(() => {})
       .then(async () => {
-        await localStore().saveInterview(saved);
+        await localStore().saveInterviewDraft(saved);
         return saved;
       });
     writes.current = next.then(() => {});
@@ -243,6 +247,69 @@ export function useInterviewLibrary(
     await navigator.storage.persist();
     await refresh();
   }
+  async function createGroup(name: string) {
+    setWorking(true);
+    try {
+      const store = localStore();
+      const current = await store.listInterviewGroups();
+      const nextOrder = current.reduce(
+        (maximum, group) => Math.max(maximum, group.order + 1),
+        0,
+      );
+      const saved = await store.saveInterviewGroup({
+        id: crypto.randomUUID(),
+        name,
+        createdAt: Date.now(),
+        order: nextOrder,
+      });
+      setGroups([...current, saved]);
+      return saved;
+    } finally {
+      setWorking(false);
+    }
+  }
+  async function renameGroup(id: string, name: string) {
+    setWorking(true);
+    try {
+      const current = await localStore().listInterviewGroups();
+      const group = current.find((item) => item.id === id);
+      if (!group) throw new Error('分组已不存在，请刷新后重试');
+      const saved = await localStore().saveInterviewGroup({ ...group, name });
+      setGroups(current.map((item) => (item.id === saved.id ? saved : item)));
+      return saved;
+    } finally {
+      setWorking(false);
+    }
+  }
+  async function deleteGroup(id: string) {
+    setWorking(true);
+    try {
+      await writes.current.catch(() => {});
+      await localStore().deleteInterviewGroup(id);
+      setGroups((current) => current.filter((group) => group.id !== id));
+      setSessions((current) =>
+        current.map((session) =>
+          session.groupId === id ? { ...session, groupId: null } : session,
+        ),
+      );
+    } finally {
+      setWorking(false);
+    }
+  }
+  async function moveToGroup(interviewId: string, groupId: string | null) {
+    setWorking(true);
+    try {
+      await flush();
+      await localStore().moveInterviewToGroup(interviewId, groupId);
+      setSessions((current) =>
+        current.map((session) =>
+          session.id === interviewId ? { ...session, groupId } : session,
+        ),
+      );
+    } finally {
+      setWorking(false);
+    }
+  }
   return {
     access,
     id,
@@ -250,6 +317,7 @@ export function useInterviewLibrary(
     working,
     error,
     sessions,
+    groups,
     audio,
     preferences,
     globalSettings,
@@ -262,5 +330,9 @@ export function useInterviewLibrary(
     remove,
     persist,
     refresh,
+    createGroup,
+    renameGroup,
+    deleteGroup,
+    moveToGroup,
   };
 }

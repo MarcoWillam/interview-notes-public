@@ -1,8 +1,13 @@
-import type { SavedInterview } from './local/store';
+import type { InterviewGroup, SavedInterview } from './local/store';
 
 export const SIDEBAR_BREAKPOINT = 1180;
 export const SIDEBAR_STORAGE_KEY = 'interview-sidebar-collapsed';
 export type SidebarSortMode = 'newest' | 'oldest' | 'manual';
+export type InterviewSessionGroup = {
+  id: string | null;
+  name: string;
+  sessions: SavedInterview[];
+};
 
 export function parseSidebarCollapsed(value: string | null) {
   return value === 'true';
@@ -55,6 +60,42 @@ export function sortInterviewSessions(
   const order = reconcileManualOrder(manualOrder, rows);
   const positions = new Map(order.map((id, index) => [id, index]));
   return [...rows].sort((a, b) => positions.get(a.id)! - positions.get(b.id)!);
+}
+
+export function groupInterviewSessions(
+  rows: SavedInterview[],
+  groups: InterviewGroup[],
+  mode: SidebarSortMode,
+  manualOrder: string[],
+): InterviewSessionGroup[] {
+  const orderedGroups = [...groups].sort(
+    (a, b) =>
+      a.order - b.order ||
+      a.createdAt - b.createdAt ||
+      a.id.localeCompare(b.id),
+  );
+  const knownIds = new Set(orderedGroups.map(({ id }) => id));
+  const sections: InterviewSessionGroup[] = orderedGroups.map(
+    ({ id, name }) => ({
+      id,
+      name,
+      sessions: sortInterviewSessions(
+        rows.filter((row) => row.groupId === id),
+        mode,
+        manualOrder,
+      ),
+    }),
+  );
+  const ungrouped = rows.filter(
+    (row) => !row.groupId || !knownIds.has(row.groupId),
+  );
+  if (ungrouped.length || sections.length === 0)
+    sections.push({
+      id: null,
+      name: '未分组',
+      sessions: sortInterviewSessions(ungrouped, mode, manualOrder),
+    });
+  return sections;
 }
 
 export function moveManualInterview(
