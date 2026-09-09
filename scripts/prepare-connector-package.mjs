@@ -1,0 +1,57 @@
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { resolve, join } from 'node:path';
+import { zipSync, strToU8 } from 'fflate';
+
+const root = resolve(import.meta.dirname, '..');
+const files = [
+  'server/connector.ts',
+  'server/queue/connector-client.ts',
+  'server/codex.ts',
+  'server/analysis.ts',
+  'lib/interview.ts',
+  'lib/resume-reading.ts',
+  'lib/standards.ts',
+  'lib/assessment.ts',
+];
+const archive = {};
+for (const file of files)
+  archive[`interview-connector/${file}`] = await readFile(join(root, file));
+
+archive['interview-connector/package.json'] = strToU8(
+  JSON.stringify(
+    {
+      name: 'interview-codex-connector',
+      version: '0.1.0',
+      private: true,
+      type: 'module',
+      engines: { node: '>=24.0.0' },
+      scripts: {
+        connector: 'node --experimental-strip-types server/connector.ts',
+      },
+    },
+    null,
+    2,
+  ) + '\n',
+);
+archive['interview-connector/使用说明.txt'] = strToU8(`面试工作台本地 Codex 连接器
+
+准备：
+1. 安装 Node.js 24 或更高版本。
+2. 安装 Codex CLI，并运行 codex login 使用自己的 ChatGPT 账号登录。
+3. 在网页使用自己的面试官账号生成新配对码。
+
+运行：
+1. 在终端进入解压后的 interview-connector 文件夹。
+2. 运行网页显示的 npm run connector -- --server ... --pair ... 命令。
+3. 配对成功后保持终端窗口运行；以后在同一文件夹运行 npm run connector 即可。
+
+若 npm 报错找不到 /Users/用户名/package.json，说明终端没有进入本文件夹。
+配对码 10 分钟有效且只能使用一次，过期后请在网页重新生成。
+`);
+
+const output = join(root, 'public/downloads');
+await mkdir(output, { recursive: true });
+await writeFile(
+  join(output, 'interview-connector.zip'),
+  zipSync(archive, { level: 9 }),
+);

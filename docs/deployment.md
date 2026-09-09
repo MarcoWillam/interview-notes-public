@@ -87,7 +87,7 @@ location / {
 
 1. 安装 Node.js 24+、本项目及 Codex CLI，在终端执行 `codex login`，用现有 ChatGPT 账号登录。服务器账号与 Codex 账号分别管理。
 2. 在网页登录，进入“电脑连接”，生成配对码。
-3. 在电脑项目目录运行网页给出的 `npm run connector -- --server https://实际域名 --pair 配对码`。
+3. 在“电脑连接”下载并解压不含凭据的专用连接器包，进入解压后的 `interview-connector` 目录，确认其中包含 `package.json` 后运行网页给出的 `npm run connector -- --server https://实际域名 --pair 配对码`。若 npm 报错在 `/Users/用户名/package.json` 找不到文件，说明仍停留在用户主目录；进入连接器目录后重新运行，超过 10 分钟则先生成新配对码。
 4. 保持连接器进程运行；下次启动仅需 `npm run connector`。可通过 `--config /绝对路径/connector.json` 指定独立凭据文件，通过 `INTERVIEW_CODEX_BIN` 指定 Codex 路径。
 5. 电脑主动访问服务器，不向网络监听端口。电脑休眠或连接器退出时任务等待；恢复连接自动领取未执行的任务。已经开始但租约超时的任务不会自动重跑，需在网页核实后重新生成。
 

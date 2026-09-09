@@ -45,3 +45,4 @@ next-env.d.ts
 *.sqlite-shm
 *.sqlite-wal
 /public/pdf-assets/
+/public/downloads/
