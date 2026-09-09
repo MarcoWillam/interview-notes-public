@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { localScope } from '../lib/local/store';
 export function useLocalAccess() {
   const [access, setAccess] = useState<
     'loading' | 'ready' | 'blocked' | 'unavailable'
@@ -16,17 +17,21 @@ export function useLocalAccess() {
       };
     }
     void navigator.locks
-      .request('miantan-local-editor', { ifAvailable: true }, async (lock) => {
-        if (disposed) return;
-        if (!lock) {
-          setAccess('blocked');
-          return;
-        }
-        setAccess('ready');
-        await new Promise<void>((resolve) => {
-          release = resolve;
-        });
-      })
+      .request(
+        'miantan-local-editor' + (localScope() ? '-' + localScope() : ''),
+        { ifAvailable: true },
+        async (lock) => {
+          if (disposed) return;
+          if (!lock) {
+            setAccess('blocked');
+            return;
+          }
+          setAccess('ready');
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        },
+      )
       .catch(() => {
         if (!disposed) setAccess('unavailable');
       });

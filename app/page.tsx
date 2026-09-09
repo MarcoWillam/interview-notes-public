@@ -1,15 +1,18 @@
 'use client';
+import { importResume } from '@/lib/import-resume';
+import { ResumeReadingView } from '@/components/interview/resume-reading-view';
+import {
+  validateResumeInput,
+  exportResumeReading,
+  type ResumeReading,
+} from '@/lib/resume-reading';
+import { submitRemoteResume } from '@/lib/remote-analysis';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AudioLines,
-  Mic,
   FileText,
   ClipboardCheck,
   ArrowUpRight,
   ShieldCheck,
-  Pause,
-  Play,
-  Square,
   Download,
   Plus,
   Settings2,
@@ -38,7 +41,6 @@ import {
   AlertDialogAction,
   AlertDialogFooter,
 } from '@/components/ui/alert-dialog';
-import { useRecorder, MAX_AUDIO_BYTES } from '@/hooks/use-recorder';
 import { validateInput, exportMarkdown, type Report } from '@/lib/interview';
 import { useInterviewLibrary } from '@/hooks/use-interview-library';
 import { LocalLibrary } from '@/components/interview/local-library';
@@ -49,17 +51,14 @@ import {
   normalizeStandards,
   type InterviewStandards,
 } from '@/lib/standards';
-import { importResume } from '@/lib/import-resume';
+import { importTranscript } from '@/lib/import-transcript';
+import {
+  submitRemoteAnalysis,
+  remoteRequest,
+  type RemoteJob,
+} from '@/lib/remote-analysis';
 
 const defaultDimensions = defaultStandards.dimensionText;
-const stateLabels = {
-  idle: '准备就绪',
-  requesting: '等待麦克风授权',
-  recording: '正在录音',
-  paused: '录音已暂停',
-  stopping: '正在保存音频',
-  stopped: '录音已结束',
-};
 function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -69,8 +68,7 @@ function download(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 export default function Home() {
-  const recorder = useRecorder();
-  const [tab, setTab] = useState('record');
+  const [tab, setTab] = useState('resume');
   const [candidate, setCandidate] = useState('');
   const [role, setRole] = useState('');
   const [requirements, setRequirements] = useState('');
@@ -80,31 +78,48 @@ export default function Home() {
   const [reportRequirements, setReportRequirements] = useState('');
   const [resumeText, setResumeText] = useState('');
   const [resumeName, setResumeName] = useState('');
+  const [resumeReading, setResumeReading] = useState<ResumeReading | null>(
+    null,
+  );
+  const [resumeChecked, setResumeChecked] = useState(false);
+  const [pendingResume, setPendingResume] = useState<{
+    text: string;
+    name: string;
+  } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const [consent, setConsent] = useState(false);
+  const [transcriptName, setTranscriptName] = useState('');
+  const [pendingImport, setPendingImport] = useState<{
+    text: string;
+    name: string;
+  } | null>(null);
   const [reviewed, setReviewed] = useState(false);
   const [report, setReport] = useState<Report | null>(null);
   const [conclusion, setConclusion] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState<
-    'transcribe' | 'analyze' | 'resume' | 'prepare' | null
+    'import' | 'analyze' | 'resume-read' | 'prepare' | null
   >(null);
   const busyRef = useRef(false);
+  const analysisController = useRef<AbortController | null>(null);
+  useEffect(() => () => analysisController.current?.abort(), []);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [services, setServices] = useState<{
     analysis: boolean;
-    transcription: boolean;
+    provider?: 'codex-local' | 'codex-queue';
+    connected?: boolean;
+    message?: string;
   } | null>(null);
+  const localCodex = services?.provider === 'codex-local';
+  const queuedCodex = services?.provider === 'codex-queue';
+  const [remoteJob, setRemoteJob] = useState<RemoteJob | null>(null);
+  const cancelledRemotely = useRef(false);
+  const [cancelling, setCancelling] = useState(false);
   const [statusError, setStatusError] = useState(false);
   const [settings, setSettings] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
-  const [audioUrl, setAudioUrl] = useState('');
-  const active = ['recording', 'paused', 'requesting', 'stopping'].includes(
-    recorder.state,
-  );
   const dimensions = dimensionText
     .split(/[、,，\n]/)
     .map((s) => s.trim())
@@ -130,14 +145,16 @@ export default function Home() {
       reportRequirements,
       resumeText,
       resumeName,
+      resumeReading,
+      resumeChecked,
       transcript,
+      transcriptName,
       reviewed,
       report,
       conclusion,
       confirmed,
     },
     async (saved) => {
-      await recorder.restore(saved.id);
       setCandidate(saved.candidate);
       setRole(saved.role);
       setRequirements(saved.requirements);
@@ -147,19 +164,23 @@ export default function Home() {
       setReportRequirements(saved.reportRequirements || '');
       setResumeText(saved.resumeText || '');
       setResumeName(saved.resumeName || '');
+      setResumeReading(saved.resumeReading || null);
+      setResumeChecked(saved.resumeChecked || false);
       setTranscript(saved.transcript);
+      setTranscriptName(
+        saved.transcriptName || (saved.transcript ? '历史面试记录' : ''),
+      );
       setReviewed(saved.reviewed);
       setReport(saved.report);
       setConclusion(saved.conclusion);
       setConfirmed(saved.confirmed);
-      setConsent(false);
-      setTab('record');
+      setTab('resume');
       setNotice('已从当前浏览器恢复面试记录。');
     },
     reset,
   );
   async function localAction(action: () => Promise<void>) {
-    if (busyRef.current || active) return;
+    if (busyRef.current) return;
     busyRef.current = true;
     setBusy('prepare');
     try {
@@ -171,24 +192,97 @@ export default function Home() {
       setBusy(null);
     }
   }
-  async function startRecording() {
-    await library.flush();
-    await recorder.start(library.id);
+  function applyTranscript(text: string, name: string) {
+    editTranscript(text);
+    setTranscriptName(name);
+    setTab('transcript');
+    setPendingImport(null);
+    setNotice('面试记录已导入，请校对文字与说话人归属后再生成评估。');
+  }
+  async function transcriptFile(file: File) {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy('import');
+    setError('');
+    try {
+      const text = await importTranscript(file);
+      if (transcript.trim()) setPendingImport({ text, name: file.name });
+      else applyTranscript(text, file.name);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '面试记录导入失败');
+    } finally {
+      busyRef.current = false;
+      setBusy(null);
+    }
+  }
+  function editResume(text: string, name = '') {
+    invalidate();
+    setResumeText(text);
+    setResumeName(name);
+    setResumeReading(null);
+    setResumeChecked(false);
   }
   async function resumeFile(file: File) {
     if (busyRef.current) return;
     busyRef.current = true;
-    setBusy('resume');
+    setBusy('import');
     setError('');
     try {
       const text = await importResume(file);
-      invalidate();
-      setResumeText(text);
-      setResumeName(file.name);
-      setNotice('简历已在本地解析，请校对正文；简历陈述仍需面试核实。');
+      if (resumeText.trim()) setPendingResume({ text, name: file.name });
+      else {
+        editResume(text, file.name);
+        setNotice('简历已提取，请核对文字、段落与日期后再使用 Codex 阅读。');
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : '简历导入失败');
+      setError(e instanceof Error ? e.message : '简历提取失败，原内容已保留。');
     } finally {
+      busyRef.current = false;
+      setBusy(null);
+    }
+  }
+  async function readResume() {
+    if (busyRef.current) return;
+    setError('');
+    let value;
+    try {
+      value = validateResumeInput({ resumeText, role, requirements });
+      if (!resumeChecked) throw new Error('请先核对简历正文并勾选确认。');
+      if (!queuedCodex)
+        throw new Error('请使用当前队列版工作台连接 Codex 后阅读简历。');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '请核对简历。');
+      return;
+    }
+    busyRef.current = true;
+    setBusy('resume-read');
+    setRemoteJob(null);
+    cancelledRemotely.current = false;
+    const controller = new AbortController();
+    analysisController.current = controller;
+    try {
+      const valueRead = await submitRemoteResume(
+        value,
+        (candidate || resumeName || '未命名候选人').slice(0, 100),
+        controller.signal,
+        (job) => setRemoteJob({ ...job, report: null }),
+      );
+      controller.signal.throwIfAborted();
+      setResumeReading(valueRead);
+      setNotice('简历要点已整理，内容来自候选人自述，请结合原文核实。');
+      setTab('resume');
+    } catch (e) {
+      setError(
+        controller.signal.aborted
+          ? cancelledRemotely.current
+            ? '简历阅读已取消，正文保留。'
+            : '已停止等待，可在任务列表查看结果。'
+          : e instanceof Error
+            ? e.message
+            : '简历阅读失败。',
+      );
+    } finally {
+      analysisController.current = null;
       busyRef.current = false;
       setBusy(null);
     }
@@ -203,20 +297,20 @@ export default function Home() {
     role ||
     requirements ||
     transcript ||
-    conclusion ||
-    recorder.blob ||
-    active,
+    conclusion,
   );
   const safeName = (candidate || '未命名面试')
     .replace(/[\\/:*?"<>|\r\n]/g, '_')
     .slice(0, 60);
   const refreshServices = useCallback(async () => {
     try {
-      const r = await fetch('/api/status', {
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!r.ok) throw new Error();
-      setServices(await r.json());
+      const value = await remoteRequest<NonNullable<typeof services>>(
+        '/api/status',
+        {
+          signal: AbortSignal.timeout(10000),
+        },
+      );
+      setServices(value);
       setStatusError(false);
     } catch {
       setServices(null);
@@ -226,26 +320,15 @@ export default function Home() {
   useEffect(() => {
     // oxlint-disable-next-line react/react-compiler -- This callback updates state only after the external status request resolves.
     void refreshServices();
+    const timer = setInterval(() => void refreshServices(), 10000);
+    return () => clearInterval(timer);
   }, [refreshServices]);
   useEffect(() => {
-    if (!recorder.blob) {
-      // oxlint-disable-next-line react/react-compiler -- Synchronize an external Blob URL resource.
-      setAudioUrl('');
-      return;
-    }
-    const url = URL.createObjectURL(recorder.blob);
-    // oxlint-disable-next-line react/react-compiler -- The effect owns and releases this external Blob URL.
-    setAudioUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [recorder.blob]);
-  useEffect(() => {
-    if (!active && !library.unsaved && !recorder.needsBackup) return;
-    const warn = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-    };
+    if (!library.unsaved && (busy !== 'analyze' || queuedCodex)) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [active, library.unsaved, recorder.needsBackup]);
+  }, [library.unsaved, busy, queuedCodex]);
   const reportSnapshot = useRef({
     report,
     conclusion,
@@ -283,7 +366,7 @@ export default function Home() {
           {
             name: 'get_interview_assessment',
             description:
-              '读取当前面试的辅助评估、人工结论及确认状态；不会开始录音、调用模型或改变结论。',
+              '读取当前面试的辅助评估、人工结论及确认状态；不会调用模型或改变结论。',
             inputSchema: {
               type: 'object',
               properties: {},
@@ -321,53 +404,6 @@ export default function Home() {
     setTranscript(text);
     setReviewed(false);
   }
-  async function transcribe() {
-    if (!recorder.blob || busyRef.current) return;
-    if (transcript.trim()) {
-      setError('当前已有对话记录。请先导出备份并清空文本，再发起转写。');
-      setTab('transcript');
-      return;
-    }
-    if (recorder.blob.size > MAX_AUDIO_BYTES) {
-      setError('录音超过 20 MB，请先下载后分段转写。');
-      return;
-    }
-    busyRef.current = true;
-    setBusy('transcribe');
-    setError('');
-    try {
-      const form = new FormData();
-      form.set(
-        'file',
-        recorder.blob,
-        `interview.${recorder.blob.type.includes('mp4') ? 'm4a' : 'webm'}`,
-      );
-      const r = await fetch('/api/transcribe', {
-        method: 'POST',
-        body: form,
-        signal: AbortSignal.timeout(130000),
-      });
-      const data = (await r.json()) as { text?: string; error?: string };
-      if (!r.ok || !data.text)
-        throw new Error(data.error || '转写失败，请重试');
-      editTranscript(data.text);
-      setTab('transcript');
-      setNotice(
-        '转写完成。请核对错字，并用“面试官：”“候选人：”标明说话人后再评估。',
-      );
-    } catch (e) {
-      setError(
-        e instanceof Error && e.name === 'TimeoutError'
-          ? '转写超时，录音仍保留，请稍后重试。'
-          : e instanceof Error
-            ? e.message
-            : '转写失败',
-      );
-    } finally {
-      busyRef.current = false;
-      setBusy(null);
-    }
-  }
   async function analyze() {
     if (busyRef.current) return;
     setError('');
@@ -381,36 +417,85 @@ export default function Home() {
     }
     busyRef.current = true;
     setBusy('analyze');
+    const controller = new AbortController();
+    analysisController.current = controller;
+    setRemoteJob(null);
+    cancelledRemotely.current = false;
     try {
-      const r = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-        signal: AbortSignal.timeout(100000),
-      });
-      const data = (await r.json()) as Report & { error?: string };
-      if (!r.ok) throw new Error(data.error || '生成评估失败');
+      let data: Report;
+      if (queuedCodex) {
+        data = await submitRemoteAnalysis(
+          input,
+          `${candidate || '未命名面试'} · ${role}`.slice(0, 100),
+          controller.signal,
+          setRemoteJob,
+        );
+      } else {
+        const r = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+          signal: AbortSignal.any([
+            controller.signal,
+            AbortSignal.timeout(localCodex ? 260000 : 100000),
+          ]),
+        });
+        data = (await r.json()) as Report & { error?: string };
+        controller.signal.throwIfAborted();
+        if (!r.ok)
+          throw new Error(
+            (data as Report & { error?: string }).error || '生成评估失败',
+          );
+      }
+      controller.signal.throwIfAborted();
       setReport(data);
       setConfirmed(false);
       setTab('report');
       setNotice('辅助评估已生成，请核实引用与判断后填写最终意见。');
     } catch (e) {
       setError(
-        e instanceof Error && e.name === 'TimeoutError'
-          ? '分析超时，记录仍保留，请重试。'
-          : e instanceof Error
-            ? e.message
-            : '分析失败',
+        controller.signal.aborted
+          ? queuedCodex
+            ? cancelledRemotely.current
+              ? '任务已取消，原记录保留。'
+              : '已停止等待，请在评估任务中查看服务器状态。'
+            : '已取消分析，原记录保留。'
+          : e instanceof Error && e.name === 'TimeoutError'
+            ? '分析超时，记录仍保留，请重试。'
+            : e instanceof Error
+              ? e.message
+              : '分析失败',
       );
     } finally {
+      analysisController.current = null;
       busyRef.current = false;
       setBusy(null);
+    }
+  }
+  async function cancelAnalysis() {
+    if (!queuedCodex) {
+      analysisController.current?.abort();
+      return;
+    }
+    if (!remoteJob || cancelling) return;
+    setCancelling(true);
+    try {
+      const job = await remoteRequest<RemoteJob>(
+        '/api/jobs/' + encodeURIComponent(remoteJob.id),
+        { method: 'DELETE' },
+      );
+      cancelledRemotely.current = job.state === 'cancelled';
+      analysisController.current?.abort();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '取消失败，请重试。');
+    } finally {
+      setCancelling(false);
     }
   }
   function confirmConclusion() {
     try {
       validateInput(input);
-      if (!reviewed) throw new Error('请先在对话记录页完成校对确认。');
+      if (!reviewed) throw new Error('请先在面试记录页完成校对确认。');
       if (!conclusion.trim()) throw new Error('请填写面试官结论。');
       setError('');
       setConfirmed(true);
@@ -428,6 +513,7 @@ export default function Home() {
     reportRequirements,
   };
   function setStandards(value: InterviewStandards) {
+    setResumeReading(null);
     setRole(value.role);
     setRequirements(value.requirements);
     setDimensionText(value.dimensionText);
@@ -441,39 +527,42 @@ export default function Home() {
   }
   function reset(value: InterviewStandards) {
     setStandards(value);
-    recorder.reset();
     setCandidate('');
     setResumeText('');
     setResumeName('');
+    setResumeReading(null);
+    setResumeChecked(false);
+    setPendingResume(null);
     setTranscript('');
-    setConsent(false);
+    setTranscriptName('');
+    setPendingImport(null);
     setReviewed(false);
     setReport(null);
     setConclusion('');
     setConfirmed(false);
     setNotice('');
     setError('');
-    setTab('record');
+    setTab('resume');
     setResetOpen(false);
   }
   function exportRecord() {
     download(
       new Blob(
-        [exportMarkdown(candidate, input, report, conclusion, confirmed)],
+        [
+          exportMarkdown(candidate, input, report, conclusion, confirmed) +
+            (resumeReading ? '\n\n' + exportResumeReading(resumeReading) : ''),
+        ],
         { type: 'text/markdown;charset=utf-8' },
       ),
       `${safeName}-面试记录.md`,
     );
   }
-  const hh = String(Math.floor(recorder.seconds / 3600)).padStart(2, '0'),
-    mm = String(Math.floor(recorder.seconds / 60) % 60).padStart(2, '0'),
-    ss = String(recorder.seconds % 60).padStart(2, '0');
   return (
     <div className="workbench">
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark">
-            <AudioLines size={23} />
+            <ClipboardCheck size={23} />
           </span>
           <b>
             面谈<span>INTERVIEW NOTES</span>
@@ -485,7 +574,7 @@ export default function Home() {
         </span>
         <button
           className="global-settings-entry text-button"
-          disabled={!library.ready || library.working || active || !!busy}
+          disabled={!library.ready || library.working || !!busy}
           onClick={() =>
             void localAction(async () => {
               await library.refresh();
@@ -519,14 +608,14 @@ export default function Home() {
             <h1>
               {candidate
                 ? `${candidate}的面试记录`
-                : '一次好面试，从认真倾听开始'}
+                : '从面试记录，到有依据的判断'}
               <span>。</span>
             </h1>
-            <p>记录对话，梳理证据，留下更清晰的面试结论。</p>
+            <p>粘贴简历，导入 Markdown 面试记录，按岗位标准梳理结论。</p>
           </div>
           <button
             className="secondary-button"
-            disabled={active || !!busy || recorder.needsBackup}
+            disabled={!!busy}
             onClick={() => {
               if (hasContent) setResetOpen(true);
               else void localAction(library.create);
@@ -538,17 +627,11 @@ export default function Home() {
         </div>
         <div className="local-toolbar">
           <span className="local-save-status">
-            {recorder.persistence === 'partial'
-              ? '部分录音未完整保存，请下载备份'
-              : active
-                ? '录音分段保存到本地'
-                : library.unsaved
-                  ? '正在保存到本地…'
-                  : '已保存在当前浏览器'}
+            {library.unsaved ? '正在保存到本地…' : '已保存在当前浏览器'}
           </span>
           <button
             className="text-button"
-            disabled={active || !!busy}
+            disabled={!!busy}
             onClick={() =>
               void localAction(async () => {
                 await library.refresh();
@@ -560,32 +643,10 @@ export default function Home() {
             本地面试记录
           </button>
         </div>
-        {recorder.persistence === 'partial' && (
-          <div className="message" role="alert">
-            <span>请保留此页面，下载备份后再切换面试。</span>
-            {recorder.canRetry && (
-              <button
-                className="text-button"
-                disabled={active || !!busy}
-                onClick={() => void localAction(recorder.retrySave)}
-              >
-                重试保存录音
-              </button>
-            )}
-            {recorder.needsBackup && recorder.blob && (
-              <button
-                className="text-button"
-                onClick={recorder.acknowledgeBackup}
-              >
-                我已下载备份，允许切换
-              </button>
-            )}
-          </div>
-        )}
-        {(error || recorder.error) && (
+        {error && (
           <div role="alert" className="message error">
             <CircleAlert size={18} />
-            <span>{error || recorder.error}</span>
+            <span>{error}</span>
             {error && (
               <button aria-label="关闭错误提示" onClick={() => setError('')}>
                 <X size={16} />
@@ -602,6 +663,31 @@ export default function Home() {
             </button>
           </output>
         )}
+        {(busy === 'analyze' || busy === 'resume-read') && (
+          <output className="message">
+            <LoaderCircle className="spin" size={18} />
+            <span>
+              {queuedCodex
+                ? remoteJob?.state === 'running'
+                  ? busy === 'resume-read'
+                    ? 'Codex 正在阅读简历。可以关闭网页，稍后从评估任务查看结果。'
+                    : '电脑正在分析。可以关闭网页，稍后从评估任务查看结果。'
+                  : remoteJob
+                    ? '任务已提交，等待已配对的电脑领取。电脑离线时也会保留任务。'
+                    : '正在提交评估任务…'
+                : localCodex
+                  ? '本地 Codex 正在分析，可能需要几分钟。请保持工作台和本地服务开启。'
+                  : '正在生成评估，请稍候。'}
+            </span>
+            <button
+              className="text-button"
+              disabled={cancelling || (queuedCodex && !remoteJob)}
+              onClick={() => void cancelAnalysis()}
+            >
+              {cancelling ? '正在取消…' : queuedCodex ? '取消任务' : '取消分析'}
+            </button>
+          </output>
+        )}
         <div className="workspace-grid">
           <section className="main-column">
             <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
@@ -610,13 +696,9 @@ export default function Home() {
                   <FileText />
                   候选人简历
                 </TabsTrigger>
-                <TabsTrigger value="record">
-                  <Mic />
-                  面试录音
-                </TabsTrigger>
                 <TabsTrigger value="transcript">
                   <FileText />
-                  对话记录{transcript && <span className="tab-dot" />}
+                  面试记录{transcript && <span className="tab-dot" />}
                 </TabsTrigger>
                 <TabsTrigger value="report">
                   <ClipboardCheck />
@@ -629,7 +711,8 @@ export default function Home() {
                     <div>
                       <h2>候选人简历</h2>
                       <p className="section-description">
-                        文件在浏览器中解析，不上传原件。
+                        上传 Word、文字版 PDF 或粘贴正文，核对后让 Codex
+                        整理要点。
                       </p>
                     </div>
                     <span className="count">
@@ -637,17 +720,22 @@ export default function Home() {
                     </span>
                   </div>
                   <div className="panel-body">
-                    <label className="resume-upload" htmlFor="resume-file">
+                    <label className="transcript-upload" htmlFor="resume-file">
                       <Upload size={24} />
                       <strong>
-                        {busy === 'resume' ? '正在本地解析…' : '导入 Word 简历'}
+                        {busy === 'import'
+                          ? '正在提取文件文字…'
+                          : '上传候选人简历'}
                       </strong>
-                      <span>DOC / DOCX · 最大 5 MB</span>
+                      <span>
+                        Word（.doc / .docx）或文字版 PDF · 最大 5 MB · PDF 最多
+                        30 页
+                      </span>
                       <input
                         id="resume-file"
                         type="file"
-                        accept=".doc,.docx"
-                        disabled={!!busy || active}
+                        accept=".doc,.docx,.pdf"
+                        disabled={!!busy}
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           e.target.value = '';
@@ -655,11 +743,10 @@ export default function Home() {
                         }}
                       />
                     </label>
-                    {resumeName && (
-                      <p className="small-note">
-                        来源：{resumeName} · 已提取正文，可在下方校对
-                      </p>
-                    )}
+                    <p className="small-note">
+                      {resumeName ? '已导入：' + resumeName + '。' : ''}
+                      附件在浏览器提取文字，原文件不上传。扫描件暂不支持，提取后请核对段落和日期。
+                    </p>
                     <label htmlFor="resume-text" className="field-title">
                       简历正文
                     </label>
@@ -667,23 +754,66 @@ export default function Home() {
                       id="resume-text"
                       rows={12}
                       maxLength={30000}
-                      disabled={!!busy || active}
+                      disabled={!!busy}
                       value={resumeText}
                       onChange={(e) => {
-                        invalidate();
-                        setResumeText(e.target.value);
+                        editResume(e.target.value, resumeName);
                       }}
-                      placeholder="也可以直接粘贴简历文字。简历作为背景信息，项目经历与能力仍需通过面试核实。"
+                      placeholder="在这里粘贴简历文字。简历作为背景信息，项目经历与能力仍需通过面试核实。"
                     />
+                    <label className="review-check" htmlFor="resume-reviewed">
+                      <Checkbox
+                        id="resume-reviewed"
+                        checked={resumeChecked}
+                        disabled={!!busy || !resumeText.trim()}
+                        onCheckedChange={(v) => setResumeChecked(v)}
+                      />
+                      <span>已核对简历正文，确认内容完整可读</span>
+                    </label>
                     <div className="action-footer">
-                      <span>简历变更后，需要重新生成评估。</span>
+                      <span>
+                        {queuedCodex
+                          ? '将发送简历与岗位要求，由已配对电脑的 Codex 联网整理'
+                          : '简历阅读需使用队列版工作台连接 Codex'}
+                      </span>
+                      <button
+                        className="primary-button"
+                        disabled={
+                          !!busy ||
+                          !resumeChecked ||
+                          !queuedCodex ||
+                          !services?.analysis
+                        }
+                        onClick={() => void readResume()}
+                      >
+                        {busy === 'resume-read' ? (
+                          <LoaderCircle className="spin" size={16} />
+                        ) : (
+                          <ClipboardCheck size={16} />
+                        )}{' '}
+                        {busy === 'resume-read'
+                          ? '正在阅读…'
+                          : resumeReading
+                            ? '重新阅读简历'
+                            : '用 Codex 阅读简历'}
+                      </button>
+                    </div>
+                    {resumeReading && (
+                      <ResumeReadingView value={resumeReading} />
+                    )}
+                    <div className="action-footer">
+                      <button
+                        className="secondary-button"
+                        disabled={!!busy}
+                        onClick={() => setTab('transcript')}
+                      >
+                        下一步：导入面试记录 <ArrowRight size={16} />
+                      </button>
                       <button
                         className="text-button"
-                        disabled={!resumeText || !!busy || active}
+                        disabled={!resumeText || !!busy}
                         onClick={() => {
-                          invalidate();
-                          setResumeText('');
-                          setResumeName('');
+                          editResume('');
                         }}
                       >
                         清空简历文字
@@ -692,181 +822,13 @@ export default function Home() {
                   </div>
                 </div>
               </TabsContent>
-              <TabsContent value="record">
-                <div className="panel recorder">
-                  <div className="panel-heading">
-                    <h2>现场录音</h2>
-                    <span
-                      className={`badge ${recorder.state === 'recording' ? 'live' : ''}`}
-                    >
-                      {stateLabels[recorder.state]}
-                    </span>
-                  </div>
-                  <div className="recording-center">
-                    <div
-                      className={`mic-emblem ${recorder.state === 'recording' ? 'live-mic' : ''}`}
-                    >
-                      <Mic size={32} />
-                    </div>
-                    <div
-                      className="timer"
-                      aria-label={`已录音 ${recorder.seconds} 秒`}
-                    >
-                      {hh}:{mm}
-                      <span>:{ss}</span>
-                    </div>
-                    <p>
-                      {recorder.state === 'recording'
-                        ? '正在记录，请保持网页打开'
-                        : recorder.state === 'paused'
-                          ? '已暂停，准备好后继续'
-                          : recorder.state === 'stopped'
-                            ? '对话已记录，接下来梳理每一个细节'
-                            : '让对话自然发生，把记录交给面谈'}
-                    </p>
-                    <div className="waveform" aria-hidden="true">
-                      {Array.from({ length: 55 }, (_, i) => (
-                        <i
-                          key={i}
-                          style={{
-                            height: `${4 + (recorder.levels[i] || 0) * 50}px`,
-                          }}
-                        />
-                      ))}
-                    </div>
-                    {recorder.state === 'idle' && (
-                      <>
-                        <label className="consent" htmlFor="record-consent">
-                          <Checkbox
-                            id="record-consent"
-                            checked={consent}
-                            onCheckedChange={(v) => setConsent(v)}
-                          />
-                          <span>我已告知参与者，并获得录音同意</span>
-                        </label>
-                        <button
-                          className="primary-button"
-                          disabled={!consent || !!busy}
-                          onClick={() => void localAction(startRecording)}
-                        >
-                          <Mic size={18} />
-                          开始录音
-                        </button>
-                      </>
-                    )}
-                    {recorder.state === 'requesting' && (
-                      <p className="pending">
-                        <LoaderCircle className="spin" size={18} />
-                        请在浏览器弹窗中允许使用麦克风
-                      </p>
-                    )}
-                    {(recorder.state === 'recording' ||
-                      recorder.state === 'paused') && (
-                      <div className="button-row centered">
-                        <button
-                          className="secondary-button"
-                          onClick={
-                            recorder.state === 'paused'
-                              ? recorder.resume
-                              : recorder.pause
-                          }
-                        >
-                          {recorder.state === 'paused' ? (
-                            <Play size={16} />
-                          ) : (
-                            <Pause size={16} />
-                          )}{' '}
-                          {recorder.state === 'paused' ? '继续录音' : '暂停'}
-                        </button>
-                        <button
-                          className="danger-button"
-                          onClick={recorder.stop}
-                        >
-                          <Square size={15} />
-                          结束录音
-                        </button>
-                      </div>
-                    )}
-                    {recorder.state === 'stopping' && (
-                      <p className="pending">
-                        <LoaderCircle className="spin" size={18} />
-                        正在整理录音
-                      </p>
-                    )}
-                    {recorder.blob && (
-                      <div className="audio-result">
-                        {/* oxlint-disable-next-line jsx-a11y/media-has-caption -- Newly recorded user audio has no timed captions; editable transcription is provided separately. */}
-                        <audio
-                          controls
-                          src={audioUrl}
-                          aria-label="面试录音回放"
-                        />
-                        <div className="button-row centered">
-                          <button
-                            className="secondary-button"
-                            onClick={() =>
-                              download(
-                                recorder.blob!,
-                                `${safeName}.${recorder.blob!.type.includes('mp4') ? 'm4a' : 'webm'}`,
-                              )
-                            }
-                          >
-                            <Download size={16} />
-                            下载录音
-                          </button>
-                          <button
-                            className="primary-button"
-                            disabled={
-                              !!busy ||
-                              !services?.transcription ||
-                              recorder.blob.size > MAX_AUDIO_BYTES
-                            }
-                            onClick={() => void transcribe()}
-                          >
-                            {busy === 'transcribe' ? (
-                              <LoaderCircle className="spin" size={16} />
-                            ) : (
-                              <FileText size={16} />
-                            )}{' '}
-                            {busy === 'transcribe' ? '正在转写…' : '转写为文字'}
-                          </button>
-                        </div>
-                        <p className="small-note">
-                          {(recorder.blob.size / 1024 / 1024).toFixed(1)} MB ·{' '}
-                          {services?.transcription
-                            ? '点击转写后，音频将发送至已配置的语音服务'
-                            : '转写服务待配置，可先下载录音或手动填写对话'}
-                        </p>
-                        <button
-                          className="text-button"
-                          onClick={() => setTab('transcript')}
-                        >
-                          手动填写对话记录 <ArrowRight size={15} />
-                        </button>
-                      </div>
-                    )}
-                    {!recorder.blob && (
-                      <p className="small-note">
-                        {recorder.device} · 本地最长 4 小时 / 256 MB
-                      </p>
-                    )}
-                  </div>
-                  <div className="recording-footer">
-                    <span>
-                      <ShieldCheck size={15} />{' '}
-                      录音分段存于本地，建议下载文件备份
-                    </span>
-                    <span>建议在安静环境使用</span>
-                  </div>
-                </div>
-              </TabsContent>
               <TabsContent value="transcript">
                 <div className="panel text-panel">
                   <div className="panel-heading">
                     <div>
-                      <h2>对话记录</h2>
+                      <h2>面试记录</h2>
                       <p className="section-description">
-                        保留原意，核对细节与说话人归属。
+                        上传豆包转写后整理的 .md 文件，再校对内容和说话人。
                       </p>
                     </div>
                     <span className="count">
@@ -874,18 +836,48 @@ export default function Home() {
                     </span>
                   </div>
                   <div className="panel-body">
+                    <label
+                      className="transcript-upload"
+                      htmlFor="transcript-file"
+                    >
+                      <Upload size={24} />
+                      <strong>
+                        {busy === 'import'
+                          ? '正在读取面试记录…'
+                          : transcriptName
+                            ? '重新导入 Markdown 面试记录'
+                            : '导入 Markdown 面试记录'}
+                      </strong>
+                      <span>仅支持 .md · UTF-8 · 最大 1 MB / 80,000 字</span>
+                      <input
+                        id="transcript-file"
+                        type="file"
+                        accept=".md"
+                        disabled={!!busy}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = '';
+                          if (file) void transcriptFile(file);
+                        }}
+                      />
+                    </label>
+                    {transcriptName && (
+                      <p className="small-note transcript-source">
+                        来源：{transcriptName} · 以下为可编辑正文
+                      </p>
+                    )}
                     <label htmlFor="transcript" className="sr-only">
                       面试对话文本
                     </label>
                     <textarea
                       id="transcript"
                       className="transcript-input"
-                      disabled={!!busy || active}
+                      disabled={!!busy || !transcriptName}
                       value={transcript}
                       maxLength={80000}
                       onChange={(e) => editTranscript(e.target.value)}
                       placeholder={
-                        '在这里录入或粘贴面试对话。\n\n建议按下面的格式整理：\n面试官：请介绍一个你负责的项目。\n候选人：……\n\n不确定的内容请标注“待核实”，不要补写未说过的话。'
+                        '请先导入 .md 面试记录，再在这里预览和校对。\n\n建议按下面的格式整理：\n面试官：请介绍一个你负责的项目。\n候选人：……\n\n不确定的内容请标注“待核实”，不要补写未说过的话。'
                       }
                     />
                     <label
@@ -895,7 +887,7 @@ export default function Home() {
                       <Checkbox
                         id="transcript-reviewed"
                         checked={reviewed}
-                        disabled={!transcript.trim() || !!busy || active}
+                        disabled={!transcript.trim() || !!busy}
                         onCheckedChange={(v) => {
                           setReviewed(v);
                           setConfirmed(false);
@@ -906,14 +898,18 @@ export default function Home() {
                     <div className="action-footer">
                       <span>
                         {!services?.analysis
-                          ? 'AI 分析服务尚未配置'
-                          : '生成评估时，将发送简历、面试偏好与校对后的文字'}
+                          ? localCodex
+                            ? '请先登录本地 Codex'
+                            : 'AI 分析服务尚未配置'
+                          : queuedCodex
+                            ? '材料经工作台发送到已配对电脑，由 Codex 联网分析'
+                            : localCodex
+                              ? '使用当前 Codex 登录，材料将发送至 OpenAI 分析'
+                              : '生成评估时，将发送简历、面试偏好与校对后的文字'}
                       </span>
                       <button
                         className="primary-button"
-                        disabled={
-                          !!busy || active || !services?.analysis || !reviewed
-                        }
+                        disabled={!!busy || !services?.analysis || !reviewed}
                         onClick={() => void analyze()}
                       >
                         {busy === 'analyze' ? (
@@ -921,12 +917,16 @@ export default function Home() {
                         ) : (
                           <ClipboardCheck size={16} />
                         )}{' '}
-                        {busy === 'analyze' ? '正在分析…' : '生成辅助评估'}
+                        {busy === 'analyze'
+                          ? queuedCodex && remoteJob?.state === 'queued'
+                            ? '等待电脑…'
+                            : '正在分析…'
+                          : '生成辅助评估'}
                       </button>
                     </div>
                     <button
                       className="text-button"
-                      disabled={!transcript.trim() || active || !!busy}
+                      disabled={!transcript.trim() || !!busy}
                       onClick={() => setTab('report')}
                     >
                       先填写面试官结论 <ArrowRight size={15} />
@@ -1002,7 +1002,7 @@ export default function Home() {
                         className="text-button"
                         onClick={() => setTab('transcript')}
                       >
-                        前往对话记录 <ArrowRight size={15} />
+                        前往面试记录 <ArrowRight size={15} />
                       </button>
                     </div>
                   )}
@@ -1015,7 +1015,7 @@ export default function Home() {
                       rows={5}
                       maxLength={10000}
                       value={conclusion}
-                      disabled={!!busy || active}
+                      disabled={!!busy}
                       onChange={(e) => {
                         setConclusion(e.target.value);
                         setConfirmed(false);
@@ -1025,9 +1025,7 @@ export default function Home() {
                     <div className="button-row">
                       <button
                         className="primary-button"
-                        disabled={
-                          confirmed || !!busy || active || !conclusion.trim()
-                        }
+                        disabled={confirmed || !!busy || !conclusion.trim()}
                         onClick={confirmConclusion}
                       >
                         <Check size={16} />
@@ -1035,7 +1033,7 @@ export default function Home() {
                       </button>
                       <button
                         className="secondary-button"
-                        disabled={!hasContent || !!busy || active}
+                        disabled={!hasContent || !!busy}
                         onClick={exportRecord}
                       >
                         <Download size={16} />
@@ -1052,11 +1050,11 @@ export default function Home() {
             </Tabs>
             <div className="process-strip">
               <span>
-                <b>01</b> 记录真实对话
+                <b>01</b> 粘贴候选人简历
               </span>
               <ArrowUpRight size={15} />
               <span>
-                <b>02</b> 校对面试记录
+                <b>02</b> 导入并校对 .md
               </span>
               <ArrowUpRight size={15} />
               <span>
@@ -1074,7 +1072,7 @@ export default function Home() {
               选择岗位模板
               <select
                 value=""
-                disabled={!!busy || active}
+                disabled={!!busy}
                 onChange={(e) => {
                   const selected =
                     e.target.value === '__common__'
@@ -1105,7 +1103,7 @@ export default function Home() {
               模板在页头的“全局设置”中管理。应用模板将替换本场标准并清除旧 AI
               评估。
             </p>
-            <fieldset disabled={!!busy || active}>
+            <fieldset disabled={!!busy}>
               <label>
                 候选人
                 <input
@@ -1129,16 +1127,24 @@ export default function Home() {
             </fieldset>
             <div className="service-summary">
               <span
-                className={`service-dot ${services?.analysis && services?.transcription ? 'ready' : ''}`}
+                className={`service-dot ${services?.analysis && (!queuedCodex || services.connected) ? 'ready' : ''}`}
               />
               <span>
                 {statusError
                   ? '服务状态获取失败'
                   : services === null
                     ? '正在检查服务…'
-                    : services.analysis && services.transcription
-                      ? '模型服务已配置'
-                      : '模型服务待配置'}
+                    : services.analysis
+                      ? queuedCodex
+                        ? services.connected
+                          ? '电脑已连接 · 可分析'
+                          : '电脑未就绪 · 可排队'
+                        : localCodex
+                          ? '本地 Codex 已连接'
+                          : '模型服务已配置'
+                      : localCodex
+                        ? '本地 Codex 需登录'
+                        : '模型服务待配置'}
               </span>
               <button className="text-button" onClick={() => setSettings(true)}>
                 查看
@@ -1151,7 +1157,7 @@ export default function Home() {
           <span>面谈 · 让面试判断有据可依</span>
           <button
             className="text-button"
-            disabled={!hasContent || active || !!busy}
+            disabled={!hasContent || !!busy}
             onClick={exportRecord}
           >
             <Download size={13} />
@@ -1165,9 +1171,9 @@ export default function Home() {
         library={library}
         onError={setError}
         download={download}
-        canSwitch={!recorder.needsBackup}
+        canSwitch={true}
         assertIdle={() => {
-          if (active || busyRef.current)
+          if (busyRef.current)
             throw new Error('请等待当前操作结束后管理本地记录');
         }}
       />
@@ -1192,28 +1198,60 @@ export default function Home() {
             </button>
           </div>
           <DialogDescription>
-            录音与人工记录可直接使用。转写和辅助评估需要先配置服务。
+            {queuedCodex
+              ? '网页提交任务，已配对电脑上的 Codex 领取并完成分析。通过顶部“电脑连接”管理配对。'
+              : localCodex
+                ? '使用本机 Codex 的 ChatGPT 登录生成面试评估，无需单独填写 API 密钥。'
+                : '粘贴简历和导入面试记录可直接使用，生成 AI 辅助评估需要配置分析服务。'}
           </DialogDescription>
           <div className="service-row">
-            <span>语音转写</span>
+            <span>
+              {queuedCodex
+                ? '已配对电脑上的 Codex'
+                : localCodex
+                  ? '本地 Codex'
+                  : 'AI 辅助评估'}
+            </span>
             <span className="badge">
-              {services?.transcription ? '已配置' : '未配置'}
+              {services?.analysis
+                ? queuedCodex
+                  ? services.connected
+                    ? '已连接'
+                    : '等待电脑'
+                  : localCodex
+                    ? '已连接'
+                    : '已配置'
+                : localCodex
+                  ? '需检查登录'
+                  : '未配置'}
             </span>
           </div>
-          <div className="service-row">
-            <span>AI 辅助评估</span>
-            <span className="badge">
-              {services?.analysis ? '已配置' : '未配置'}
-            </span>
-          </div>
-          <p>
-            请由部署者在服务端填写对应的 API
-            地址、模型和密钥。密钥不会保存在浏览器中。
-          </p>
-          <p className="small-note">
-            支持兼容 audio/transcriptions 与 chat/completions
-            格式的服务。选定提供商后仍需联调验证。
-          </p>
+          {queuedCodex ? (
+            <>
+              <p>{services?.message}</p>
+              <p className="small-note">
+                简历、偏好与面试文字会提交到工作台服务器，由配对电脑发送给
+                OpenAI，使用该电脑的 Codex
+                账号额度。登录凭据留在电脑；结果可从评估任务找回，仍需人工核实。
+              </p>
+            </>
+          ) : localCodex ? (
+            <>
+              <p>{services?.message}</p>
+              <p className="small-note">
+                点击生成后，面试材料会通过 Codex 发送给
+                OpenAI，并使用当前账号的额度。网页和连接服务在本机运行，模型分析需要联网。报告仍需人工核实。
+              </p>
+            </>
+          ) : (
+            <>
+              <p>请在服务端配置分析 API 地址、模型和密钥。</p>
+              <p className="small-note">
+                本地 Codex 方式请使用 npm start 启动工作台；兼容 API
+                方式需单独配置。
+              </p>
+            </>
+          )}
           {statusError && <p role="alert">无法获取状态，请稍后重试。</p>}
           <button
             className="secondary-button"
@@ -1223,6 +1261,58 @@ export default function Home() {
           </button>
         </DialogContent>
       </Dialog>
+      <AlertDialog
+        open={!!pendingResume}
+        onOpenChange={(open) => {
+          if (!open) setPendingResume(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>替换当前简历？</AlertDialogTitle>
+          <AlertDialogDescription>
+            将使用 {pendingResume?.name}{' '}
+            的文字替换现有简历，并清除旧的简历阅读、辅助评估与人工确认。面试对话和人工意见保留。
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消，保留原文</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingResume)
+                  editResume(pendingResume.text, pendingResume.name);
+                setPendingResume(null);
+                setNotice('简历已替换，请重新核对正文。');
+              }}
+            >
+              替换并重新核对
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={!!pendingImport}
+        onOpenChange={(open) => {
+          if (!open) setPendingImport(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>替换当前面试记录？</AlertDialogTitle>
+          <AlertDialogDescription>
+            将使用 {pendingImport?.name} 替换当前正文，并清除旧 AI
+            评估和校对确认。人工意见会保留，需重新核对。如需保留原文，请先取消并导出当前记录。
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消，保留原文</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingImport)
+                  applyTranscript(pendingImport.text, pendingImport.name);
+              }}
+            >
+              替换并重新校对
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={resetOpen} onOpenChange={setResetOpen}>
         <AlertDialogContent>
           <AlertDialogTitle>开始一场新的面试？</AlertDialogTitle>

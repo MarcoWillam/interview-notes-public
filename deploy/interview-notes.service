@@ -1,0 +1,23 @@
+[Unit]
+Description=Interview Notes web and task queue
+After=network.target
+
+[Service]
+Type=simple
+User=interview-notes
+Group=interview-notes
+WorkingDirectory=/opt/interview-notes/current
+EnvironmentFile=/etc/interview-notes/server.env
+ExecStart=/opt/node-v24.13.0-linux-x64/bin/node --experimental-strip-types server/start.ts
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/interview-notes
+
+[Install]
+WantedBy=multi-user.target

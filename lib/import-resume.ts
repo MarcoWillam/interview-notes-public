@@ -1,10 +1,10 @@
 export async function importResume(file: File): Promise<string> {
   if (
-    !/\.(doc|docx)$/i.test(file.name) ||
+    !/\.(doc|docx|pdf)$/i.test(file.name) ||
     file.size > 5 * 1024 * 1024 ||
     !file.size
   )
-    throw new Error('请选择不超过 5 MB 的 .doc 或 .docx 文件');
+    throw new Error('请选择不超过 5 MB 的 .doc、.docx 或文字版 .pdf 文件');
   const data = await file.arrayBuffer();
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./resume.worker.ts', import.meta.url), {
@@ -19,8 +19,9 @@ export async function importResume(file: File): Promise<string> {
       worker.terminate();
     };
     worker.onmessage = (
-      event: MessageEvent<{ text?: string; error?: string }>,
+      event: MessageEvent<{ type?: string; text?: string; error?: string }>,
     ) => {
+      if (event.data?.type !== 'resume-result') return;
       close();
       if (event.data.error) reject(new Error(event.data.error));
       else resolve(event.data.text || '');

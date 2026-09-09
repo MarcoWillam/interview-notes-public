@@ -6,10 +6,12 @@ export async function extractResume(
   name: string,
   data: ArrayBuffer,
 ): Promise<string> {
-  if (!/\.(doc|docx)$/i.test(name))
-    throw new Error('请选择 .doc 或 .docx 格式简历');
+  if (!/\.(doc|docx|pdf)$/i.test(name))
+    throw new Error('请选择 .doc、.docx 或文字版 .pdf 简历');
   if (!data.byteLength || data.byteLength > MAX_RESUME_BYTES)
     throw new Error('简历文件不能为空，且不能超过 5 MB');
+  if (/\.pdf$/i.test(name))
+    return (await import('./resume-pdf.ts')).extractPdfResume(data);
   const bytes = new Uint8Array(data);
   let text: string | null = null;
   if (/\.docx$/i.test(name)) {

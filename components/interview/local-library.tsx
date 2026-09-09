@@ -78,7 +78,7 @@ export function LocalLibrary({
             </button>
           </div>
           <DialogDescription>
-            保存在当前浏览器，不占本站服务器存储。换设备或清除站点数据后无法访问，请下载重要录音。
+            保存在当前浏览器，不占本站服务器存储。换设备或清除站点数据后无法访问，请导出重要记录备份。
           </DialogDescription>
           {error && (
             <p className="message error" role="alert">
@@ -127,7 +127,7 @@ export function LocalLibrary({
                       <span className="small-note">
                         {audio
                           ? `${(audio.bytes / 1024 / 1024).toFixed(1)} MB 音频 · ${audio.complete ? '录音已完整保存' : '中断或部分录音'}`
-                          : '尚无录音'}
+                          : `${row.transcript.length.toLocaleString()} 字面试记录`}
                       </span>
                     </div>
                     <div className="button-row">
