@@ -75,6 +75,8 @@ void test('sidebar exposes current state, responsive preference, and management 
   assert.match(source, /aria-current=\{current \? 'page' : undefined\}/);
   assert.match(source, /SIDEBAR_STORAGE_KEY/);
   assert.match(source, /window\.matchMedia/);
+  assert.match(source, /new ResizeObserver/);
+  assert.match(source, /--remote-bar-height/);
   assert.match(source, /新的面试/);
   assert.match(source, /记录管理/);
   assert.match(source, /未命名面试/);

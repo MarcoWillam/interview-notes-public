@@ -603,6 +603,7 @@
   --input: #d9e2e5;
   --ring: #087d70;
   --radius: 0.65rem;
+  --remote-bar-height: 41px;
 }
 * {
   box-sizing: border-box;
@@ -2244,7 +2245,6 @@ fieldset label:last-of-type {
   z-index: 50;
 }
 .workbench-shell {
-  --remote-bar-height: 41px;
   display: flex;
   align-items: stretch;
   min-width: 0;
@@ -2447,7 +2447,7 @@ fieldset label:last-of-type {
   }
 }
 @media (max-width: 600px) {
-  .workbench-shell {
+  :root {
     --remote-bar-height: 58px;
   }
 }
