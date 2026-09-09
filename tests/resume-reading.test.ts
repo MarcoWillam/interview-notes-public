@@ -1,5 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import ts from 'typescript';
 import {
   validateResumeInput,
   validateResumeReading,
@@ -66,7 +70,10 @@ const structuredResult = {
     reason: index === 3 ? '核实自驱力与具体行为' : '核实岗位相关行动和结果',
     resumeEvidence: index === 0 ? '曾负责用户访谈，访谈了五位用户。' : null,
     listenFor: ['个人行动', '可核实的结果'],
-    probes: ['你本人具体做了什么？'],
+    probes:
+      index === 0
+        ? ['你本人具体做了什么？', '这个结果如何验证？']
+        : ['你本人具体做了什么？'],
   })),
 };
 
@@ -224,20 +231,50 @@ void test('model schema requires identity and bounded structured questions', () 
   }
 });
 
-void test('markdown exports numbered interview guide before remaining follow-ups', () => {
+void test('markdown exports exactly six complete numbered questions before other follow-ups', () => {
   const markdown = exportResumeReading(structuredResult);
-  assert.ok(markdown.indexOf('## 面试提纲') >= 0);
-  assert.ok(
-    markdown.indexOf('## 面试提纲') < markdown.indexOf('## 其他建议追问'),
+  const guideStart = markdown.indexOf('## 面试提纲');
+  const followUpsStart = markdown.indexOf('## 其他建议追问');
+  assert.ok(guideStart >= 0 && followUpsStart > guideStart);
+  const guide = markdown.slice(guideStart, followUpsStart);
+  const headings = [...markdown.matchAll(/^### (\d+)\. (.+)$/gm)];
+  assert.deepEqual(
+    headings.map((heading) => [Number(heading[1]), heading[2]]),
+    structuredResult.interviewQuestions.map((q, index) => [
+      index + 1,
+      q.question,
+    ]),
   );
-  structuredResult.interviewQuestions.forEach((q, index) => {
-    assert.ok(markdown.includes(`${index + 1}. ${q.question}`));
-    for (const item of [...q.dimensions, ...q.listenFor, ...q.probes])
-      assert.ok(markdown.includes(item));
+  const blocks = guide.split(/^### \d+\. .+$/m).slice(1);
+  assert.equal(blocks.length, 6);
+  blocks.forEach((block, index) => {
+    const q = structuredResult.interviewQuestions[index];
+    assert.ok(block.includes(`维度：${q.dimensions.join('、')}`));
+    assert.ok(block.includes(`提问理由：${q.reason}`));
+    const evidence = block.split('简历证据：\n\n')[1]?.split('\n\n观察点：')[0];
+    assert.equal(
+      evidence,
+      q.resumeEvidence === null
+        ? '简历未提供明确依据。'
+        : '> ' + q.resumeEvidence.replaceAll('\n', '\n> '),
+    );
+    const observation = block.split('观察点：\n\n')[1]?.split('\n\n追问：')[0];
+    assert.equal(
+      observation,
+      q.listenFor.map((item) => '- ' + item).join('\n'),
+    );
+    const probes = block.split('追问：\n\n')[1]?.trim().split('\n');
+    assert.ok(probes && probes.length >= 1 && probes.length <= 2);
+    assert.deepEqual(
+      probes,
+      q.probes.map((probe) => '- ' + probe),
+    );
   });
-  assert.ok(markdown.includes('简历证据'));
-  assert.ok(markdown.includes('曾负责用户访谈，访谈了五位用户。'));
-  assert.ok(markdown.includes('观察点'));
+  assert.equal(
+    markdown.slice(followUpsStart),
+    '## 其他建议追问\n' +
+      structuredResult.followUps.map((q) => '- ' + q).join('\n'),
+  );
   const legacy = exportResumeReading(result);
   assert.ok(legacy.includes('## 建议追问\n- 请说明访谈后的决策。'));
   assert.ok(!legacy.includes('## 面试提纲'));
@@ -266,6 +303,7 @@ void test('markdown separates question paragraphs, evidence and follow-up lists'
         '追问：',
         '',
         '- 你本人具体做了什么？',
+        '- 这个结果如何验证？',
         '',
         `### 2. ${structuredResult.interviewQuestions[1].question}`,
       ].join('\n'),
@@ -299,4 +337,78 @@ void test('reading needs resume text but does not require interview transcript o
   assert.equal(validateResumeInput({ resumeText: input.resumeText }).role, '');
   assert.throws(() => validateResumeInput({ resumeText: '' }));
   assert.throws(() => validateResumeInput({ resumeText: 'a'.repeat(30001) }));
+});
+
+// Node strips TypeScript but not JSX; compile the view in memory for real SSR assertions.
+async function renderReading(value: typeof result) {
+  const viewUrl = new URL(
+    '../components/interview/resume-reading-view.tsx',
+    import.meta.url,
+  );
+  const source = await readFile(viewUrl, 'utf8');
+  const compiled = ts
+    .transpileModule(source, {
+      compilerOptions: {
+        jsx: ts.JsxEmit.ReactJSX,
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+      },
+    })
+    .outputText.replace(
+      /from (["'])([^"']+)\1/g,
+      (_match, quote: string, specifier: string) => {
+        const resolved = specifier.startsWith('.')
+          ? new URL(specifier + '.ts', viewUrl).href
+          : import.meta.resolve(specifier);
+        return `from ${quote}${resolved}${quote}`;
+      },
+    );
+  const { ResumeReadingView } = await import(
+    'data:text/javascript;base64,' + Buffer.from(compiled).toString('base64')
+  );
+  return renderToStaticMarkup(createElement(ResumeReadingView, { value }));
+}
+
+void test('reading view shows six core questions with evidence and native collapsed guidance', async () => {
+  const html = await renderReading(structuredResult);
+  assert.ok(html.includes('面试提纲 · 30–40 分钟'));
+  const cards = [...html.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/g)];
+  assert.equal(cards.length, 6);
+  cards.forEach(([card], index) => {
+    const q = structuredResult.interviewQuestions[index];
+    const details = card.match(/<details>([\s\S]*?)<\/details>/)?.[1];
+    assert.ok(
+      details,
+      'supporting guidance uses native details closed by default',
+    );
+    assert.ok(details.includes('<summary>提问理由、观察点与追问</summary>'));
+    const visible = card.slice(0, card.indexOf('<details>'));
+    assert.ok(visible.includes(`${index + 1}. ${q.question}`));
+    for (const dimension of q.dimensions)
+      assert.ok(visible.includes(dimension));
+    assert.ok(
+      visible.includes(
+        q.resumeEvidence === null
+          ? '岗位通用问题'
+          : `<blockquote>${q.resumeEvidence}</blockquote>`,
+      ),
+    );
+    for (const item of [q.reason, ...q.listenFor, ...q.probes])
+      assert.ok(details.includes(item));
+  });
+  assert.ok(html.indexOf('其他建议追问') > html.lastIndexOf('</article>'));
+  assert.ok(
+    !html
+      .slice(0, html.lastIndexOf('</article>'))
+      .includes(result.followUps[0]),
+  );
+});
+
+void test('legacy reading view renders facts and other follow-ups without a guide', async () => {
+  const html = await renderReading(result);
+  assert.ok(html.includes(result.summary));
+  assert.ok(html.includes('其他建议追问'));
+  assert.ok(html.includes(result.followUps[0]));
+  assert.ok(!html.includes('面试提纲'));
+  assert.ok(!html.includes('<article'));
 });

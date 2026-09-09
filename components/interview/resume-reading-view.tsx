@@ -42,9 +42,58 @@ export function ResumeReadingView({ value }: { value: ResumeReading }) {
           )}
         </section>
       ))}
+      {!!value.interviewQuestions?.length && (
+        <section className="interview-guide">
+          <h4>面试提纲 · 30–40 分钟</h4>
+          <div className="interview-question-list">
+            {value.interviewQuestions.map((question, index) => (
+              <article
+                className="interview-question-card"
+                key={question.question}
+              >
+                <h5>{`${index + 1}. ${question.question}`}</h5>
+                <div
+                  className="interview-question-dimensions"
+                  aria-label="考察维度"
+                >
+                  {question.dimensions.map((dimension) => (
+                    <span className="dimension-badge" key={dimension}>
+                      {dimension}
+                    </span>
+                  ))}
+                </div>
+                {question.resumeEvidence === null ? (
+                  <p className="small-note">岗位通用问题</p>
+                ) : (
+                  <blockquote>{question.resumeEvidence}</blockquote>
+                )}
+                <details>
+                  <summary>提问理由、观察点与追问</summary>
+                  <p>
+                    <strong>提问理由：</strong>
+                    {question.reason}
+                  </p>
+                  <p className="question-detail-label">观察点</p>
+                  <ul>
+                    {question.listenFor.map((point, pointIndex) => (
+                      <li key={pointIndex}>{point}</li>
+                    ))}
+                  </ul>
+                  <p className="question-detail-label">追问</p>
+                  <ul>
+                    {question.probes.map((probe, probeIndex) => (
+                      <li key={probeIndex}>{probe}</li>
+                    ))}
+                  </ul>
+                </details>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
       {value.followUps.length > 0 && (
         <section>
-          <h4>建议面试追问</h4>
+          <h4>其他建议追问</h4>
           <ul>
             {value.followUps.map((q, index) => (
               <li key={index}>{q}</li>
