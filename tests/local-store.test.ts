@@ -30,6 +30,75 @@ void test('interview draft survives reopening the local store', async () => {
   const reopened = createLocalStore(factory);
   assert.deepEqual(await reopened.getInterview('first'), session);
 });
+
+void test('version 4 adds local groups and group deletion preserves interviews', async () => {
+  const factory = new IDBFactory();
+  await new Promise<void>((resolve, reject) => {
+    const request = factory.open('group-migration', 4);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      db.createObjectStore('interviews', { keyPath: 'id' });
+      db.createObjectStore('audio', { keyPath: 'id' });
+      db.createObjectStore('preferences', { keyPath: 'id' });
+      db.createObjectStore('settings', { keyPath: 'id' });
+      db.createObjectStore('chunks', {
+        keyPath: ['id', 'sequence'],
+      }).createIndex('session', 'id');
+    };
+    request.onsuccess = () => {
+      request.result.close();
+      resolve();
+    };
+    request.onerror = () => reject(request.error);
+  });
+
+  const store = createLocalStore(factory, 'group-migration');
+  await store.saveInterview(session);
+  const first = await store.saveInterviewGroup({
+    id: 'campus',
+    name: ' 校招 ',
+    createdAt: 10,
+    order: 1,
+  });
+  const second = await store.saveInterviewGroup({
+    id: 'intern',
+    name: '实习生',
+    createdAt: 20,
+    order: 2,
+  });
+  assert.equal(first.name, '校招');
+  assert.deepEqual(await store.listInterviewGroups(), [first, second]);
+  await assert.rejects(
+    store.saveInterviewGroup({ ...second, id: 'duplicate', name: '校招' }),
+    /分组名称已存在/,
+  );
+  await assert.rejects(
+    store.saveInterviewGroup({ ...second, id: 'blank', name: ' ' }),
+    /1–40/,
+  );
+
+  await store.moveInterviewToGroup(session.id, first.id);
+  assert.equal((await store.getInterview(session.id))?.groupId, first.id);
+  await store.saveInterviewDraft({
+    ...session,
+    candidate: '自动保存后的候选人',
+    updatedAt: 2,
+  });
+  assert.equal((await store.getInterview(session.id))?.groupId, first.id);
+  await assert.rejects(
+    store.moveInterviewToGroup(session.id, 'missing'),
+    /分组已不存在/,
+  );
+
+  const renamed = await store.saveInterviewGroup({
+    ...first,
+    name: '应届招聘',
+  });
+  assert.equal(renamed.name, '应届招聘');
+  await store.deleteInterviewGroup(first.id);
+  assert.equal((await store.getInterview(session.id))?.groupId, null);
+  assert.deepEqual(await store.listInterviewGroups(), [second]);
+});
 void test('template source and written-test state survive reopening', async () => {
   const factory = new IDBFactory();
   const store = createLocalStore(factory);
