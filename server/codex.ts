@@ -135,30 +135,73 @@ export function runCommand(
     },
   );
 }
-export async function codexStatus() {
-  try {
-    const result = await runCommand(
-      process.env.INTERVIEW_CODEX_BIN || 'codex',
-      ['login', 'status'],
-      { timeoutMs: 10000 },
-    );
-    const ready =
-      result.code === 0 &&
-      /Logged in using ChatGPT/i.test(result.stdout + result.stderr);
-    return {
-      provider: 'codex-local' as const,
-      analysis: ready,
-      message: ready
-        ? '已登录 ChatGPT，可使用本地 Codex 分析'
-        : '请在本机终端运行 codex login，使用 ChatGPT 账号登录后重新检查。',
-    };
-  } catch {
-    return {
-      provider: 'codex-local' as const,
-      analysis: false,
-      message: '未能启动 Codex，请确认已安装且终端可运行 codex login status。',
-    };
+type CommandResult = {
+  stdout: string;
+  stderr: string;
+  code: number | null;
+};
+type CommandRunner = (
+  command: string,
+  args: string[],
+  options?: Parameters<typeof runCommand>[2],
+) => Promise<CommandResult>;
+
+export function codexCommandCandidates(
+  source: Record<string, string | undefined> = process.env,
+  platform = process.platform,
+) {
+  if (source.INTERVIEW_CODEX_BIN) return [source.INTERVIEW_CODEX_BIN];
+  return [
+    'codex',
+    ...(platform === 'darwin'
+      ? [
+          '/Applications/ChatGPT.app/Contents/Resources/codex',
+          '/Applications/Codex.app/Contents/Resources/codex',
+        ]
+      : []),
+  ];
+}
+
+export async function findReadyCodexCommand(
+  source: Record<string, string | undefined> = process.env,
+  platform = process.platform,
+  runner: CommandRunner = runCommand,
+) {
+  let started = false,
+    apiKeyLogin = false;
+  for (const command of codexCommandCandidates(source, platform)) {
+    try {
+      const result = await runner(command, ['login', 'status'], {
+        timeoutMs: 10000,
+        env: codexEnvironment(source),
+      });
+      started = true;
+      const output = result.stdout + result.stderr;
+      if (result.code === 0 && /Logged in using ChatGPT/i.test(output))
+        return {
+          command,
+          analysis: true,
+          message: '已登录 ChatGPT，可使用本地 Codex 分析',
+        };
+      if (/Logged in using an API key/i.test(output)) apiKeyLogin = true;
+    } catch {
+      // Try the next known installation location.
+    }
   }
+  return {
+    command: undefined,
+    analysis: false,
+    message: !started
+      ? '未能启动 Codex；请安装 Codex CLI，或确认 ChatGPT/Codex 应用位于“应用程序”文件夹。'
+      : apiKeyLogin
+        ? '当前 Codex 使用 API Key 登录；请先运行 codex logout，再运行 codex login 登录 ChatGPT。'
+        : '请在连接器所在终端运行 codex login，使用 ChatGPT 账号登录后重新检查。',
+  };
+}
+
+export async function codexStatus() {
+  const { analysis, message } = await findReadyCodexCommand();
+  return { provider: 'codex-local' as const, analysis, message };
 }
 export function codexArgs(directory: string) {
   const disabled = [
@@ -230,7 +273,7 @@ async function runStructuredCodex(
   instructions: string,
   schema: object,
 ): Promise<unknown> {
-  const status = await codexStatus();
+  const status = await findReadyCodexCommand();
   if (!status.analysis) throw new AnalysisError(status.message, 503);
   signal.throwIfAborted();
   const directory = await mkdtemp(join(tmpdir(), 'interview-codex-'));
@@ -241,7 +284,7 @@ async function runStructuredCodex(
       { mode: 0o600 },
     );
     const result = await runCommand(
-      process.env.INTERVIEW_CODEX_BIN || 'codex',
+      status.command!,
       codexArgs(directory),
       {
         cwd: directory,
