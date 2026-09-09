@@ -287,6 +287,117 @@ void test('jobs are isolated, idempotent and claimed once', () => {
     s.close();
   }
 });
+void test('same active material and label reuse one task across page submissions', () => {
+  const { s, a } = setup();
+  try {
+    const first = s.submit(a, 'original-123', '张三', input);
+    const duplicate = s.submit(a, 'reloaded-123', '张三', input);
+    const other = s.submit(a, 'different-123', '李四', input);
+    assert.equal(duplicate.id, first.id);
+    assert.notEqual(other.id, first.id);
+    assert.equal(s.list(a).length, 2);
+
+    s.cancel(a, first.id);
+    const retried = s.submit(a, 'after-stop-123', '张三', input);
+    assert.notEqual(retried.id, first.id);
+  } finally {
+    s.close();
+  }
+});
+void test('running work can pause, reject its old lease, and resume from the queue', () => {
+  const { s, a, tick } = setup();
+  try {
+    const d = s.redeem(s.pairing(a).code, '电脑');
+    const job = s.submit(a, 'pause-123', '张三', input);
+    const claim = s.claim(d.token, true)!;
+    assert.equal(s.get(a, job.id).startedAt, 1000000);
+
+    tick(5000);
+    const paused = s.action(a, job.id, 'pause');
+    assert.equal(paused.state, 'paused');
+    assert.equal(paused.startedAt, 1000000);
+    assert.equal(s.heartbeat(d.token, job.id, claim.lease).active, false);
+    assert.equal(s.finish(d.token, job.id, claim.lease, report).accepted, false);
+
+    tick(5000);
+    const resumed = s.action(a, job.id, 'resume');
+    assert.equal(resumed.state, 'queued');
+    assert.equal(resumed.queuedAt, 1010000);
+    assert.equal(resumed.startedAt, null);
+    assert.equal(s.action(a, job.id, 'resume').state, 'queued');
+  } finally {
+    s.close();
+  }
+});
+void test('stop clears queued material and task ownership irreversibly', () => {
+  const { s, a } = setup();
+  try {
+    const job = s.submit(a, 'stop-123', '张三', input);
+    const stopped = s.action(a, job.id, 'stop');
+    assert.equal(stopped.state, 'cancelled');
+    assert.equal(s.action(a, job.id, 'stop').state, 'cancelled');
+    const row = s.db
+      .prepare(
+        'SELECT input,report,error,device,lease,until,started FROM jobs WHERE id=?',
+      )
+      .get(job.id) as Record<string, unknown>;
+    assert.deepEqual({ ...row }, {
+      input: null,
+      report: null,
+      error: null,
+      device: null,
+      lease: null,
+      until: null,
+      started: null,
+    });
+    assert.throws(() => s.action(a, job.id, 'resume'), /不能恢复/);
+  } finally {
+    s.close();
+  }
+});
+void test('resume preparation is claimed before older unstarted assessments', () => {
+  const { s, a, tick } = setup();
+  try {
+    const d = s.redeem(s.pairing(a).code, '电脑');
+    const running = s.submit(a, 'running-123', '正在评估', input);
+    const first = s.claim(d.token, true, ['interview', 'resume'])!;
+    assert.equal(first.id, running.id);
+    tick(1);
+    const assessment = s.submit(a, 'waiting-123', '等待评估', input);
+    tick(1);
+    const resume = s.submit(a, 'resume-123', '准备面试', resumeInput, 'resume');
+    assert.equal(s.get(a, resume.id).position, 1);
+    assert.equal(s.get(a, assessment.id).position, 2);
+    s.finish(d.token, first.id, first.lease, report);
+
+    const next = s.claim(d.token, true, ['interview', 'resume'])!;
+    assert.equal(next.id, resume.id);
+  } finally {
+    s.close();
+  }
+});
+void test('legacy jobs gain queue timing without losing their state', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'interview-job-migration-'));
+  const file = join(directory, 'queue.sqlite');
+  try {
+    const legacy = new DatabaseSync(file);
+    legacy.exec(`CREATE TABLE jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,kind TEXT NOT NULL DEFAULT 'interview',UNIQUE(user,client));`);
+    legacy
+      .prepare(
+        "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind) VALUES('job','user','client','hash','历史任务','queued','{}',100,200,'interview')",
+      )
+      .run();
+    legacy.close();
+
+    const migrated = new QueueStore(file, () => 300);
+    assert.equal(migrated.get('user', 'job').state, 'queued');
+    assert.equal(migrated.get('user', 'job').queuedAt, 100);
+    assert.equal(migrated.get('user', 'job').startedAt, null);
+    migrated.close();
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 void test('cancelled and expired leases cannot overwrite a result or run twice automatically', () => {
   const { s, a, tick } = setup();
   try {
