@@ -174,7 +174,7 @@ export function TaskCenter() {
         }}
       >
         <DialogContent
-          className="task-center-drawer"
+          className="task-center-drawer translate-x-0 translate-y-0"
           showCloseButton={false}
         >
           <div className="remote-dialog-heading task-center-heading">
