@@ -5,7 +5,7 @@
 ## 当前云服务器
 
 - 网站：`https://your-server-ip`，初始账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。其他面试官账号通过下述服务器命令创建。
-- 代码：当前版本为 `/opt/interview-notes/releases/20260909-22`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一稳定版本 `20260909-21` 保留用于回滚；`20260909-19` 为桌面工具显示修正前的中间版本，不作为回滚目标。
+- 代码：当前版本为 `/opt/interview-notes/releases/20260909-23`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一稳定版本 `20260909-22` 保留用于回滚；`20260909-19` 为桌面工具显示修正前的中间版本，不作为回滚目标。
 - 数据：`/var/lib/interview-notes/queue.sqlite`；环境配置：`/etc/interview-notes/server.env`；运行时：`/opt/node-v24.13.0-linux-x64/bin/node`。服务器只需已构建的 `dist/web` 和队列服务源码，无需安装模型或上传电脑上的 Codex 登录信息。
 - Nginx：`/etc/nginx/conf.d/interview-notes.conf`，对应仓库 `deploy/nginx-ip.conf`，HTTP 自动跳转 HTTPS，80 端口保留 ACME 验证路径。
 - 证书：Let's Encrypt IP 证书，由 acme.sh 3.1.2 的 `shortlived` profile 签发。使用 `--days 3`，`interview-cert-renew.timer` 每天两次检查续期；续期成功自动安装到 `/etc/nginx/ssl/interview/` 并检查、重载 Nginx。不要关闭公网 80 端口，否则续期验证会失败。
@@ -25,7 +25,7 @@ journalctl -u interview-notes -n 50 --no-pager
 
 发布包采用明确白名单：`dist/web`、`server/start.ts`、`server/accounts.ts`、`server/queue/{api,http,store}.ts`、`lib/interview.ts`、`lib/interview-questions.ts`、`lib/resume-reading.ts`、`lib/standards.ts`、`lib/written-test-supplement.ts` 和 `package.json`。这些文件构成服务端 import 闭包，此外仅依赖 Node 内置模块，生产不需要 `node_modules`。包内不得包含 `.env*`、`.local`、简历源文件、浏览器数据、Codex credentials、`node_modules` 或 `.git`；后续增加服务端依赖时重新核对闭包。PDF CMap 与字体资源随 `dist/web` 一起发布。
 
-本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。本次 `20260909-22` 发布包 SHA-256 为 `1c4663fc449678cffc61c61ba12aa9b7dfc020a3254c1f62990a34c25adc438e`。macOS 打包时必须禁用 AppleDouble 和扩展属性，发布校验会拒绝 `._*` 条目。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。本机端口健康探针必须带 `Host: your-server-ip`，否则正式环境的来源校验会返回 403；服务重启后在有限重试窗口内探测，不能把首次连接拒绝误判为启动失败。
+本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。本次 `20260909-23` 发布包 SHA-256 为 `6d11067ee0c0b7f36fb4cd0070c1ba9b97cb918a1cc381b3fdecc5275a46bb47`。macOS 打包时必须禁用 AppleDouble 和扩展属性，发布校验会拒绝 `._*` 条目。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。本机端口健康探针必须带 `Host: your-server-ip`，否则正式环境的来源校验会返回 403；服务重启后在有限重试窗口内探测，不能把首次连接拒绝误判为启动失败。
 
 发布检查包括 `nginx -t`、`systemctl is-active interview-notes nginx interview-cert-renew.timer`、HTTPS `/api/session`，以及 HTTP 308 跳转、无需跳过校验的 TLS 证书、登录 Cookie 的 HttpOnly/Secure/SameSite=Strict、登录后工作台和实际构建清单中的 JS/CSS、PDF CMap/font 资源。账号和连接凭据仅由本机脚本读取，不打印值，不写入发布包；`.local/cloud-access.txt` 与 `.local/cloud-connector.json` 保持权限 600。
 
@@ -64,6 +64,8 @@ journalctl -u interview-notes -n 50 --no-pager
 `20260909-21` 将产品名称从“面谈”统一更新为“伯乐 AI”，英文辅助标识调整为 `INTERVIEW COPILOT`；顶部品牌、登录页、浏览器标题、页脚、README 和产品规格同步更新。生产浏览器确认品牌、工作台导航和页脚显示正确。本地 208 项测试、类型检查、代码检查、生产构建和差异检查通过。发布包 SHA-256 为 `7c58c6b6c4ab2fa6d901b730d6545ce1652212ddf77d741c1542249f77ac3153`，线上连接器包 SHA-256 为 `6af03b3e11fe3b6c2d3a837afe05bf6dec7ce168c9ffb4c3bfc675fe0b332054`；公网 HTTPS、HTTP 308、新 JS/CSS、Nginx、应用服务和证书续期定时器均通过检查。
 
 `20260909-22` 修复左侧面试记录排序下拉框的控件样式。排序选择改为与岗位确认一致的统一 NativeSelect，固定 32px 高度、文字留白和自绘箭头位置，避免选择“自定义排序”时文字或系统箭头挤压。生产桌面浏览器实测三项选择、箭头和拖拽手柄显示正常，并在检查后恢复默认“最近添加”。本地 208 项测试、类型检查、代码检查、生产构建和差异检查通过。发布包 SHA-256 为 `1c4663fc449678cffc61c61ba12aa9b7dfc020a3254c1f62990a34c25adc438e`，线上连接器包 SHA-256 为 `cf718e5fc78d97f7fbdc198ffa2069b28697081805d5f51b234e4dc6561f53c6`；公网 HTTPS、HTTP 308、新 JS/CSS、Nginx、应用服务和证书续期定时器均通过检查。
+
+`20260909-23` 完成全局下拉框样式收敛。面试设置中的岗位模板、全局默认模板和提纲生成前的岗位确认全部复用 NativeSelect，统一为 42px 表单尺寸、单一自绘箭头、长文本留白、焦点态和禁用态；左侧排序继续使用 32px 紧凑尺寸。生产浏览器实测侧栏排序、面试设置和全局设置下拉框显示正常。本地 209 项测试、类型检查、代码检查、生产构建和差异检查通过。发布包 SHA-256 为 `6d11067ee0c0b7f36fb4cd0070c1ba9b97cb918a1cc381b3fdecc5275a46bb47`，线上连接器包 SHA-256 为 `04cb686a41fd7a4efd43b0e377704902b48c4402fcf51e2fbb98deb5088259bc`；公网 HTTPS、HTTP 308、新 JS/CSS、Nginx、应用服务和证书续期定时器均通过检查。
 
 ## 服务器
 
