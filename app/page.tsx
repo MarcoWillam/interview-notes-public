@@ -47,6 +47,13 @@ import {
 import { validateInput, exportMarkdown, type Report } from '@/lib/interview';
 import { useInterviewLibrary } from '@/hooks/use-interview-library';
 import type { NewInterviewSeed } from '@/lib/local/store';
+import {
+  COMMON_TEMPLATE_ID,
+  appliedTemplateState,
+  inferTemplateSource,
+  resolveTemplateSelection,
+  supportsWrittenTest,
+} from '@/lib/interview-template-state';
 import { LocalLibrary } from '@/components/interview/local-library';
 import { GlobalPreferences } from '@/components/interview/global-preferences';
 import { InterviewPreparation } from '@/components/interview/interview-preparation';
@@ -80,12 +87,17 @@ export default function Home() {
   const [focus, setFocus] = useState('');
   const [scoringGuidance, setScoringGuidance] = useState('');
   const [reportRequirements, setReportRequirements] = useState('');
+  const [sourceTemplateId, setSourceTemplateId] = useState<
+    string | null | undefined
+  >(undefined);
+  const [templateModified, setTemplateModified] = useState(false);
+  const [hasWrittenTest, setHasWrittenTest] = useState(false);
   const [resumeText, setResumeText] = useState('');
   const [resumeName, setResumeName] = useState('');
   const [resumeReading, setResumeReading] = useState<ResumeReading | null>(
     null,
   );
-  const [resumeBodyOpen, setResumeBodyOpen] = useState(true);
+  const [resumeBodyOpen, setResumeBodyOpen] = useState(false);
   const candidateKeepButton = useRef<HTMLButtonElement>(null);
   const [pendingCandidateName, setPendingCandidateName] = useState<{
     current: string;
@@ -187,6 +199,14 @@ export default function Home() {
     scoringGuidance,
     reportRequirements,
   };
+  const standards: InterviewStandards = {
+    role,
+    requirements,
+    dimensionText,
+    focus,
+    scoringGuidance,
+    reportRequirements,
+  };
   const library = useInterviewLibrary(
     {
       candidate,
@@ -205,6 +225,9 @@ export default function Home() {
       report,
       conclusion,
       confirmed,
+      sourceTemplateId,
+      templateModified,
+      hasWrittenTest,
     },
     async (saved) => {
       analysisController.current?.abort();
@@ -218,10 +241,13 @@ export default function Home() {
       setFocus(saved.focus || '');
       setScoringGuidance(saved.scoringGuidance || '');
       setReportRequirements(saved.reportRequirements || '');
+      setSourceTemplateId(saved.sourceTemplateId);
+      setTemplateModified(saved.templateModified ?? false);
+      setHasWrittenTest(saved.hasWrittenTest ?? false);
       setResumeText(saved.resumeText || '');
       setResumeName(saved.resumeName || '');
       setResumeReading(saved.resumeReading || null);
-      setResumeBodyOpen(!saved.resumeText);
+      setResumeBodyOpen(false);
       setTranscript(saved.transcript);
       setTranscriptName(
         saved.transcriptName || (saved.transcript ? '历史面试记录' : ''),
@@ -235,6 +261,32 @@ export default function Home() {
     },
     reset,
   );
+  useEffect(() => {
+    if (!library.ready || sourceTemplateId !== undefined) return;
+    const inferred = inferTemplateSource(
+      standards,
+      library.preferences,
+      library.globalSettings.defaults,
+    );
+    setSourceTemplateId(inferred.sourceTemplateId);
+    setTemplateModified(inferred.templateModified);
+    if (!supportsWrittenTest(inferred.sourceTemplateId))
+      setHasWrittenTest(false);
+  }, [
+    library.ready,
+    library.preferences,
+    library.globalSettings.defaults,
+    sourceTemplateId,
+    standards,
+  ]);
+  useEffect(() => {
+    if (
+      sourceTemplateId !== undefined &&
+      !supportsWrittenTest(sourceTemplateId) &&
+      hasWrittenTest
+    )
+      setHasWrittenTest(false);
+  }, [sourceTemplateId, hasWrittenTest]);
   async function localAction(action: () => Promise<void>) {
     if (busyRef.current) return;
     busyRef.current = true;
@@ -618,14 +670,6 @@ export default function Home() {
       setError(e instanceof Error ? e.message : '请补全资料');
     }
   }
-  const standards: InterviewStandards = {
-    role,
-    requirements,
-    dimensionText,
-    focus,
-    scoringGuidance,
-    reportRequirements,
-  };
   function setStandards(value: InterviewStandards) {
     setResumeReading(null);
     setRole(value.role);
@@ -638,16 +682,20 @@ export default function Home() {
   function applyStandards(value: InterviewStandards) {
     invalidate();
     setStandards(value);
+    setTemplateModified(true);
   }
   function reset(seed: NewInterviewSeed) {
     analysisController.current?.abort();
     analysisController.current = null;
     setStandards(seed.standards);
+    setSourceTemplateId(seed.sourceTemplateId);
+    setTemplateModified(false);
+    setHasWrittenTest(false);
     setCandidate('');
     setResumeText('');
     setResumeName('');
     setResumeReading(null);
-    setResumeBodyOpen(true);
+    setResumeBodyOpen(false);
     setPendingCandidateName(null);
     setPendingResume(null);
     setTranscript('');
@@ -674,25 +722,45 @@ export default function Home() {
       `${safeName}-面试记录.md`,
     );
   }
+  const templateSelection = resolveTemplateSelection(
+    standards,
+    sourceTemplateId ?? null,
+    templateModified,
+    library.preferences,
+    library.globalSettings.defaults,
+  );
   const preparationProps = {
     candidate,
     standards,
     templates: library.preferences,
     disabled: !!busy,
     standardsOpen,
+    templateSelection,
+    hasWrittenTest,
+    writtenTestSupported: supportsWrittenTest(sourceTemplateId),
     onStandardsOpenChange: setStandardsOpen,
     onCandidateChange: (value: string) => {
       invalidate();
       setCandidate(value);
     },
     onStandardsChange: applyStandards,
+    onWrittenTestChange: (checked: boolean) => {
+      invalidate();
+      setResumeReading(null);
+      setHasWrittenTest(checked);
+    },
     onApplyTemplate: (id: string) => {
       const selected =
-        id === '__common__'
+        id === COMMON_TEMPLATE_ID
           ? library.globalSettings.defaults
           : library.preferences.find((preference) => preference.id === id);
       if (selected) {
-        applyStandards(normalizeStandards(selected));
+        invalidate();
+        setStandards(normalizeStandards(selected));
+        const next = appliedTemplateState(id, hasWrittenTest);
+        setSourceTemplateId(next.sourceTemplateId);
+        setTemplateModified(next.templateModified);
+        setHasWrittenTest(next.hasWrittenTest);
         setNotice('已将模板标准复制到本场面试；旧评估已清除，请重新确认结论。');
       }
     },
