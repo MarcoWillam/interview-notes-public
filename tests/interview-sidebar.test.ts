@@ -66,3 +66,21 @@ void test('the interview library updates sidebar summaries after a successful sa
     /setSessions\(\(rows\) => updateInterviewSummary\(rows, saved\)\)/,
   );
 });
+
+void test('sidebar exposes current state, responsive preference, and management actions', async () => {
+  const source = await readFile(
+    new URL(
+      '../components/interview/interview-sidebar.tsx',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  assert.match(source, /aria-current=\{current \? 'page' : undefined\}/);
+  assert.match(source, /SIDEBAR_STORAGE_KEY/);
+  assert.match(source, /window\.matchMedia/);
+  assert.match(source, /新的面试/);
+  assert.match(source, /记录管理/);
+  assert.match(source, /未命名面试/);
+  assert.match(source, /event\.key !== 'Escape'/);
+  assert.match(source, /focusSidebarTrigger/);
+});
