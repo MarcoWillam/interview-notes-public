@@ -126,10 +126,16 @@ export function validateResumeReading(
     typeof v.candidateNameEvidence === 'string' &&
     input.resumeText.includes(v.candidateNameEvidence) &&
     v.candidateNameEvidence.includes(v.candidateName);
+  // A completed supplement flips the record status to “has written test”, while
+  // the locked six-question guide remains the regular guide generated earlier.
+  const originalQuestionInput =
+    v.writtenTestSupplement === undefined
+      ? input
+      : { ...input, hasWrittenTest: false };
   const interviewQuestions =
     v.interviewQuestions === undefined
       ? undefined
-      : validateQuestions(v.interviewQuestions, input);
+      : validateQuestions(v.interviewQuestions, originalQuestionInput);
   const writtenTestSupplement =
     v.writtenTestSupplement === undefined
       ? undefined
