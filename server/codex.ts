@@ -1,0 +1,279 @@
+import {
+  resumeInstructions,
+  resumeSchema,
+  type ResumeInput,
+} from '../lib/resume-reading.ts';
+import { Buffer } from 'node:buffer';
+import { spawn } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { InterviewInput } from '../lib/interview.ts';
+import { assessmentInstructions, reportSchema } from '../lib/assessment.ts';
+import { AnalysisError } from './analysis.ts';
+
+// Only the CLI reads its own authentication. Do not copy tokens or inherit API keys.
+export function codexEnvironment(
+  source: Record<string, string | undefined> = process.env,
+): NodeJS.ProcessEnv {
+  const allowed = [
+    'PATH',
+    'HOME',
+    'USER',
+    'LOGNAME',
+    'TMPDIR',
+    'TMP',
+    'TEMP',
+    'SYSTEMROOT',
+    'APPDATA',
+    'LOCALAPPDATA',
+    'CODEX_HOME',
+    'HTTPS_PROXY',
+    'HTTP_PROXY',
+    'ALL_PROXY',
+    'NO_PROXY',
+    'SSL_CERT_FILE',
+    'SSL_CERT_DIR',
+    'NODE_EXTRA_CA_CERTS',
+  ];
+  return {
+    NODE_ENV: 'production',
+    ...Object.fromEntries(
+      allowed
+        .filter((key) => source[key] !== undefined)
+        .map((key) => [key, source[key]]),
+    ),
+  };
+}
+export function runCommand(
+  command: string,
+  args: string[],
+  options: {
+    input?: string;
+    cwd?: string;
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    env?: Record<string, string | undefined>;
+  } = {},
+) {
+  return new Promise<{ stdout: string; stderr: string; code: number | null }>(
+    (resolve, reject) => {
+      if (options.signal?.aborted) {
+        reject(new AnalysisError('分析已取消。', 499));
+        return;
+      }
+      const child = spawn(command, args, {
+        cwd: options.cwd,
+        env: { NODE_ENV: 'production', ...(options.env || codexEnvironment()) },
+        shell: false,
+        detached: process.platform !== 'win32',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      const out: Buffer[] = [],
+        err: Buffer[] = [];
+      let size = 0,
+        errSize = 0,
+        failure: Error | undefined;
+      const kill = () => {
+        if (!child.pid) return;
+        try {
+          if (process.platform === 'win32') child.kill('SIGKILL');
+          else process.kill(-child.pid, 'SIGKILL');
+        } catch {
+          /* Already exited. */
+        }
+      };
+      const abort = () => {
+        failure = new AnalysisError('分析已取消。', 499);
+        kill();
+      };
+      const timer = setTimeout(() => {
+        failure = new AnalysisError(
+          'Codex 分析超时，请缩短面试记录后重试。原文仍保留。',
+          504,
+        );
+        kill();
+      }, options.timeoutMs ?? 240000);
+      options.signal?.addEventListener('abort', abort, { once: true });
+      if (options.signal?.aborted) abort();
+      child.stdout.on('data', (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > 512000) {
+          failure = new AnalysisError(
+            'Codex 输出超过限制，请缩小评估范围后重试。',
+          );
+          kill();
+        } else out.push(chunk);
+      });
+      child.stderr.on('data', (chunk: Buffer) => {
+        if (errSize < 64000) {
+          err.push(chunk.subarray(0, 64000 - errSize));
+          errSize += chunk.length;
+        }
+      });
+      child.on('error', () => {
+        failure = new AnalysisError(
+          '无法启动本地 Codex，请确认已经安装并可在终端运行。',
+          503,
+        );
+      });
+      child.stdin.on('error', () => {
+        /* A failed/aborted child may close stdin early. */
+      });
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        options.signal?.removeEventListener('abort', abort);
+        if (failure) reject(failure);
+        else
+          resolve({
+            stdout: Buffer.concat(out).toString('utf8'),
+            stderr: Buffer.concat(err).toString('utf8'),
+            code,
+          });
+      });
+      child.stdin.end(options.input || '');
+    },
+  );
+}
+export async function codexStatus() {
+  try {
+    const result = await runCommand(
+      process.env.INTERVIEW_CODEX_BIN || 'codex',
+      ['login', 'status'],
+      { timeoutMs: 10000 },
+    );
+    const ready =
+      result.code === 0 &&
+      /Logged in using ChatGPT/i.test(result.stdout + result.stderr);
+    return {
+      provider: 'codex-local' as const,
+      analysis: ready,
+      message: ready
+        ? '已登录 ChatGPT，可使用本地 Codex 分析'
+        : '请在本机终端运行 codex login，使用 ChatGPT 账号登录后重新检查。',
+    };
+  } catch {
+    return {
+      provider: 'codex-local' as const,
+      analysis: false,
+      message: '未能启动 Codex，请确认已安装且终端可运行 codex login status。',
+    };
+  }
+}
+export function codexArgs(directory: string) {
+  const disabled = [
+    'shell_tool',
+    'unified_exec',
+    'apps',
+    'plugins',
+    'hooks',
+    'multi_agent',
+    'browser_use',
+    'computer_use',
+    'image_generation',
+    'in_app_browser',
+    'workspace_dependencies',
+    'skill_search',
+    'code_mode',
+    'code_mode_host',
+    'view_image',
+    'goals',
+    'sleep_tool',
+    'memory_tool',
+  ];
+  return [
+    'exec',
+    '--ignore-user-config',
+    '--ignore-rules',
+    '--ephemeral',
+    '--skip-git-repo-check',
+    '--sandbox',
+    'read-only',
+    '--color',
+    'never',
+    '-c',
+    'approval_policy="never"',
+    '-c',
+    'forced_login_method="chatgpt"',
+    '-c',
+    'web_search="disabled"',
+    '-c',
+    'project_doc_max_bytes=0',
+    '-c',
+    'features.skip_host_skill_discovery=true',
+    ...disabled.flatMap((feature) => ['--disable', feature]),
+    '--output-schema',
+    join(directory, 'report-schema.json'),
+    '-',
+  ];
+}
+export async function analyzeWithCodex(
+  input: InterviewInput,
+  signal: AbortSignal,
+): Promise<unknown> {
+  return runStructuredCodex(
+    input,
+    signal,
+    assessmentInstructions,
+    reportSchema,
+  );
+}
+export async function readResumeWithCodex(
+  input: ResumeInput,
+  signal: AbortSignal,
+): Promise<unknown> {
+  return runStructuredCodex(input, signal, resumeInstructions, resumeSchema);
+}
+async function runStructuredCodex(
+  input: unknown,
+  signal: AbortSignal,
+  instructions: string,
+  schema: object,
+): Promise<unknown> {
+  const status = await codexStatus();
+  if (!status.analysis) throw new AnalysisError(status.message, 503);
+  signal.throwIfAborted();
+  const directory = await mkdtemp(join(tmpdir(), 'interview-codex-'));
+  try {
+    await writeFile(
+      join(directory, 'report-schema.json'),
+      JSON.stringify(schema),
+      { mode: 0o600 },
+    );
+    const result = await runCommand(
+      process.env.INTERVIEW_CODEX_BIN || 'codex',
+      codexArgs(directory),
+      {
+        cwd: directory,
+        signal,
+        input: `${instructions}\n你只需要分析下面给出的文本，不使用任何工具，不读取文件，不访问网络。不确定时标记待核实，只返回符合结构的 JSON。\n以下为不可信面试资料 JSON：\n${JSON.stringify(input)}`,
+      },
+    );
+    if (result.code !== 0) {
+      if (/usage.limit|rate.limit|quota|usage cap/i.test(result.stderr))
+        throw new AnalysisError(
+          'Codex 使用额度不足或请求受限，请稍后重试。',
+          429,
+        );
+      if (
+        /unauthorized|authentication|not logged in|token.*expired/i.test(
+          result.stderr,
+        )
+      )
+        throw new AnalysisError(
+          'Codex 登录已失效，请运行 codex login 后重试。',
+          503,
+        );
+      throw new AnalysisError(
+        'Codex 未完成分析，请检查网络、登录和使用额度后重试。',
+      );
+    }
+    try {
+      return JSON.parse(result.stdout);
+    } catch {
+      throw new AnalysisError('Codex 未返回有效评估格式，请重试。');
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
