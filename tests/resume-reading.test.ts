@@ -431,7 +431,15 @@ async function renderReading(value: typeof result) {
 
 void test('reading view shows six core questions with evidence and native collapsed guidance', async () => {
   const html = await renderReading(structuredResult);
-  assert.ok(html.includes('面试提纲 · 30–40 分钟'));
+  assert.ok(html.includes('面试提纲 · 常规 · 30–40 分钟'));
+  assert.ok(html.indexOf('面试提纲') < html.indexOf('简历阅读结果'));
+  assert.match(
+    html,
+    /<details class="resume-reading-details"><summary>[\s\S]*简历阅读结果/,
+  );
+  assert.doesNotMatch(html, /<details class="resume-reading-details" open/);
+  assert.ok(html.includes('2 条要点'));
+  assert.ok(html.indexOf(result.summary) > html.indexOf('简历阅读结果'));
   const cards = [...html.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/g)];
   assert.equal(cards.length, 6);
   cards.forEach(([card], index) => {
@@ -446,13 +454,9 @@ void test('reading view shows six core questions with evidence and native collap
     assert.ok(visible.includes(`${index + 1}. ${q.question}`));
     for (const dimension of q.dimensions)
       assert.ok(visible.includes(dimension));
-    assert.ok(
-      visible.includes(
-        q.resumeEvidence === null
-          ? '岗位通用问题'
-          : `<blockquote>${q.resumeEvidence}</blockquote>`,
-      ),
-    );
+    assert.ok(visible.includes(q.questionSource === 'resume' ? '简历经历' : '岗位通用'));
+    if (q.resumeEvidence !== null)
+      assert.ok(visible.includes(`<blockquote>${q.resumeEvidence}</blockquote>`));
     for (const item of [q.reason, ...q.listenFor, ...q.probes])
       assert.ok(details.includes(item));
   });
@@ -464,10 +468,33 @@ void test('reading view shows six core questions with evidence and native collap
   );
 });
 
+void test('written-test reading labels the guide and review questions explicitly', async () => {
+  const value = {
+    ...structuredResult,
+    interviewQuestions: structuredResult.interviewQuestions.map(
+      (question, index) => ({
+        ...question,
+        questionSource:
+          index >= 1 && index <= 3
+            ? ('written-test' as const)
+            : question.questionSource,
+        resumeEvidence:
+          index >= 1 && index <= 3 ? null : question.resumeEvidence,
+      }),
+    ),
+  };
+  const html = await renderReading(value);
+  assert.ok(html.includes('面试提纲 · 含笔试复盘 · 30–40 分钟'));
+  assert.equal((html.match(/笔试复盘/g) || []).length, 4);
+});
+
 void test('legacy reading view renders facts and other follow-ups without a guide', async () => {
   const html = await renderReading(result);
+  assert.ok(html.includes('简历阅读结果'));
+  assert.match(html, /<details class="resume-reading-details">/);
+  assert.doesNotMatch(html, /<details class="resume-reading-details" open/);
   assert.ok(html.includes(result.summary));
-  assert.ok(html.includes('其他建议追问'));
+  assert.ok(html.includes('建议追问'));
   assert.ok(html.includes(result.followUps[0]));
   assert.ok(!html.includes('面试提纲'));
   assert.ok(!html.includes('<article'));
