@@ -18,6 +18,7 @@ const input = {
   focus: '重点核实主动发起的研究',
   scoringGuidance: '基于具体行动和结果评估',
   reportRequirements: '明确列出待核实事项',
+  hasWrittenTest: false,
 };
 const result = {
   summary: '有用户研究相关自述。',
@@ -69,6 +70,8 @@ const structuredResult = {
     ][index],
     reason: index === 3 ? '核实自驱力与具体行为' : '核实岗位相关行动和结果',
     resumeEvidence: index === 0 ? '曾负责用户访谈，访谈了五位用户。' : null,
+    questionSource:
+      index === 0 ? ('resume' as const) : ('role' as const),
     listenFor: ['个人行动', '可核实的结果'],
     probes:
       index === 0
@@ -86,6 +89,47 @@ void test('complete standards and six grounded interview questions survive valid
   assert.deepEqual(
     validateResumeReading(structuredResult, input),
     structuredResult,
+  );
+});
+
+void test('written-test guides require review questions in positions two through four', () => {
+  const writtenInput = { ...input, hasWrittenTest: true };
+  const writtenGuide = {
+    ...structuredResult,
+    interviewQuestions: structuredResult.interviewQuestions.map(
+      (question, index) => ({
+        ...question,
+        questionSource:
+          index >= 1 && index <= 3
+            ? ('written-test' as const)
+            : question.questionSource,
+        resumeEvidence:
+          index >= 1 && index <= 3 ? null : question.resumeEvidence,
+      }),
+    ),
+  };
+  assert.deepEqual(
+    validateResumeReading(writtenGuide, writtenInput),
+    writtenGuide,
+  );
+  assert.throws(() => validateResumeReading(structuredResult, writtenInput));
+  assert.throws(() => validateResumeReading(writtenGuide, input));
+});
+
+void test('regular guides reject written-test wording', () => {
+  assert.throws(() =>
+    validateResumeReading(
+      {
+        ...structuredResult,
+        interviewQuestions: structuredResult.interviewQuestions.map(
+          (question, index) =>
+            index === 0
+              ? { ...question, question: '请复盘这次笔试。' }
+              : question,
+        ),
+      },
+      input,
+    ),
   );
 });
 
@@ -127,6 +171,8 @@ void test('questions reject invented evidence and invalid dimensions or array bo
     { listenFor: ['一', '二', '三', '四'] },
     { question: ' ' },
     { reason: '' },
+    { questionSource: 'unknown' },
+    { questionSource: undefined },
   ]) {
     assert.throws(
       () =>
@@ -215,11 +261,17 @@ void test('model schema requires identity and bounded structured questions', () 
   assert.equal(questions.items.additionalProperties, false);
   assert.deepEqual(questions.items.required, [
     'question',
+    'questionSource',
     'dimensions',
     'reason',
     'resumeEvidence',
     'listenFor',
     'probes',
+  ]);
+  assert.deepEqual(questions.items.properties.questionSource.enum, [
+    'resume',
+    'written-test',
+    'role',
   ]);
   for (const [field, min, max] of [
     ['dimensions', 1, 2],
@@ -236,6 +288,7 @@ void test('markdown exports exactly six complete numbered questions before other
   const guideStart = markdown.indexOf('## 面试提纲');
   const followUpsStart = markdown.indexOf('## 其他建议追问');
   assert.ok(guideStart >= 0 && followUpsStart > guideStart);
+  assert.ok(markdown.includes('## 面试提纲 · 常规'));
   const guide = markdown.slice(guideStart, followUpsStart);
   const headings = [...markdown.matchAll(/^### (\d+)\. (.+)$/gm)];
   assert.deepEqual(
@@ -250,6 +303,11 @@ void test('markdown exports exactly six complete numbered questions before other
   blocks.forEach((block, index) => {
     const q = structuredResult.interviewQuestions[index];
     assert.ok(block.includes(`维度：${q.dimensions.join('、')}`));
+    assert.ok(
+      block.includes(
+        `来源：${q.questionSource === 'resume' ? '简历经历' : '岗位通用'}`,
+      ),
+    );
     assert.ok(block.includes(`提问理由：${q.reason}`));
     const evidence = block.split('简历证据：\n\n')[1]?.split('\n\n观察点：')[0];
     assert.equal(
@@ -288,6 +346,8 @@ void test('markdown separates question paragraphs, evidence and follow-up lists'
         `### 1. ${structuredResult.interviewQuestions[0].question}`,
         '',
         '维度：用户研究',
+        '',
+        '来源：简历经历',
         '',
         '提问理由：核实岗位相关行动和结果',
         '',

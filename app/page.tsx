@@ -154,6 +154,7 @@ export default function Home() {
     focus,
     scoringGuidance,
     reportRequirements,
+    hasWrittenTest,
     queuedCodex,
   });
   useEffect(() => {
@@ -166,6 +167,7 @@ export default function Home() {
       focus,
       scoringGuidance,
       reportRequirements,
+      hasWrittenTest,
       queuedCodex,
     };
   }, [
@@ -177,6 +179,7 @@ export default function Home() {
     focus,
     scoringGuidance,
     reportRequirements,
+    hasWrittenTest,
     queuedCodex,
   ]);
   const [remoteJob, setRemoteJob] = useState<RemoteJob | null>(null);
@@ -389,6 +392,7 @@ export default function Home() {
         focus: context.focus,
         scoringGuidance: context.scoringGuidance,
         reportRequirements: context.reportRequirements,
+        hasWrittenTest: context.hasWrittenTest,
       });
       if (!context.queuedCodex)
         throw new Error('请使用当前队列版工作台连接 Codex 后阅读简历。');
@@ -406,6 +410,10 @@ export default function Home() {
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
+      if (
+        resumeContext.current.hasWrittenTest !== value.hasWrittenTest
+      )
+        return;
       setResumeReading(valueRead);
       const resolution = reconcileCandidateName(
         resumeContext.current.candidate,
