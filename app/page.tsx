@@ -1481,20 +1481,20 @@ export default function Home() {
           if (!open) setPendingWrittenTestReading(null);
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="written-test-confirmation-dialog">
           <AlertDialogTitle>阅读简历前确认笔试情况</AlertDialogTitle>
           <AlertDialogDescription>
             是否有笔试会直接影响 Codex 生成的面试提纲。请选择本场情况，确认后将立即开始阅读简历。
           </AlertDialogDescription>
-          <AlertDialogFooter>
-            <AlertDialogCancel>暂不阅读</AlertDialogCancel>
+          <AlertDialogFooter className="written-test-confirmation-actions">
+            <AlertDialogCancel>稍后确认</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => confirmWrittenTestAndRead(false)}
             >
-              无笔试，开始阅读
+              无笔试
             </AlertDialogAction>
             <AlertDialogAction onClick={() => confirmWrittenTestAndRead(true)}>
-              有笔试，开始阅读
+              有笔试
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
