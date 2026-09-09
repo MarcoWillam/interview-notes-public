@@ -112,15 +112,22 @@ export function TaskCenterView({
                 <div className="task-card-heading">
                   <div>
                     <strong>{job.label}</strong>
-                    <span>{job.kind === 'resume' ? '简历阅读' : '结论评估'}</span>
+                    <span>
+                      {job.kind === 'resume'
+                        ? '简历阅读'
+                        : job.kind === 'written-test'
+                          ? '笔试复盘补充'
+                          : '结论评估'}
+                    </span>
                   </div>
                   <span className={`task-state ${job.state}`}>{labels[job.state]}</span>
                 </div>
                 <div className="task-meta">
                   <span>{timing(job, now)}</span>
-                  {job.kind === 'resume' && job.state === 'queued' && (
+                  {(job.kind === 'resume' || job.kind === 'written-test') &&
+                    job.state === 'queued' && (
                     <em>准备优先</em>
-                  )}
+                    )}
                 </div>
                 {job.error && <p className="task-error">{job.error}</p>}
                 <div className="task-actions">

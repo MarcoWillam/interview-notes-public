@@ -937,6 +937,7 @@ export default function Home() {
     hasWrittenTest: effectiveHasWrittenTest,
     writtenTestConfirmed: effectiveWrittenTestConfirmed,
     writtenTestSupported: supportsWrittenTest(sourceTemplateId),
+    writtenTestSupplemented: !!resumeReading?.writtenTestSupplement?.length,
     onStandardsOpenChange: setStandardsOpen,
     onCandidateChange: (value: string) => {
       invalidate();
@@ -1246,7 +1247,14 @@ export default function Home() {
                       />
                     </details>
                     {resumeReading && (
-                      <ResumeReadingView value={resumeReading} />
+                      <ResumeReadingView
+                        value={resumeReading}
+                        canSupplement={writtenTestSupplementEligible}
+                        supplementBusy={busy === 'written-test'}
+                        onSupplement={() =>
+                          setPendingWrittenTestSupplement(true)
+                        }
+                      />
                     )}
                     <div className="action-footer">
                       <button

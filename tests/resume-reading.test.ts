@@ -9,6 +9,7 @@ import {
   validateResumeReading,
   exportResumeReading,
   resumeSchema,
+  type ResumeReading,
 } from '../lib/resume-reading.ts';
 const input = {
   resumeText: '姓名：张晓明\n毕业于示例大学。曾负责用户访谈，访谈了五位用户。',
@@ -79,6 +80,15 @@ const structuredResult = {
         : ['你本人具体做了什么？'],
   })),
 };
+const supplementQuestions = Array.from({ length: 3 }, (_, index) => ({
+  question: `请复述笔试方案中的第 ${index + 1} 个关键判断与取舍。`,
+  questionSource: 'written-test' as const,
+  dimensions: [index % 2 === 0 ? '用户研究' : '问题解决'],
+  reason: '核实候选人自己的判断。',
+  resumeEvidence: null,
+  listenFor: ['判断依据'],
+  probes: ['如果假设不成立，你会如何调整？'],
+}));
 
 void test('complete standards and six grounded interview questions survive validation', () => {
   assert.deepEqual(validateResumeInput(input), input);
@@ -373,6 +383,17 @@ void test('markdown separates question paragraphs, evidence and follow-up lists'
     markdown.includes('简历证据：\n\n简历未提供明确依据。\n\n观察点：'),
   );
 });
+void test('markdown appends three written-test questions after the original outline', () => {
+  const markdown = exportResumeReading({
+    ...structuredResult,
+    writtenTestSupplement: supplementQuestions,
+  });
+  assert.ok(markdown.indexOf('## 面试提纲') < markdown.indexOf('## 笔试复盘补充'));
+  assert.deepEqual(
+    [...markdown.matchAll(/^### (\d+)\. /gm)].map((match) => match[1]),
+    ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
+  );
+});
 void test('reading rejects invented references and missing categories', () => {
   assert.throws(() =>
     validateResumeReading(
@@ -400,7 +421,10 @@ void test('reading needs resume text but does not require interview transcript o
 });
 
 // Node strips TypeScript but not JSX; compile the view in memory for real SSR assertions.
-async function renderReading(value: typeof result) {
+async function renderReading(
+  value: ResumeReading,
+  props: Record<string, unknown> = {},
+) {
   const viewUrl = new URL(
     '../components/interview/resume-reading-view.tsx',
     import.meta.url,
@@ -426,7 +450,9 @@ async function renderReading(value: typeof result) {
   const { ResumeReadingView } = await import(
     'data:text/javascript;base64,' + Buffer.from(compiled).toString('base64')
   );
-  return renderToStaticMarkup(createElement(ResumeReadingView, { value }));
+  return renderToStaticMarkup(
+    createElement(ResumeReadingView, { value, ...props }),
+  );
 }
 
 void test('reading view shows six core questions with evidence and native collapsed guidance', async () => {
@@ -486,6 +512,23 @@ void test('written-test reading labels the guide and review questions explicitly
   const html = await renderReading(value);
   assert.ok(html.includes('面试提纲 · 含笔试复盘 · 30–40 分钟'));
   assert.equal((html.match(/笔试复盘/g) || []).length, 4);
+});
+
+void test('reading view offers one supplement action then appends questions seven through nine', async () => {
+  const action = await renderReading(structuredResult, {
+    canSupplement: true,
+    onSupplement() {},
+  });
+  assert.ok(action.includes('一键补充笔试复盘题'));
+  const html = await renderReading({
+    ...structuredResult,
+    writtenTestSupplement: supplementQuestions,
+  });
+  assert.ok(html.indexOf('面试提纲') < html.indexOf('笔试复盘补充 · 3 道'));
+  assert.ok(html.includes(`7. ${supplementQuestions[0].question}`));
+  assert.ok(html.includes(`9. ${supplementQuestions[2].question}`));
+  assert.equal((html.match(/<article\b/g) || []).length, 9);
+  assert.ok(!html.includes('一键补充笔试复盘题'));
 });
 
 void test('legacy reading view renders facts and other follow-ups without a guide', async () => {

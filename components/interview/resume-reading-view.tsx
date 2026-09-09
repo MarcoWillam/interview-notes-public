@@ -19,7 +19,86 @@ function resolvedSource(question: InterviewQuestion): QuestionSource {
   );
 }
 
-export function ResumeReadingView({ value }: { value: ResumeReading }) {
+function QuestionCard({
+  question,
+  number,
+}: {
+  question: InterviewQuestion;
+  number: number;
+}) {
+  const source = resolvedSource(question);
+  return (
+    <article className="interview-question-card">
+      <span className={`question-source-badge source-${source}`}>
+        {sourceLabels[source]}
+      </span>
+      <h5>{`${number}. ${question.question}`}</h5>
+      <div className="interview-question-dimensions" aria-label="考察维度">
+        {question.dimensions.map((dimension) => (
+          <span className="dimension-badge" key={dimension}>
+            {dimension}
+          </span>
+        ))}
+      </div>
+      {question.resumeEvidence !== null && (
+        <blockquote>{question.resumeEvidence}</blockquote>
+      )}
+      <details>
+        <summary>提问理由、观察点与追问</summary>
+        <p>
+          <strong>提问理由：</strong>
+          {question.reason}
+        </p>
+        <p className="question-detail-label">观察点</p>
+        <ul>
+          {question.listenFor.map((point, pointIndex) => (
+            <li key={pointIndex}>{point}</li>
+          ))}
+        </ul>
+        <p className="question-detail-label">追问</p>
+        <ul>
+          {question.probes.map((probe, probeIndex) => (
+            <li key={probeIndex}>{probe}</li>
+          ))}
+        </ul>
+      </details>
+    </article>
+  );
+}
+
+export function WrittenTestSupplementView({
+  questions,
+}: {
+  questions: InterviewQuestion[];
+}) {
+  return (
+    <section className="written-test-supplement">
+      <h4>笔试复盘补充 · 3 道</h4>
+      <p>系统未读取候选人的实际答卷，请在面试中核实其判断与取舍。</p>
+      <div className="interview-question-list">
+        {questions.map((question, index) => (
+          <QuestionCard
+            question={question}
+            number={index + 7}
+            key={question.question}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function ResumeReadingView({
+  value,
+  canSupplement = false,
+  supplementBusy = false,
+  onSupplement,
+}: {
+  value: ResumeReading;
+  canSupplement?: boolean;
+  supplementBusy?: boolean;
+  onSupplement?: () => void;
+}) {
   function download() {
     const url = URL.createObjectURL(
       new Blob([exportResumeReading(value)], {
@@ -56,55 +135,36 @@ export function ResumeReadingView({ value }: { value: ResumeReading }) {
           </h4>
           <div className="interview-question-list">
             {questions.map((question, index) => {
-              const source = resolvedSource(question);
               return (
-                <article
-                  className="interview-question-card"
+                <QuestionCard
+                  question={question}
+                  number={index + 1}
                   key={question.question}
-                >
-                  <span
-                    className={`question-source-badge source-${source}`}
-                  >
-                    {sourceLabels[source]}
-                  </span>
-                  <h5>{`${index + 1}. ${question.question}`}</h5>
-                  <div
-                    className="interview-question-dimensions"
-                    aria-label="考察维度"
-                  >
-                    {question.dimensions.map((dimension) => (
-                      <span className="dimension-badge" key={dimension}>
-                        {dimension}
-                      </span>
-                    ))}
-                  </div>
-                  {question.resumeEvidence !== null && (
-                    <blockquote>{question.resumeEvidence}</blockquote>
-                  )}
-                  <details>
-                    <summary>提问理由、观察点与追问</summary>
-                    <p>
-                      <strong>提问理由：</strong>
-                      {question.reason}
-                    </p>
-                    <p className="question-detail-label">观察点</p>
-                    <ul>
-                      {question.listenFor.map((point, pointIndex) => (
-                        <li key={pointIndex}>{point}</li>
-                      ))}
-                    </ul>
-                    <p className="question-detail-label">追问</p>
-                    <ul>
-                      {question.probes.map((probe, probeIndex) => (
-                        <li key={probeIndex}>{probe}</li>
-                      ))}
-                    </ul>
-                  </details>
-                </article>
+                />
               );
             })}
           </div>
         </section>
+      )}
+      {value.writtenTestSupplement?.length ? (
+        <WrittenTestSupplementView questions={value.writtenTestSupplement} />
+      ) : (
+        canSupplement && (
+          <section className="written-test-supplement-action">
+            <div>
+              <strong>需要补充笔试复盘？</strong>
+              <p>保留原 6 道提纲，由 Codex 额外生成 3 道复盘题。</p>
+            </div>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={supplementBusy}
+              onClick={onSupplement}
+            >
+              {supplementBusy ? '正在生成…' : '一键补充笔试复盘题'}
+            </button>
+          </section>
+        )
       )}
       <details className="resume-reading-details">
         <summary>

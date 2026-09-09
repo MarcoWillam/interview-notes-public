@@ -111,3 +111,38 @@ void test('task confirmations describe restart cost and irreversible deletion', 
   assert.ok(stop.includes('服务器上的简历、岗位要求和面试记录'));
   assert.ok(stop.includes('无法恢复'));
 });
+
+void test('task center labels written-test supplement work explicitly', async () => {
+  const { TaskCenterView } = await loadView();
+  const html = renderToStaticMarkup(
+    createElement(TaskCenterView, {
+      jobs: [
+        {
+          id: 'written-test',
+          kind: 'written-test',
+          label: '张三 · 笔试复盘补充',
+          state: 'queued',
+          created: now,
+          updated: now,
+          queuedAt: now,
+          position: 1,
+        },
+      ],
+      now,
+      pendingId: null,
+      onAction() {},
+      onResult() {},
+    }),
+  );
+  assert.ok(html.includes('笔试复盘补充'));
+  assert.ok(html.includes('准备优先'));
+});
+
+void test('interview preparation shows the supplemented written-test status', async () => {
+  const source = await readFile(
+    new URL('../components/interview/interview-preparation.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /writtenTestSupplemented/);
+  assert.match(source, /已补充 3 道复盘题/);
+});
