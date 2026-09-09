@@ -137,5 +137,10 @@ export function updateInterviewSummary(
 ) {
   const index = rows.findIndex(({ id }) => id === saved.id);
   if (index < 0) return [saved, ...rows];
-  return rows.map((row, rowIndex) => (rowIndex === index ? saved : row));
+  return rows.map((row, rowIndex) => {
+    if (rowIndex !== index) return row;
+    return saved.groupId === undefined && row.groupId !== undefined
+      ? { ...saved, groupId: row.groupId }
+      : saved;
+  });
 }
