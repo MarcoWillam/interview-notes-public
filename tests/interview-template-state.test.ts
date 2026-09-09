@@ -4,6 +4,8 @@ import {
   COMMON_TEMPLATE_ID,
   TEMPLATE_STATUS_VALUE,
   appliedTemplateState,
+  applyWrittenTestSupplement,
+  canGenerateWrittenTestSupplement,
   inferTemplateSource,
   markTemplateModified,
   normalizeInterviewTemplateState,
@@ -194,6 +196,53 @@ void test('a persisted resume reading is the permanent outline lock', () => {
   assert.equal(resumeOutlineLocked({ summary: '已生成' }), true);
   assert.equal(resumeOutlineLocked(null), false);
   assert.equal(resumeOutlineLocked(undefined), false);
+});
+
+void test('written-test supplement is available only for a completed no-test AI PM outline', () => {
+  const eligible = {
+    sourceTemplateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
+    writtenTestConfirmed: true,
+    hasWrittenTest: false,
+    hasResumeReading: true,
+    hasSupplement: false,
+  };
+  assert.equal(canGenerateWrittenTestSupplement(eligible), true);
+  for (const changed of [
+    { sourceTemplateId: BUILTIN_TEMPLATE_IDS.productOperations },
+    { writtenTestConfirmed: false },
+    { hasWrittenTest: true },
+    { hasResumeReading: false },
+    { hasSupplement: true },
+  ])
+    assert.equal(
+      canGenerateWrittenTestSupplement({ ...eligible, ...changed }),
+      false,
+    );
+});
+
+void test('applying a supplement preserves the original six questions', () => {
+  const question = {
+    question: '原问题',
+    questionSource: 'role' as const,
+    dimensions: ['产品判断'],
+    reason: '核实判断',
+    resumeEvidence: null,
+    listenFor: ['依据'],
+    probes: ['为什么？'],
+  };
+  const reading = {
+    summary: '原摘要',
+    sections: [],
+    followUps: [],
+    interviewQuestions: [question],
+  };
+  const questions = [
+    { ...question, question: '补充题', questionSource: 'written-test' as const },
+  ];
+  const merged = applyWrittenTestSupplement(reading, { questions });
+  assert.notEqual(merged, reading);
+  assert.equal(merged.interviewQuestions, reading.interviewQuestions);
+  assert.equal(merged.writtenTestSupplement, questions);
 });
 
 void test('resume outline setup carries the confirmed full role template', () => {
