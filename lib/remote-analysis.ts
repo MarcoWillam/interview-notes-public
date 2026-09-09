@@ -10,6 +10,12 @@ import {
   type InterviewInput,
   type Report,
 } from './interview.ts';
+import {
+  validateWrittenTestSupplement,
+  validateWrittenTestSupplementInput,
+  type WrittenTestSupplementInput,
+  type WrittenTestSupplementResult,
+} from './written-test-supplement.ts';
 let account: string | null = null;
 export function configureRemoteAccount(value: string) {
   account = value;
@@ -23,7 +29,7 @@ class RemoteError extends Error {
   }
 }
 export type RemoteJob<T = Report> = {
-  kind?: 'interview' | 'resume';
+  kind?: 'interview' | 'resume' | 'written-test';
   id: string;
   label: string;
   state:
@@ -80,8 +86,8 @@ export function controlRemoteJob(
   );
 }
 async function submitRemoteTask<T>(
-  input: InterviewInput | ResumeInput,
-  kind: 'interview' | 'resume',
+  input: InterviewInput | ResumeInput | WrittenTestSupplementInput,
+  kind: 'interview' | 'resume' | 'written-test',
   validateResult: (value: unknown) => T,
   label: string,
   signal: AbortSignal,
@@ -89,7 +95,7 @@ async function submitRemoteTask<T>(
   dependencies = { fetcher: fetch, pollMs: 2000 },
 ): Promise<T> {
   const payload = JSON.stringify({
-    ...(kind === 'resume' ? { kind } : {}),
+    ...(kind === 'interview' ? {} : { kind }),
     label,
     input,
   });
@@ -199,6 +205,25 @@ export function submitRemoteResume(
     normalized,
     'resume',
     (value) => validateResumeReading(value, normalized),
+    label,
+    signal,
+    onProgress,
+    dependencies,
+  );
+}
+
+export function submitRemoteWrittenTest(
+  input: WrittenTestSupplementInput,
+  label: string,
+  signal: AbortSignal,
+  onProgress: (job: RemoteJob<WrittenTestSupplementResult>) => void,
+  dependencies = { fetcher: fetch, pollMs: 2000 },
+): Promise<WrittenTestSupplementResult> {
+  const normalized = validateWrittenTestSupplementInput(input);
+  return submitRemoteTask(
+    normalized,
+    'written-test',
+    (value) => validateWrittenTestSupplement(value, normalized),
     label,
     signal,
     onProgress,

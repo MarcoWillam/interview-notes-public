@@ -43,6 +43,27 @@ const reading = {
   })),
   followUps: ['请补充项目时间范围。'],
 };
+const writtenTestInput = {
+  role: resumeInput.role,
+  requirements: resumeInput.requirements,
+  dimensionText: resumeInput.dimensionText,
+  focus: resumeInput.focus,
+  scoringGuidance: resumeInput.scoringGuidance,
+  reportRequirements: resumeInput.reportRequirements,
+  resumeText: resumeInput.resumeText,
+  existingQuestions: reading.interviewQuestions,
+};
+const writtenTestResult = {
+  questions: Array.from({ length: 3 }, (_, index) => ({
+    question: `请复述笔试方案中的第 ${index + 1} 个关键判断与取舍。`,
+    questionSource: 'written-test' as const,
+    dimensions: [index % 2 === 0 ? '需求分析' : '沟通协作'],
+    reason: '核实候选人自己的判断。',
+    resumeEvidence: null,
+    listenFor: ['判断依据'],
+    probes: ['如果假设不成立，你会如何调整？'],
+  })),
+};
 const input = {
   role: '产品经理',
   requirements: '用户调研',
@@ -394,6 +415,50 @@ void test('connector fails resume work whose question evidence is absent from th
     assert.equal(restored.report, null);
     // The connector must reject invalid runner output before transmitting it.
     assert.match(restored.error, /本地 Codex 未完成分析/);
+  } finally {
+    controller.abort();
+    await worker;
+    await f.close();
+  }
+});
+
+void test('connector routes written-test work to the dedicated runner', async () => {
+  const f = await fixture();
+  const controller = new AbortController();
+  let worker: Promise<void> | undefined;
+  try {
+    const device = f.store.redeem(
+      f.store.pairing(f.user).code,
+      '笔试复盘电脑',
+    );
+    const response = await f.api('/api/jobs', 'POST', {
+      client: 'written-test-http-123',
+      kind: 'written-test',
+      label: '张三 · 笔试复盘补充',
+      input: writtenTestInput,
+    });
+    assert.equal(response.status, 202);
+    const job = (await response.json()) as { id: string };
+    worker = runConnector(
+      { server: f.origin, ...device },
+      controller.signal,
+      {
+        status,
+        analyze: async () => {
+          throw new Error('wrong runner');
+        },
+        readResume: async () => {
+          throw new Error('wrong runner');
+        },
+        writeTest: async (actual) => {
+          assert.deepEqual(actual, writtenTestInput);
+          return writtenTestResult;
+        },
+      },
+      { pollMs: 10, heartbeatMs: 20 },
+    );
+    await until(() => f.store.get(f.user, job.id).state === 'completed');
+    assert.deepEqual(f.store.get(f.user, job.id).report, writtenTestResult);
   } finally {
     controller.abort();
     await worker;

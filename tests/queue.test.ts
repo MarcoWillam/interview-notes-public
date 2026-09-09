@@ -39,6 +39,27 @@ const reading = {
   })),
   followUps: ['请补充项目时间范围。'],
 };
+const writtenTestInput = {
+  role: resumeInput.role,
+  requirements: resumeInput.requirements,
+  dimensionText: resumeInput.dimensionText,
+  focus: resumeInput.focus,
+  scoringGuidance: resumeInput.scoringGuidance,
+  reportRequirements: resumeInput.reportRequirements,
+  resumeText: resumeInput.resumeText,
+  existingQuestions: reading.interviewQuestions,
+};
+const writtenTestResult = {
+  questions: Array.from({ length: 3 }, (_, index) => ({
+    question: `请复述笔试方案中的第 ${index + 1} 个关键判断与取舍。`,
+    questionSource: 'written-test' as const,
+    dimensions: [index % 2 === 0 ? '需求分析' : '沟通协作'],
+    reason: '核实候选人自己的判断。',
+    resumeEvidence: null,
+    listenFor: ['判断依据'],
+    probes: ['如果假设不成立，你会如何调整？'],
+  })),
+};
 const input = {
   role: '产品经理',
   requirements: '用户调研',
@@ -601,6 +622,41 @@ void test('resume finish rejects fabricated question evidence against stored inp
       s.db.prepare('SELECT input FROM jobs WHERE id=?').get(job.id)?.input,
       null,
     );
+  } finally {
+    s.close();
+  }
+});
+
+void test('written-test supplements require a capable connector and reuse completed work', () => {
+  const { s, a } = setup();
+  try {
+    const device = s.redeem(s.pairing(a).code, '新版电脑');
+    const job = s.submit(
+      a,
+      'written-test-123',
+      '张三 · 笔试复盘补充',
+      writtenTestInput,
+      'written-test',
+    );
+    assert.equal(s.claim(device.token, true, ['interview', 'resume']), null);
+    const claimed = s.claim(device.token, true, [
+      'interview',
+      'resume',
+      'written-test',
+    ])!;
+    assert.equal(claimed.kind, 'written-test');
+    assert.deepEqual(claimed.input, writtenTestInput);
+    s.finish(device.token, claimed.id, claimed.lease, writtenTestResult);
+    assert.deepEqual(s.get(a, job.id).report, writtenTestResult);
+    const repeated = s.submit(
+      a,
+      'written-test-repeat-123',
+      '张三 · 笔试复盘补充',
+      writtenTestInput,
+      'written-test',
+    );
+    assert.equal(repeated.id, job.id);
+    assert.equal(repeated.state, 'completed');
   } finally {
     s.close();
   }
