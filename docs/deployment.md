@@ -5,7 +5,7 @@
 ## 当前云服务器
 
 - 网站：`https://your-server-ip`，初始账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。其他面试官账号通过下述服务器命令创建。
-- 代码：当前版本为 `/opt/interview-notes/releases/20260909-11`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一版本 `20260909-10` 保留用于回滚。
+- 代码：当前版本为 `/opt/interview-notes/releases/20260909-12`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一版本 `20260909-11` 保留用于回滚。
 - 数据：`/var/lib/interview-notes/queue.sqlite`；环境配置：`/etc/interview-notes/server.env`；运行时：`/opt/node-v24.13.0-linux-x64/bin/node`。服务器只需已构建的 `dist/web` 和队列服务源码，无需安装模型或上传电脑上的 Codex 登录信息。
 - Nginx：`/etc/nginx/conf.d/interview-notes.conf`，对应仓库 `deploy/nginx-ip.conf`，HTTP 自动跳转 HTTPS，80 端口保留 ACME 验证路径。
 - 证书：Let's Encrypt IP 证书，由 acme.sh 3.1.2 的 `shortlived` profile 签发。使用 `--days 3`，`interview-cert-renew.timer` 每天两次检查续期；续期成功自动安装到 `/etc/nginx/ssl/interview/` 并检查、重载 Nginx。不要关闭公网 80 端口，否则续期验证会失败。
@@ -25,7 +25,7 @@ journalctl -u interview-notes -n 50 --no-pager
 
 发布包采用明确白名单：`dist/web`、`server/start.ts`、`server/accounts.ts`、`server/queue/{api,http,store}.ts`、`lib/interview.ts`、`lib/resume-reading.ts`、`lib/standards.ts` 和 `package.json`。`lib/standards.ts` 是 `resume-reading.ts` 的运行时依赖；以上服务端 import 闭包仅另依赖 Node 内置模块，生产不需要 `node_modules`。包内不得包含 `.env*`、`.local`、简历源文件、浏览器数据、Codex credentials、`node_modules` 或 `.git`；后续增加服务端依赖时重新核对闭包。PDF CMap 与字体资源随 `dist/web` 一起发布。
 
-本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。本次 `20260909-11` 发布包 SHA-256 为 `8a8247ae37b11740ad06ed47e244d616620536b4c448895dd3cc2b83d0d4ff03`。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。
+本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。本次 `20260909-12` 发布包 SHA-256 为 `0b9effbca5749075453ab56513ec8e8abbe688416071d3213d5dd696fe1fde0a`。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。
 
 发布检查包括 `nginx -t`、`systemctl is-active interview-notes nginx interview-cert-renew.timer`、HTTPS `/api/session`，以及 HTTP 308 跳转、无需跳过校验的 TLS 证书、登录 Cookie 的 HttpOnly/Secure/SameSite=Strict、登录后工作台和实际构建清单中的 JS/CSS、PDF CMap/font 资源。账号和连接凭据仅由本机脚本读取，不打印值，不写入发布包；`.local/cloud-access.txt` 与 `.local/cloud-connector.json` 保持权限 600。
 
@@ -46,6 +46,8 @@ journalctl -u interview-notes -n 50 --no-pager
 `20260909-10` 修复 macOS 成员连接器只能从 PATH 查找 Codex 的问题。未显式设置路径时，连接器会依次检查终端命令、ChatGPT 应用内置 CLI 和 Codex 应用内置 CLI，并选择已使用 ChatGPT 登录的实例；显式 `INTERVIEW_CODEX_BIN` 仍保持最高优先级。线上连接器包 SHA-256 为 `5177adc1b13d936535f342d8a57b8db8713bb7460d0ef805b5ace2aac21d798a`，与本地构建一致；HTTPS、Nginx、应用服务和证书续期定时器均通过检查。
 
 `20260909-11` 增加当前账号范围内的全局任务中心，以及等待、运行、暂停、完成、失败和停止状态。任务支持暂停、从头恢复和不可恢复的停止；相同活动任务去重，简历阅读优先领取，列表返回排队位置与本轮执行时间。新版连接器心跳从 10 秒缩短为 5 秒，线上连接器包 SHA-256 为 `ddeebf575a6e9ddba55887b0b8ae55dc9dfcab29cbc8907e02d33a0ce669554b`，线上下载复核一致，连接器客户端内容与当前源码一致。本地 169 项测试、类型检查、代码检查和生产构建通过；生产 `current`、数据库迁移字段、静态资源、HTTPS、Nginx、应用服务及证书续期定时器经过只读检查，未创建真实生产任务。
+
+`20260909-12` 将每份面试记录的简历提纲限制为一次成功生成。生成前必须确认岗位，AI 产品经理还必须确认有无笔试；确认的完整模板同步到当前面试准备，成功后锁定简历、岗位和笔试状态，失败、暂停或停止仍可重试。服务器在七天保留期内复用内容与名称均相同的已完成简历任务，避免页面关闭后重复调用。本地 173 项测试、类型检查、代码检查和生产构建通过；线上连接器包 SHA-256 为 `9916a5a1fcc3d0a17ea29c74f49a415603d03003575042af7d5b7ba5afc7489c`，与本地构建一致。生产 `current`、静态资源、HTTPS、HTTP 308、Nginx、应用服务、数据库兼容性及证书续期定时器经过只读检查，未创建真实生产任务。
 
 ## 服务器
 
@@ -111,8 +113,10 @@ location / {
 
 ## 2026-09-09 校招面试准备工作流
 
-本次版本提供 AI 产品经理（校招）与产品运营（校招）两个内置模板。运营按用户运营 60% / 数据增长 40% 组织证据，两岗都单列并重点考察自驱力。AI PM 在 Codex 阅读简历前要求明确选择“有笔试”或“无笔试”，不保存题目或答卷；有笔试时第 2–4 题按既有笔试考量框架生成复盘题，无笔试时不得生成笔试措辞。若上传自动阅读或手动阅读时尚未选择，网页先弹出确认并在选择后直接继续提交。简历阅读将完整本场标准和笔试状态发送给连接器，返回四类要点及六题、30–40 分钟的结构化面试提纲，每题包含来源、合法模板维度、原文依据、原因、观察点与追问。界面优先展示高对比度提纲，简历阅读明细和简历正文默认收起；模板下拉显示当前模板或本场自定义、模板更新状态。
+本次版本提供 AI 产品经理（校招）与产品运营（校招）两个内置模板。运营按用户运营 60% / 数据增长 40% 组织证据，两岗都单列并重点考察自驱力。简历提取后先确认岗位，AI PM 还必须明确选择“有笔试”或“无笔试”，不保存题目或答卷；有笔试时第 2–4 题按既有笔试考量框架生成复盘题，无笔试时不得生成笔试措辞。确认时把所选完整岗位模板和笔试状态写入当前面试准备，再使用同一快照提交 Codex。返回结果包含四类要点及六题、30–40 分钟的结构化面试提纲，每题包含来源、合法模板维度、原文依据、原因、观察点与追问。
 
-上传附件后在浏览器自动提取并自动提交 Codex 阅读，粘贴/编辑正文后可手动阅读。原附件不上传；提取文字与岗位标准会发送到用户已配对电脑的本地 Codex，经队列服务器短期中转，再由本地 Codex 调用模型。正文默认折叠，可展开核对编辑。有效姓名必须有包含姓名的连续原文证据；空姓名自动填入，冲突默认保留当前姓名，只有明确选择才替换。约 1100px 及以下切单列，将面试准备放入弹窗；更窄屏支持导航和操作换行。
+每份面试记录成功保存一次提纲后永久锁定简历上传、正文编辑、岗位模板和笔试状态，不再显示重新阅读入口。排队、失败、暂停或停止不产生锁，保留已确认的面试准备并允许重试。历史记录只要已有 `resumeReading` 就保持锁定；服务器在七天任务保留期内也复用相同账号、任务名称、输入和类型的已完成简历阅读结果，避免页面关闭后再次调用 Codex。界面优先展示高对比度提纲，简历阅读明细和简历正文默认收起。
+
+上传附件后在浏览器自动提取文字并进入岗位确认，确认后提交 Codex 阅读；粘贴或编辑正文后也从同一确认入口生成提纲。原附件不上传；提取文字与岗位标准会发送到用户已配对电脑的本地 Codex，经队列服务器短期中转，再由本地 Codex 调用模型。正文默认折叠，可展开核对编辑。有效姓名必须有包含姓名的连续原文证据；空姓名自动填入，冲突默认保留当前姓名，只有明确选择才替换。约 1100px 及以下切单列，将面试准备放入弹窗；更窄屏支持导航和操作换行。
 
 生产验收使用虚构中文 AI 产品简历和完整 AI PM 模板，通过生产登录账号提交 kind=resume 任务，由本机唯一云端连接器执行真实 Codex 阅读。检查完成状态、姓名逐字证据、四类要点、恰六题、模板维度、所有非空证据逐字存在，以及提纲覆盖自驱力和 AI 产品判断。测试任务按现有 7 天终态保留策略处理，原始输入在终态清除；验收记录仅放 `.local`，不提交凭据和测试记录。
