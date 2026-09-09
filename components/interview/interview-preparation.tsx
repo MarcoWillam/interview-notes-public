@@ -104,16 +104,12 @@ export function InterviewPreparation({
             ? '提纲已生成，岗位模板和本场标准已锁定。'
             : '模板在页头的“全局设置”中管理。应用模板将替换本场标准并清除旧 AI 评估。'}
         </p>
-        <div className="session-standard-summary">
-          <strong>{standards.role || '尚未选择岗位'}</strong>
-          <p>{standards.dimensionText || '尚未设置评估维度'}</p>
-        </div>
         <details
           className="session-standards-details"
           open={standardsOpen}
           onToggle={(event) => onStandardsOpenChange(event.currentTarget.open)}
         >
-          <summary>查看 / 调整本场标准</summary>
+          <summary>查看 / 调整岗位标准</summary>
           <StandardsFields value={standards} onChange={onStandardsChange} />
         </details>
       </fieldset>

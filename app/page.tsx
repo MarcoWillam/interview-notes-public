@@ -69,6 +69,7 @@ import { LocalLibrary } from '@/components/interview/local-library';
 import { InterviewSidebar } from '@/components/interview/interview-sidebar';
 import { GlobalPreferences } from '@/components/interview/global-preferences';
 import { InterviewPreparation } from '@/components/interview/interview-preparation';
+import { InterviewSessionSummary } from '@/components/interview/interview-session-summary';
 import {
   defaultStandards,
   normalizeStandards,
@@ -1050,6 +1051,20 @@ export default function Home() {
         <div className="page-heading">
           <h1>{candidate ? `${candidate}的面试记录` : '当前面试'}</h1>
         </div>
+        <InterviewSessionSummary
+          candidate={candidate}
+          role={standards.role}
+          writtenTestSupported={supportsWrittenTest(sourceTemplateId)}
+          writtenTestConfirmed={effectiveWrittenTestConfirmed}
+          hasWrittenTest={effectiveHasWrittenTest}
+          writtenTestSupplemented={
+            !!resumeReading?.writtenTestSupplement?.length
+          }
+          outlineLocked={outlineLocked}
+          disabled={!!busy}
+          open={preparationOpen}
+          onOpen={() => setPreparationOpen(true)}
+        />
         {error && (
           <div role="alert" className="message error">
             <CircleAlert size={18} />
@@ -1117,14 +1132,6 @@ export default function Home() {
                     结论评估{confirmed && <Check size={14} />}
                   </TabsTrigger>
                 </TabsList>
-                <button
-                  className="secondary-button preparation-toggle"
-                  onClick={() => setPreparationOpen(true)}
-                  aria-haspopup="dialog"
-                  aria-expanded={preparationOpen}
-                >
-                  <Settings2 size={16} /> 面试准备
-                </button>
               </div>
               <TabsContent value="resume">
                 <div className="panel text-panel">
@@ -1495,10 +1502,6 @@ export default function Home() {
               </TabsContent>
             </Tabs>
           </section>
-          <aside className="panel context-panel" aria-label="面试准备">
-            <h2>面试准备</h2>
-            <InterviewPreparation {...preparationProps} />
-          </aside>
         </div>
         <footer className="page-footer">
           <span>面谈 · 让面试判断有据可依</span>
@@ -1512,20 +1515,29 @@ export default function Home() {
           </button>
         </footer>
       </main>
-      <Dialog open={preparationOpen} onOpenChange={setPreparationOpen}>
+      <Dialog
+        open={preparationOpen}
+        onOpenChange={(open) => {
+          setPreparationOpen(open);
+          if (!open) setStandardsOpen(false);
+        }}
+      >
         <DialogContent className="preparation-dialog" showCloseButton={false}>
           <div className="dialog-heading">
-            <DialogTitle>面试准备</DialogTitle>
+            <DialogTitle>面试设置</DialogTitle>
             <button
               className="icon-button"
-              aria-label="关闭面试准备"
-              onClick={() => setPreparationOpen(false)}
+              aria-label="关闭面试设置"
+              onClick={() => {
+                setPreparationOpen(false);
+                setStandardsOpen(false);
+              }}
             >
               <X size={18} />
             </button>
           </div>
           <DialogDescription>
-            设置候选人与本场面试的岗位标准。
+            设置候选人、岗位模板和本场面试标准。
           </DialogDescription>
           <InterviewPreparation {...preparationProps} />
         </DialogContent>
