@@ -4,19 +4,19 @@ import {
   localStore,
   type SavedInterview,
   type AudioRecord,
+  type NewInterviewSeed,
   type Preference,
 } from '@/lib/local/store';
 import { useLocalAccess } from './use-local-access';
 import {
   defaultStandards,
   type GlobalSettings,
-  type InterviewStandards,
 } from '@/lib/standards';
 export type Draft = Omit<SavedInterview, 'id' | 'updatedAt'>;
 export function useInterviewLibrary(
   draft: Draft,
   restore: (session: SavedInterview) => Promise<void>,
-  clear: (standards: InterviewStandards) => void,
+  clear: (seed: NewInterviewSeed) => void,
 ) {
   const access = useLocalAccess();
   const [id, setId] = useState('');
@@ -84,9 +84,9 @@ export function useInterviewLibrary(
           if (disposed) return;
           setId(latest.id);
         } else {
-          const standards = await localStore().getNewInterviewStandards();
+          const seed = await localStore().getNewInterviewSeed();
           if (disposed) return;
-          callbacks.current.clear(standards);
+          callbacks.current.clear(seed);
           setId(crypto.randomUUID());
         }
         await refresh();
@@ -159,9 +159,9 @@ export function useInterviewLibrary(
     setWorking(true);
     try {
       await flush();
-      const standards = await localStore().getNewInterviewStandards();
+      const seed = await localStore().getNewInterviewSeed();
       setReady(false);
-      callbacks.current.clear(standards);
+      callbacks.current.clear(seed);
       setId(crypto.randomUUID());
       setSaved('');
       setReady(true);
@@ -173,8 +173,8 @@ export function useInterviewLibrary(
   async function remove(target: string) {
     setWorking(true);
     try {
-      const standards =
-        target === id ? await localStore().getNewInterviewStandards() : null;
+      const seed =
+        target === id ? await localStore().getNewInterviewSeed() : null;
       if (target === id) {
         setReady(false);
         if (timer.current) clearTimeout(timer.current);
@@ -183,7 +183,7 @@ export function useInterviewLibrary(
       await localStore().deleteInterview(target);
       if (target === id) {
         setReady(false);
-        callbacks.current.clear(standards!);
+        callbacks.current.clear(seed!);
         setId(crypto.randomUUID());
         setSaved('');
         setReady(true);

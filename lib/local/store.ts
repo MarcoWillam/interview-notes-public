@@ -3,7 +3,9 @@ import {
   normalizeStandards,
   validateStandards,
   type GlobalSettings,
+  type InterviewStandards,
 } from '../standards.ts';
+import { COMMON_TEMPLATE_ID } from '../interview-template-state.ts';
 import {
   builtInRoleTemplates,
   replacementForLegacyBuiltInRoleTemplate,
@@ -29,6 +31,13 @@ export type SavedInterview = {
   confirmed: boolean;
   scoringGuidance?: string;
   reportRequirements?: string;
+  sourceTemplateId?: string | null;
+  templateModified?: boolean;
+  hasWrittenTest?: boolean;
+};
+export type NewInterviewSeed = {
+  standards: InterviewStandards;
+  sourceTemplateId: string;
 };
 export type AudioRecord = {
   id: string;
@@ -200,14 +209,17 @@ export function createLocalStore(
         };
       });
     },
-    getNewInterviewStandards: async () => {
+    getNewInterviewSeed: async (): Promise<NewInterviewSeed> => {
       const settings = await read<GlobalSettings>('settings', 'global');
       const template = settings?.defaultTemplateId
         ? await read<Preference>('preferences', settings.defaultTemplateId)
         : undefined;
-      return normalizeStandards(
-        template || settings?.defaults || defaultStandards,
-      );
+      return {
+        standards: normalizeStandards(
+          template || settings?.defaults || defaultStandards,
+        ),
+        sourceTemplateId: template?.id || COMMON_TEMPLATE_ID,
+      };
     },
     saveInterview: (value: SavedInterview) => put('interviews', value),
     getInterview: (id: string) => read<SavedInterview>('interviews', id),
