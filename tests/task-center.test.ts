@@ -138,6 +138,19 @@ void test('task center labels written-test supplement work explicitly', async ()
   assert.ok(html.includes('准备优先'));
 });
 
+void test('task center drawer clears dialog translation and keeps the list in a flexible viewport', async () => {
+  const [source, css] = await Promise.all([
+    readFile(new URL('../components/interview/task-center.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+  ]);
+  const drawer = css.match(/\.task-center-drawer\s*\{([\s\S]*?)\}/)?.[1] || '';
+  const list = css.match(/\.task-list\s*\{([\s\S]*?)\}/)?.[1] || '';
+  assert.match(source, /task-center-drawer translate-x-0 translate-y-0/);
+  assert.match(drawer, /display:\s*flex/);
+  assert.match(drawer, /flex-direction:\s*column/);
+  assert.match(list, /flex:\s*1 1 auto/);
+});
+
 void test('interview preparation shows the supplemented written-test status', async () => {
   const source = await readFile(
     new URL('../components/interview/interview-preparation.tsx', import.meta.url),
