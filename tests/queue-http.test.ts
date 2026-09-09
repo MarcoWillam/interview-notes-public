@@ -374,6 +374,36 @@ void test('connector routes resume work to the reading runner and stores its cit
   }
 });
 
+void test('resume task scope crosses the HTTP boundary without reusing another record', async () => {
+  const f = await fixture();
+  try {
+    const device = f.store.redeem(f.store.pairing(f.user).code, '阅读电脑');
+    const submit = async (client: string, scope: string) => {
+      const response = await f.api('/api/jobs', 'POST', {
+        client,
+        kind: 'resume',
+        label: '相同简历',
+        input: resumeInput,
+        scope,
+      });
+      assert.equal(response.status, 202);
+      return (await response.json()) as { id: string; state: string };
+    };
+
+    const first = await submit('scope-http-a-1', 'interview-record-a');
+    const claimed = f.store.claim(device.token, true, ['resume'])!;
+    f.store.finish(device.token, claimed.id, claimed.lease, reading);
+    const sameRecord = await submit('scope-http-a-2', 'interview-record-a');
+    const newRecord = await submit('scope-http-b-1', 'interview-record-b');
+
+    assert.equal(sameRecord.id, first.id);
+    assert.notEqual(newRecord.id, first.id);
+    assert.equal(newRecord.state, 'queued');
+  } finally {
+    await f.close();
+  }
+});
+
 void test('connector fails resume work whose question evidence is absent from the submitted text', async () => {
   const f = await fixture();
   const controller = new AbortController();
