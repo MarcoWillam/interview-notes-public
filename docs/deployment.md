@@ -5,7 +5,7 @@
 ## 当前云服务器
 
 - 网站：`https://your-server-ip`，账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。
-- 代码：本轮最终发布目标为 `/opt/interview-notes/releases/20260909-2`，验证通过后将 `/opt/interview-notes/current` 原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。
+- 代码：当前版本为 `/opt/interview-notes/releases/20260909-3`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一版本 `20260909-2` 保留用于回滚。
 - 数据：`/var/lib/interview-notes/queue.sqlite`；环境配置：`/etc/interview-notes/server.env`；运行时：`/opt/node-v24.13.0-linux-x64/bin/node`。服务器只需已构建的 `dist/web` 和队列服务源码，无需安装模型或上传电脑上的 Codex 登录信息。
 - Nginx：`/etc/nginx/conf.d/interview-notes.conf`，对应仓库 `deploy/nginx-ip.conf`，HTTP 自动跳转 HTTPS，80 端口保留 ACME 验证路径。
 - 证书：Let's Encrypt IP 证书，由 acme.sh 3.1.2 的 `shortlived` profile 签发。使用 `--days 3`，`interview-cert-renew.timer` 每天两次检查续期；续期成功自动安装到 `/etc/nginx/ssl/interview/` 并检查、重载 Nginx。不要关闭公网 80 端口，否则续期验证会失败。
@@ -25,7 +25,7 @@ journalctl -u interview-notes -n 50 --no-pager
 
 发布包采用明确白名单：`dist/web`、`server/start.ts`、`server/queue/{api,http,store}.ts`、`lib/interview.ts`、`lib/resume-reading.ts`、`lib/standards.ts` 和 `package.json`。`lib/standards.ts` 是 `resume-reading.ts` 的运行时依赖；以上服务端 import 闭包仅另依赖 Node 内置模块，生产不需要 `node_modules`。包内不得包含 `.env*`、`.local`、简历源文件、浏览器数据、Codex credentials、`node_modules` 或 `.git`；后续增加服务端依赖时重新核对闭包。PDF CMap 与字体资源随 `dist/web` 一起发布。
 
-本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。新 release 为 `/opt/interview-notes/releases/20260909-2`；若同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。
+本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。本次 `20260909-3` 发布包 SHA-256 为 `87076f6b2234aa991022a184e21ae04b3148a0d3c0a95d788af9060c8c97b35b`。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。
 
 发布检查包括 `nginx -t`、`systemctl is-active interview-notes nginx interview-cert-renew.timer`、HTTPS `/api/session`，以及 HTTP 308 跳转、无需跳过校验的 TLS 证书、登录 Cookie 的 HttpOnly/Secure/SameSite=Strict、登录后工作台和实际构建清单中的 JS/CSS、PDF CMap/font 资源。账号和连接凭据仅由本机脚本读取，不打印值，不写入发布包；`.local/cloud-access.txt` 与 `.local/cloud-connector.json` 保持权限 600。
 
@@ -74,7 +74,7 @@ location / {
 
 ## 2026-09-09 校招面试准备工作流
 
-本次版本提供 AI 产品经理（校招）与产品运营（校招）两个内置模板。运营按用户运营 60% / 数据增长 40% 组织证据，两岗都单列并重点考察自驱力。AI PM 笔试仅作为可选原则参考，不存具体题目，也不要求候选人必须有作品。简历阅读将完整本场标准发送给连接器，返回四类要点及六题、30–40 分钟的结构化面试提纲，每题包含合法模板维度、原文依据、原因、观察点与追问。
+本次版本提供 AI 产品经理（校招）与产品运营（校招）两个内置模板。运营按用户运营 60% / 数据增长 40% 组织证据，两岗都单列并重点考察自驱力。AI PM 提供默认关闭的“候选人已完成笔试”本场选项，不保存题目或答卷；开启时第 2–4 题按既有笔试考量框架生成复盘题，关闭时不得生成笔试措辞。简历阅读将完整本场标准和笔试状态发送给连接器，返回四类要点及六题、30–40 分钟的结构化面试提纲，每题包含来源、合法模板维度、原文依据、原因、观察点与追问。界面优先展示高对比度提纲，简历阅读明细和简历正文默认收起；模板下拉显示当前模板或本场自定义、模板更新状态。
 
 上传附件后在浏览器自动提取并自动提交 Codex 阅读，粘贴/编辑正文后可手动阅读。原附件不上传；提取文字与岗位标准会发送到用户已配对电脑的本地 Codex，经队列服务器短期中转，再由本地 Codex 调用模型。正文默认折叠，可展开核对编辑。有效姓名必须有包含姓名的连续原文证据；空姓名自动填入，冲突默认保留当前姓名，只有明确选择才替换。约 1100px 及以下切单列，将面试准备放入弹窗；更窄屏支持导航和操作换行。
 
