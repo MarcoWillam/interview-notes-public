@@ -33,23 +33,26 @@ export function InterviewSidebar(props: Props) {
   const overlayRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    try {
-      setCollapsed(
-        parseSidebarCollapsed(localStorage.getItem(SIDEBAR_STORAGE_KEY)),
-      );
-    } catch {
-      setCollapsed(false);
-    }
-    const media = window.matchMedia(
-      `(max-width: ${SIDEBAR_BREAKPOINT - 1}px)`,
-    );
+    const media = window.matchMedia(`(max-width: ${SIDEBAR_BREAKPOINT - 1}px)`);
     const update = () => {
       setCompact(media.matches);
       if (!media.matches) setOverlayOpen(false);
     };
-    update();
+    const initialize = window.setTimeout(() => {
+      try {
+        setCollapsed(
+          parseSidebarCollapsed(localStorage.getItem(SIDEBAR_STORAGE_KEY)),
+        );
+      } catch {
+        setCollapsed(false);
+      }
+      update();
+    });
     media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
+    return () => {
+      window.clearTimeout(initialize);
+      media.removeEventListener('change', update);
+    };
   }, []);
 
   const focusSidebarTrigger = useCallback(() => {
@@ -124,10 +127,7 @@ export function InterviewSidebar(props: Props) {
       )}
 
       {!compact && !collapsed && (
-        <SidebarPanel
-          {...props}
-          onCollapse={() => setWideCollapsed(true)}
-        />
+        <SidebarPanel {...props} onCollapse={() => setWideCollapsed(true)} />
       )}
 
       {compact && overlayOpen && (
