@@ -5,7 +5,7 @@
 ## 当前云服务器
 
 - 网站：`https://your-server-ip`，账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。
-- 代码：`/opt/interview-notes/current` 指向 `/opt/interview-notes/releases/20260909`；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。
+- 代码：本轮最终发布目标为 `/opt/interview-notes/releases/20260909-2`，验证通过后将 `/opt/interview-notes/current` 原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。
 - 数据：`/var/lib/interview-notes/queue.sqlite`；环境配置：`/etc/interview-notes/server.env`；运行时：`/opt/node-v24.13.0-linux-x64/bin/node`。服务器只需已构建的 `dist/web` 和队列服务源码，无需安装模型或上传电脑上的 Codex 登录信息。
 - Nginx：`/etc/nginx/conf.d/interview-notes.conf`，对应仓库 `deploy/nginx-ip.conf`，HTTP 自动跳转 HTTPS，80 端口保留 ACME 验证路径。
 - 证书：Let's Encrypt IP 证书，由 acme.sh 3.1.2 的 `shortlived` profile 签发。使用 `--days 3`，`interview-cert-renew.timer` 每天两次检查续期；续期成功自动安装到 `/etc/nginx/ssl/interview/` 并检查、重载 Nginx。不要关闭公网 80 端口，否则续期验证会失败。
@@ -25,7 +25,7 @@ journalctl -u interview-notes -n 50 --no-pager
 
 发布包采用明确白名单：`dist/web`、`server/start.ts`、`server/queue/{api,http,store}.ts`、`lib/interview.ts`、`lib/resume-reading.ts`、`lib/standards.ts` 和 `package.json`。`lib/standards.ts` 是 `resume-reading.ts` 的运行时依赖；以上服务端 import 闭包仅另依赖 Node 内置模块，生产不需要 `node_modules`。包内不得包含 `.env*`、`.local`、简历源文件、浏览器数据、Codex credentials、`node_modules` 或 `.git`；后续增加服务端依赖时重新核对闭包。PDF CMap 与字体资源随 `dist/web` 一起发布。
 
-本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。新 release 为 `/opt/interview-notes/releases/20260909`；若同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。
+本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。新 release 为 `/opt/interview-notes/releases/20260909-2`；若同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。
 
 发布检查包括 `nginx -t`、`systemctl is-active interview-notes nginx interview-cert-renew.timer`、HTTPS `/api/session`，以及 HTTP 308 跳转、无需跳过校验的 TLS 证书、登录 Cookie 的 HttpOnly/Secure/SameSite=Strict、登录后工作台和实际构建清单中的 JS/CSS、PDF CMap/font 资源。账号和连接凭据仅由本机脚本读取，不打印值，不写入发布包；`.local/cloud-access.txt` 与 `.local/cloud-connector.json` 保持权限 600。
 
@@ -44,12 +44,15 @@ Nginx 的 HTTPS `server` 块可使用以下位置配置，证书与域名使用�
 location / {
     client_max_body_size 600k;
     proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
     proxy_pass http://127.0.0.1:8787;
     proxy_read_timeout 30s;
 }
 ```
 
-当前限速以直接连接地址计算，位于反向代理后会共享登录及配对尝试限制（每类 12 次/分钟），适合个人使用。没有公开注册、邮件找回或企业 SSO；首次环境变量只用于初始化账号，不会修改已有密码。正式部署不要运行 `npm start`，该命令是免登录的本机预览。
+正式 HTTPS 入口开启受信任代理模式，且仅在连接来自 loopback 时读取 Nginx 用 `$remote_addr` 覆写的 `X-Real-IP`。该头须为单个有效 IP 地址；缺失、无效、多值或非 loopback 连接均回退到直接连接地址。登录及配对尝试按该来源地址分别限流（每类 12 次/分钟），不同来源互不占用额度。direct/preview 模式忽略 `X-Real-IP`，不信任客户端自报来源；限流不使用 `X-Forwarded-For`。因此部署时必须保持 Node 仅监听 loopback，并保留 Nginx 覆写 `X-Real-IP` 的配置。没有公开注册、邮件找回或企业 SSO；首次环境变量只用于初始化账号，不会修改已有密码。正式部署不要运行 `npm start`，该命令是免登录的本机预览。
 
 ## 分析电脑
 
