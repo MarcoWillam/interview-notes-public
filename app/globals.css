@@ -1500,33 +1500,61 @@ fieldset label:last-of-type {
   pointer-events: none;
   color: var(--muted-foreground);
 }
-.written-test-toggle {
-  display: flex !important;
-  align-items: flex-start;
-  gap: 10px;
+.written-test-choice {
   margin: 12px 0 14px !important;
   padding: 10px 12px;
   border: 1px solid #d9e7e1;
   border-radius: 8px;
   background: #f4f8f6;
 }
-.interview-preparation .written-test-toggle input {
+.written-test-choice legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.written-test-choice legend span {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #fff1d6;
+  color: #8b5b00;
+  font-size: 11px;
+  font-weight: 600;
+}
+.written-test-choice legend span.confirmed {
+  background: #dcefe8;
+  color: #075f55;
+}
+.written-test-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+.written-test-options label {
+  display: flex !important;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 8px 10px;
+  border: 1px solid #cddfd8;
+  border-radius: 7px;
+  background: white;
+  cursor: pointer;
+}
+.interview-preparation .written-test-options input {
   width: 16px;
   height: 16px;
   flex: 0 0 16px;
-  margin: 3px 0 0;
+  margin: 0;
   accent-color: #087d70;
 }
-.written-test-toggle label {
-  min-width: 0;
-  margin: 0;
-}
-.written-test-toggle strong,
-.written-test-toggle small {
+.written-test-choice > small {
   display: block;
-}
-.written-test-toggle small {
-  margin-top: 3px;
+  margin-top: 8px;
   color: var(--muted-foreground);
   font-weight: 400;
   line-height: 1.6;

@@ -114,19 +114,27 @@ export function supportsWrittenTest(
   return sourceTemplateId === BUILTIN_TEMPLATE_IDS.aiProductManager;
 }
 
+export function writtenTestDecision(
+  sourceTemplateId: string | null | undefined,
+  confirmed: boolean,
+  hasWrittenTest: boolean,
+) {
+  if (!supportsWrittenTest(sourceTemplateId)) return false;
+  return confirmed ? hasWrittenTest : null;
+}
+
 export function markTemplateModified(sourceTemplateId: string | null) {
   return { sourceTemplateId, templateModified: true };
 }
 
 export function appliedTemplateState(
   sourceTemplateId: string,
-  hasWrittenTest: boolean,
 ) {
   return {
     sourceTemplateId,
     templateModified: false,
-    hasWrittenTest:
-      supportsWrittenTest(sourceTemplateId) && hasWrittenTest,
+    hasWrittenTest: false,
+    writtenTestConfirmed: false,
   };
 }
 
@@ -136,6 +144,8 @@ export function normalizeInterviewTemplateState(
     sourceTemplateId?: string | null;
     templateModified?: boolean;
     hasWrittenTest?: boolean;
+    writtenTestConfirmed?: boolean;
+    resumeReading?: unknown;
   },
   templates: TemplateLike[],
   common: InterviewStandards,
@@ -152,5 +162,10 @@ export function normalizeInterviewTemplateState(
     hasWrittenTest:
       supportsWrittenTest(templateState.sourceTemplateId) &&
       saved.hasWrittenTest === true,
+    writtenTestConfirmed:
+      supportsWrittenTest(templateState.sourceTemplateId) &&
+      (saved.writtenTestConfirmed === true ||
+        (saved.writtenTestConfirmed === undefined &&
+          (saved.hasWrittenTest === true || saved.resumeReading != null))),
   };
 }

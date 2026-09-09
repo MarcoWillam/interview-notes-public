@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import { ArrowUpRight, ChevronDown } from 'lucide-react';
 import { StandardsFields } from '@/components/interview/standards-fields';
 import type { InterviewStandards } from '@/lib/standards';
@@ -17,6 +18,7 @@ export function InterviewPreparation({
   standardsOpen,
   templateSelection,
   hasWrittenTest,
+  writtenTestConfirmed,
   writtenTestSupported,
   serviceReady,
   serviceStatus,
@@ -34,6 +36,7 @@ export function InterviewPreparation({
   standardsOpen: boolean;
   templateSelection: TemplateSelection;
   hasWrittenTest: boolean;
+  writtenTestConfirmed: boolean;
   writtenTestSupported: boolean;
   serviceReady: boolean;
   serviceStatus: string;
@@ -44,6 +47,7 @@ export function InterviewPreparation({
   onStandardsOpenChange: (open: boolean) => void;
   onOpenService: () => void;
 }) {
+  const writtenTestName = useId();
   return (
     <div className="interview-preparation">
       <p className="small-note">本场标准独立保存，全局修改不会覆盖这场面试。</p>
@@ -80,22 +84,41 @@ export function InterviewPreparation({
           </span>
         </label>
         {writtenTestSupported && (
-          <div className="written-test-toggle">
-            <input
-              id="has-written-test"
-              type="checkbox"
-              checked={hasWrittenTest}
-              onChange={(event) =>
-                onWrittenTestChange(event.target.checked)
-              }
-            />
-            <label htmlFor="has-written-test">
-              <strong>候选人已完成笔试</strong>
-              <small>
-                提纲第 2–4 题将用于复盘笔试中的判断与取舍
-              </small>
-            </label>
-          </div>
+          <fieldset className="written-test-choice">
+            <legend>
+              笔试情况
+              <span className={writtenTestConfirmed ? 'confirmed' : ''}>
+                {writtenTestConfirmed ? '已确认' : '阅读前必选'}
+              </span>
+            </legend>
+            <div className="written-test-options">
+              <label>
+                <input
+                  type="radio"
+                  name={writtenTestName}
+                  checked={writtenTestConfirmed && !hasWrittenTest}
+                  onChange={() => onWrittenTestChange(false)}
+                />
+                无笔试
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name={writtenTestName}
+                  checked={writtenTestConfirmed && hasWrittenTest}
+                  onChange={() => onWrittenTestChange(true)}
+                />
+                有笔试
+              </label>
+            </div>
+            <small>
+              {writtenTestConfirmed
+                ? hasWrittenTest
+                  ? '提纲第 2–4 题将用于复盘笔试中的判断与取舍'
+                  : '将生成不含笔试复盘的常规面试提纲'
+                : 'Codex 阅读简历并生成提纲前，需要先确认本场是否有笔试'}
+            </small>
+          </fieldset>
         )}
         <p className="small-note">
           模板在页头的“全局设置”中管理。应用模板将替换本场标准并清除旧 AI 评估。
