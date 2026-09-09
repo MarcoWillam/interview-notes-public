@@ -142,7 +142,12 @@ export default function Home() {
   const [conclusion, setConclusion] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState<
-    'import' | 'analyze' | 'resume-read' | 'written-test' | 'prepare' | null
+    | 'import'
+    | 'analyze'
+    | 'resume-read'
+    | 'written-test'
+    | 'prepare'
+    | null
   >(null);
   const busyRef = useRef(false);
   const analysisController = useRef<AbortController | null>(null);
@@ -496,8 +501,7 @@ export default function Home() {
   }
   function confirmResumeOutlineGeneration() {
     const pending = pendingResumeOutline;
-    if (!pending || busyRef.current || resumeOutlineLocked(resumeReading))
-      return;
+    if (!pending || busyRef.current || resumeOutlineLocked(resumeReading)) return;
     const availableTemplates = builtInRoleTemplates.map(
       (fallback) =>
         library.preferences.find(({ id }) => id === fallback.id) || fallback,
@@ -535,7 +539,11 @@ export default function Home() {
         resolved.templateId === BUILTIN_TEMPLATE_IDS.aiProductManager,
     };
     setPendingResumeOutline(null);
-    void runResumeReading(pending.text, pending.name, resolved.hasWrittenTest);
+    void runResumeReading(
+      pending.text,
+      pending.name,
+      resolved.hasWrittenTest,
+    );
   }
   async function runWrittenTestSupplement() {
     const reading = resumeReading;
@@ -980,7 +988,9 @@ export default function Home() {
         sessions={library.sessions}
         currentId={library.id}
         disabled={!library.ready || library.working || !!busy}
-        saveStatus={library.unsaved ? '正在保存到本地…' : '已保存在当前浏览器'}
+        saveStatus={
+          library.unsaved ? '正在保存到本地…' : '已保存在当前浏览器'
+        }
         onCreate={() => {
           if (hasContent) setResetOpen(true);
           else void localAction(library.create);
@@ -994,855 +1004,834 @@ export default function Home() {
         }
       />
       <div className="workbench">
-        <header className="topbar">
-          <div className="brand">
-            <span className="brand-mark">
-              <ClipboardCheck size={23} />
-            </span>
-            <b>
-              面谈<span>INTERVIEW NOTES</span>
-            </b>
-          </div>
-          <span className="workspace-label">面试工作台</span>
-          <span className="privacy-label">
-            <ShieldCheck size={16} /> 当前设备 · 本地保存
+      <header className="topbar">
+        <div className="brand">
+          <span className="brand-mark">
+            <ClipboardCheck size={23} />
           </span>
-          <button
-            className="global-settings-entry text-button"
-            disabled={!library.ready || library.working || !!busy}
-            onClick={() =>
-              void localAction(async () => {
-                await library.refresh();
-                setPreferencesOpen(true);
-              })
-            }
-            aria-label="打开全局面试设置"
-          >
-            <Settings2 size={19} /> 全局设置
-          </button>
-        </header>
-        {(!library.ready || library.error) && (
-          <div className="workspace">
-            <div className="message" role="alert">
-              {library.error ||
-                (library.access === 'blocked'
-                  ? '另一个标签正在使用本地工作台。请关闭另一个标签后刷新，避免互相覆盖。'
-                  : library.access === 'unavailable'
-                    ? '浏览器本地存储不可用，请使用正常模式的 Chrome 打开。'
-                    : '正在恢复本地面试记录…')}
-            </div>
-          </div>
-        )}
-        <main
-          className="workspace"
-          inert={!library.ready || library.working || busy === 'prepare'}
+          <b>
+            面谈<span>INTERVIEW NOTES</span>
+          </b>
+        </div>
+        <span className="workspace-label">面试工作台</span>
+        <span className="privacy-label">
+          <ShieldCheck size={16} /> 当前设备 · 本地保存
+        </span>
+        <button
+          className="global-settings-entry text-button"
+          disabled={!library.ready || library.working || !!busy}
+          onClick={() =>
+            void localAction(async () => {
+              await library.refresh();
+              setPreferencesOpen(true);
+            })
+          }
+          aria-label="打开全局面试设置"
         >
-          <div className="page-heading">
-            <h1>{candidate ? `${candidate}的面试记录` : '当前面试'}</h1>
+          <Settings2 size={19} /> 全局设置
+        </button>
+      </header>
+      {(!library.ready || library.error) && (
+        <div className="workspace">
+          <div className="message" role="alert">
+            {library.error ||
+              (library.access === 'blocked'
+                ? '另一个标签正在使用本地工作台。请关闭另一个标签后刷新，避免互相覆盖。'
+                : library.access === 'unavailable'
+                  ? '浏览器本地存储不可用，请使用正常模式的 Chrome 打开。'
+                  : '正在恢复本地面试记录…')}
           </div>
-          {error && (
-            <div role="alert" className="message error">
-              <CircleAlert size={18} />
-              <span>{error}</span>
-              {error && (
-                <button aria-label="关闭错误提示" onClick={() => setError('')}>
-                  <X size={16} />
-                </button>
-              )}
-            </div>
-          )}
-          {notice && (
-            <output className="message">
-              <Check size={17} />
-              <span>{notice}</span>
-              <button aria-label="关闭提示" onClick={() => setNotice('')}>
+        </div>
+      )}
+      <main
+        className="workspace"
+        inert={!library.ready || library.working || busy === 'prepare'}
+      >
+        <div className="page-heading">
+          <h1>{candidate ? `${candidate}的面试记录` : '当前面试'}</h1>
+        </div>
+        {error && (
+          <div role="alert" className="message error">
+            <CircleAlert size={18} />
+            <span>{error}</span>
+            {error && (
+              <button aria-label="关闭错误提示" onClick={() => setError('')}>
                 <X size={16} />
               </button>
-            </output>
-          )}
-          {(busy === 'analyze' ||
-            busy === 'resume-read' ||
-            busy === 'written-test') && (
-            <output className="message">
-              <LoaderCircle className="spin" size={18} />
-              <span>
-                {queuedCodex
-                  ? remoteJob?.state === 'running'
-                    ? busy === 'resume-read'
-                      ? 'Codex 正在阅读简历。可以关闭网页，稍后从评估任务查看结果。'
-                      : busy === 'written-test'
-                        ? 'Codex 正在生成 3 道笔试复盘补充题。可以关闭网页，稍后从任务中心查看结果。'
-                        : '电脑正在分析。可以关闭网页，稍后从评估任务查看结果。'
-                    : remoteJob
-                      ? '任务已提交，等待已配对的电脑领取。电脑离线时也会保留任务。'
-                      : '正在提交评估任务…'
-                  : localCodex
-                    ? '本地 Codex 正在分析，可能需要几分钟。请保持工作台和本地服务开启。'
-                    : '正在生成评估，请稍候。'}
-              </span>
-              <button
-                className="text-button"
-                disabled={cancelling || (queuedCodex && !remoteJob)}
-                onClick={() => void cancelAnalysis()}
-              >
-                {cancelling
-                  ? '正在取消…'
-                  : queuedCodex
-                    ? '取消任务'
-                    : '取消分析'}
-              </button>
-            </output>
-          )}
-          <div className="workspace-grid">
-            <section className="main-column">
-              <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
-                <div className="work-navigation">
-                  <TabsList className="work-tabs">
-                    <TabsTrigger value="resume">
-                      <FileText />
-                      候选人简历
-                    </TabsTrigger>
-                    <TabsTrigger value="transcript">
-                      <FileText />
-                      面试记录{transcript && <span className="tab-dot" />}
-                    </TabsTrigger>
-                    <TabsTrigger value="report">
-                      <ClipboardCheck />
-                      结论评估{confirmed && <Check size={14} />}
-                    </TabsTrigger>
-                  </TabsList>
-                  <button
-                    className="secondary-button preparation-toggle"
-                    onClick={() => setPreparationOpen(true)}
-                    aria-haspopup="dialog"
-                    aria-expanded={preparationOpen}
-                  >
-                    <Settings2 size={16} /> 面试准备
-                  </button>
-                </div>
-                <TabsContent value="resume">
-                  <div className="panel text-panel">
-                    <div className="panel-heading">
-                      <div>
-                        <h2>候选人简历</h2>
-                        <p className="section-description">
-                          上传 Word 或文字版 PDF
-                          后自动整理要点；也可粘贴正文后阅读。
-                        </p>
-                      </div>
-                      <span className="count">
-                        {resumeText.length.toLocaleString()} / 30,000 字
-                      </span>
-                    </div>
-                    <div className="panel-body">
-                      <label
-                        className="transcript-upload"
-                        htmlFor="resume-file"
-                      >
-                        <Upload size={24} />
-                        <strong>
-                          {outlineLocked
-                            ? '简历与提纲已锁定'
-                            : busy === 'import'
-                              ? '正在提取文件文字…'
-                              : '上传候选人简历'}
-                        </strong>
-                        <span>
-                          Word（.doc / .docx）或文字版 PDF · 最大 5 MB · PDF
-                          最多 30 页
-                        </span>
-                        <input
-                          id="resume-file"
-                          type="file"
-                          accept=".doc,.docx,.pdf"
-                          disabled={!!busy || outlineLocked}
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            e.target.value = '';
-                            if (file) void resumeFile(file);
-                          }}
-                        />
-                      </label>
-                      <div className="action-footer resume-reading-action">
-                        <span>
-                          {queuedCodex
-                            ? '将发送简历与岗位要求，由已配对电脑的 Codex 整理'
-                            : '简历阅读需使用队列版工作台连接 Codex'}
-                        </span>
-                        <button
-                          className="primary-button"
-                          disabled={
-                            !!busy ||
-                            outlineLocked ||
-                            !resumeText.trim() ||
-                            !queuedCodex ||
-                            !services?.analysis
-                          }
-                          onClick={() => {
-                            if (!busyRef.current)
-                              openResumeOutlinePreflight(
-                                resumeText,
-                                resumeName,
-                              );
-                          }}
-                        >
-                          {busy === 'resume-read' ? (
-                            <LoaderCircle className="spin" size={16} />
-                          ) : (
-                            <ClipboardCheck size={16} />
-                          )}{' '}
-                          {busy === 'resume-read'
-                            ? '正在阅读…'
-                            : outlineLocked
-                              ? '提纲已生成'
-                              : '确认岗位并生成提纲'}
-                        </button>
-                      </div>
-                      <p className="small-note">
-                        {outlineLocked
-                          ? '提纲已生成，本面试记录不能再次生成或替换简历。'
-                          : '附件仅在浏览器提取文字，原文件不上传。生成前可展开编辑。'}
+            )}
+          </div>
+        )}
+        {notice && (
+          <output className="message">
+            <Check size={17} />
+            <span>{notice}</span>
+            <button aria-label="关闭提示" onClick={() => setNotice('')}>
+              <X size={16} />
+            </button>
+          </output>
+        )}
+        {(busy === 'analyze' ||
+          busy === 'resume-read' ||
+          busy === 'written-test') && (
+          <output className="message">
+            <LoaderCircle className="spin" size={18} />
+            <span>
+              {queuedCodex
+                ? remoteJob?.state === 'running'
+                  ? busy === 'resume-read'
+                    ? 'Codex 正在阅读简历。可以关闭网页，稍后从评估任务查看结果。'
+                    : busy === 'written-test'
+                      ? 'Codex 正在生成 3 道笔试复盘补充题。可以关闭网页，稍后从任务中心查看结果。'
+                    : '电脑正在分析。可以关闭网页，稍后从评估任务查看结果。'
+                  : remoteJob
+                    ? '任务已提交，等待已配对的电脑领取。电脑离线时也会保留任务。'
+                    : '正在提交评估任务…'
+                : localCodex
+                  ? '本地 Codex 正在分析，可能需要几分钟。请保持工作台和本地服务开启。'
+                  : '正在生成评估，请稍候。'}
+            </span>
+            <button
+              className="text-button"
+              disabled={cancelling || (queuedCodex && !remoteJob)}
+              onClick={() => void cancelAnalysis()}
+            >
+              {cancelling ? '正在取消…' : queuedCodex ? '取消任务' : '取消分析'}
+            </button>
+          </output>
+        )}
+        <div className="workspace-grid">
+          <section className="main-column">
+            <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
+              <div className="work-navigation">
+                <TabsList className="work-tabs">
+                  <TabsTrigger value="resume">
+                    <FileText />
+                    候选人简历
+                  </TabsTrigger>
+                  <TabsTrigger value="transcript">
+                    <FileText />
+                    面试记录{transcript && <span className="tab-dot" />}
+                  </TabsTrigger>
+                  <TabsTrigger value="report">
+                    <ClipboardCheck />
+                    结论评估{confirmed && <Check size={14} />}
+                  </TabsTrigger>
+                </TabsList>
+                <button
+                  className="secondary-button preparation-toggle"
+                  onClick={() => setPreparationOpen(true)}
+                  aria-haspopup="dialog"
+                  aria-expanded={preparationOpen}
+                >
+                  <Settings2 size={16} /> 面试准备
+                </button>
+              </div>
+              <TabsContent value="resume">
+                <div className="panel text-panel">
+                  <div className="panel-heading">
+                    <div>
+                      <h2>候选人简历</h2>
+                      <p className="section-description">
+                        上传 Word 或文字版 PDF
+                        后自动整理要点；也可粘贴正文后阅读。
                       </p>
-                      <details
-                        className="resume-body-details"
-                        open={resumeBodyOpen}
-                        onToggle={(event) =>
-                          setResumeBodyOpen(event.currentTarget.open)
-                        }
-                      >
-                        <summary>
-                          <span className="resume-body-title">
-                            {resumeText.trim()
-                              ? '简历正文 · 已提取'
-                              : '简历正文 · 待补充'}
-                          </span>
-                          {resumeName && (
-                            <span className="resume-body-name">
-                              {resumeName}
-                            </span>
-                          )}
-                          <span className="resume-body-count">
-                            {resumeText.length.toLocaleString()} 字符
-                          </span>
-                        </summary>
-                        <label htmlFor="resume-text" className="field-title">
-                          简历正文
-                        </label>
-                        <textarea
-                          id="resume-text"
-                          rows={12}
-                          maxLength={30000}
-                          disabled={!!busy}
-                          readOnly={outlineLocked}
-                          value={resumeText}
-                          onChange={(e) =>
-                            editResume(e.target.value, resumeName)
-                          }
-                          placeholder="在这里粘贴简历文字。简历作为背景信息，项目经历与能力仍需通过面试核实。"
-                        />
-                      </details>
-                      {resumeReading && (
-                        <ResumeReadingView
-                          value={resumeReading}
-                          canSupplement={writtenTestSupplementEligible}
-                          supplementBusy={busy === 'written-test'}
-                          onSupplement={() =>
-                            setPendingWrittenTestSupplement(true)
-                          }
-                        />
-                      )}
-                      <div className="action-footer">
-                        <button
-                          className="secondary-button"
-                          disabled={!!busy}
-                          onClick={() => setTab('transcript')}
-                        >
-                          下一步：导入面试记录 <ArrowRight size={16} />
-                        </button>
-                        <button
-                          className="text-button"
-                          disabled={!resumeText || !!busy || outlineLocked}
-                          onClick={() => {
-                            editResume('');
-                          }}
-                        >
-                          清空简历文字
-                        </button>
-                      </div>
                     </div>
+                    <span className="count">
+                      {resumeText.length.toLocaleString()} / 30,000 字
+                    </span>
                   </div>
-                </TabsContent>
-                <TabsContent value="transcript">
-                  <div className="panel text-panel">
-                    <div className="panel-heading">
-                      <div>
-                        <h2>面试记录</h2>
-                        <p className="section-description">
-                          上传豆包转写后整理的 .md 文件，再校对内容和说话人。
-                        </p>
-                      </div>
-                      <span className="count">
-                        {transcript.length.toLocaleString()} / 80,000 字
+                  <div className="panel-body">
+                    <label className="transcript-upload" htmlFor="resume-file">
+                      <Upload size={24} />
+                      <strong>
+                        {outlineLocked
+                          ? '简历与提纲已锁定'
+                          : busy === 'import'
+                          ? '正在提取文件文字…'
+                          : '上传候选人简历'}
+                      </strong>
+                      <span>
+                        Word（.doc / .docx）或文字版 PDF · 最大 5 MB · PDF 最多
+                        30 页
                       </span>
-                    </div>
-                    <div className="panel-body">
-                      <label
-                        className="transcript-upload"
-                        htmlFor="transcript-file"
+                      <input
+                        id="resume-file"
+                        type="file"
+                        accept=".doc,.docx,.pdf"
+                        disabled={!!busy || outlineLocked}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = '';
+                          if (file) void resumeFile(file);
+                        }}
+                      />
+                    </label>
+                    <div className="action-footer resume-reading-action">
+                      <span>
+                        {queuedCodex
+                          ? '将发送简历与岗位要求，由已配对电脑的 Codex 整理'
+                          : '简历阅读需使用队列版工作台连接 Codex'}
+                      </span>
+                      <button
+                        className="primary-button"
+                        disabled={
+                          !!busy ||
+                          outlineLocked ||
+                          !resumeText.trim() ||
+                          !queuedCodex ||
+                          !services?.analysis
+                        }
+                        onClick={() => {
+                          if (!busyRef.current)
+                            openResumeOutlinePreflight(resumeText, resumeName);
+                        }}
                       >
-                        <Upload size={24} />
-                        <strong>
-                          {busy === 'import'
-                            ? '正在读取面试记录…'
-                            : transcriptName
-                              ? '重新导入 Markdown 面试记录'
-                              : '导入 Markdown 面试记录'}
-                        </strong>
-                        <span>仅支持 .md · UTF-8 · 最大 1 MB / 80,000 字</span>
-                        <input
-                          id="transcript-file"
-                          type="file"
-                          accept=".md"
-                          disabled={!!busy}
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            e.target.value = '';
-                            if (file) void transcriptFile(file);
-                          }}
-                        />
-                      </label>
-                      {transcriptName && (
-                        <p className="small-note transcript-source">
-                          来源：{transcriptName} · 以下为可编辑正文
-                        </p>
-                      )}
-                      <label htmlFor="transcript" className="sr-only">
-                        面试对话文本
+                        {busy === 'resume-read' ? (
+                          <LoaderCircle className="spin" size={16} />
+                        ) : (
+                          <ClipboardCheck size={16} />
+                        )}{' '}
+                        {busy === 'resume-read'
+                          ? '正在阅读…'
+                          : outlineLocked
+                            ? '提纲已生成'
+                            : '确认岗位并生成提纲'}
+                      </button>
+                    </div>
+                    <p className="small-note">
+                      {outlineLocked
+                        ? '提纲已生成，本面试记录不能再次生成或替换简历。'
+                        : '附件仅在浏览器提取文字，原文件不上传。生成前可展开编辑。'}
+                    </p>
+                    <details
+                      className="resume-body-details"
+                      open={resumeBodyOpen}
+                      onToggle={(event) =>
+                        setResumeBodyOpen(event.currentTarget.open)
+                      }
+                    >
+                      <summary>
+                        <span className="resume-body-title">
+                          {resumeText.trim()
+                            ? '简历正文 · 已提取'
+                            : '简历正文 · 待补充'}
+                        </span>
+                        {resumeName && (
+                          <span className="resume-body-name">{resumeName}</span>
+                        )}
+                        <span className="resume-body-count">
+                          {resumeText.length.toLocaleString()} 字符
+                        </span>
+                      </summary>
+                      <label htmlFor="resume-text" className="field-title">
+                        简历正文
                       </label>
                       <textarea
-                        id="transcript"
-                        className="transcript-input"
-                        disabled={!!busy || !transcriptName}
-                        value={transcript}
-                        maxLength={80000}
-                        onChange={(e) => editTranscript(e.target.value)}
-                        placeholder={
-                          '请先导入 .md 面试记录，再在这里预览和校对。\n\n建议按下面的格式整理：\n面试官：请介绍一个你负责的项目。\n候选人：……\n\n不确定的内容请标注“待核实”，不要补写未说过的话。'
+                        id="resume-text"
+                        rows={12}
+                        maxLength={30000}
+                        disabled={!!busy}
+                        readOnly={outlineLocked}
+                        value={resumeText}
+                        onChange={(e) => editResume(e.target.value, resumeName)}
+                        placeholder="在这里粘贴简历文字。简历作为背景信息，项目经历与能力仍需通过面试核实。"
+                      />
+                    </details>
+                    {resumeReading && (
+                      <ResumeReadingView
+                        value={resumeReading}
+                        canSupplement={writtenTestSupplementEligible}
+                        supplementBusy={busy === 'written-test'}
+                        onSupplement={() =>
+                          setPendingWrittenTestSupplement(true)
                         }
                       />
-                      <label
-                        className="review-check"
-                        htmlFor="transcript-reviewed"
+                    )}
+                    <div className="action-footer">
+                      <button
+                        className="secondary-button"
+                        disabled={!!busy}
+                        onClick={() => setTab('transcript')}
                       >
-                        <Checkbox
-                          id="transcript-reviewed"
-                          checked={reviewed}
-                          disabled={!transcript.trim() || !!busy}
-                          onCheckedChange={(v) => {
-                            setReviewed(v);
-                            setConfirmed(false);
-                          }}
-                        />
-                        <span>已核对文字内容与面试官、候选人的说话归属</span>
-                      </label>
-                      <div className="action-footer">
-                        <span>
-                          {!services?.analysis
-                            ? localCodex
-                              ? '请先登录本地 Codex'
-                              : 'AI 分析服务尚未配置'
-                            : queuedCodex
-                              ? '材料经工作台发送到已配对电脑，由 Codex 联网分析'
-                              : localCodex
-                                ? '使用当前 Codex 登录，材料将发送至 OpenAI 分析'
-                                : '生成评估时，将发送简历、面试偏好与校对后的文字'}
-                        </span>
-                        <button
-                          className="primary-button"
-                          disabled={!!busy || !services?.analysis || !reviewed}
-                          onClick={() => void analyze()}
-                        >
-                          {busy === 'analyze' ? (
-                            <LoaderCircle className="spin" size={16} />
-                          ) : (
-                            <ClipboardCheck size={16} />
-                          )}{' '}
-                          {busy === 'analyze'
-                            ? queuedCodex && remoteJob?.state === 'queued'
-                              ? '等待电脑…'
-                              : '正在分析…'
-                            : '生成辅助评估'}
-                        </button>
-                      </div>
+                        下一步：导入面试记录 <ArrowRight size={16} />
+                      </button>
                       <button
                         className="text-button"
-                        disabled={!transcript.trim() || !!busy}
-                        onClick={() => setTab('report')}
+                        disabled={!resumeText || !!busy || outlineLocked}
+                        onClick={() => {
+                          editResume('');
+                        }}
                       >
-                        先填写面试官结论 <ArrowRight size={15} />
+                        清空简历文字
                       </button>
                     </div>
                   </div>
-                </TabsContent>
-                <TabsContent value="report">
-                  <div className="panel report-panel">
-                    <div className="panel-heading">
-                      <div>
-                        <h2>结论评估</h2>
-                        <p className="section-description">
-                          把观察和证据，整理成清晰的判断。
-                        </p>
-                      </div>
-                      <span className="badge">
-                        {confirmed ? '已人工确认' : '待人工确认'}
-                      </span>
-                    </div>
-                    {report ? (
-                      <div className="panel-body">
-                        <div className="report-summary">
-                          <span className="eyebrow">AI 辅助评估 · 请核实</span>
-                          <p>{report.summary}</p>
-                        </div>
-                        <p className="small-note">
-                          评分参考：1 明确不符合 · 2 部分达到 · 3 基本达到 · 4
-                          充分达到 · 5 显著超出
-                        </p>
-                        {report.dimensions.map((d) => (
-                          <article className="assessment" key={d.name}>
-                            <div className="assessment-heading">
-                              <h3>{d.name}</h3>
-                              <span
-                                className={
-                                  d.score === null ? 'unscored' : 'score'
-                                }
-                              >
-                                {d.score === null
-                                  ? '证据不足'
-                                  : `${d.score} / 5`}
-                              </span>
-                            </div>
-                            <p>{d.assessment}</p>
-                            {d.evidence.map((quote, i) => (
-                              <blockquote key={i}>
-                                <span>对话依据</span>
-                                {quote}
-                              </blockquote>
-                            ))}
-                          </article>
-                        ))}
-                        {report.followUps.length > 0 && (
-                          <div className="follow-ups">
-                            <h3>值得进一步核实</h3>
-                            <ul>
-                              {report.followUps.map((q, i) => (
-                                <li key={i}>{q}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="report-empty">
-                        <ClipboardCheck size={30} />
-                        <h3>还没有 AI 辅助评估</h3>
-                        <p>
-                          {services?.analysis
-                            ? '完成对话校对后，即可按岗位标准生成评估。'
-                            : '模型服务尚未配置。你可以先根据对话填写人工结论。'}
-                        </p>
-                        <button
-                          className="text-button"
-                          onClick={() => setTab('transcript')}
-                        >
-                          前往面试记录 <ArrowRight size={15} />
-                        </button>
-                      </div>
-                    )}
-                    <div className="human-review">
-                      <label htmlFor="conclusion">
-                        面试官结论 <span>由你作出最终判断</span>
-                      </label>
-                      <textarea
-                        id="conclusion"
-                        rows={5}
-                        maxLength={10000}
-                        value={conclusion}
-                        disabled={!!busy}
-                        onChange={(e) => {
-                          setConclusion(e.target.value);
-                          setConfirmed(false);
-                        }}
-                        placeholder="结合岗位要求，写下已证实的能力、尚存疑问和下一步建议。"
-                      />
-                      <div className="button-row">
-                        <button
-                          className="primary-button"
-                          disabled={confirmed || !!busy || !conclusion.trim()}
-                          onClick={confirmConclusion}
-                        >
-                          <Check size={16} />
-                          {confirmed ? '已确认结论' : '确认面试结论'}
-                        </button>
-                        <button
-                          className="secondary-button"
-                          disabled={!hasContent || !!busy}
-                          onClick={exportRecord}
-                        >
-                          <Download size={16} />
-                          导出记录
-                        </button>
-                      </div>
-                      <p className="small-note">
-                        确认与草稿都可导出为
-                        Markdown；修改面试资料后，需要重新确认。
+                </div>
+              </TabsContent>
+              <TabsContent value="transcript">
+                <div className="panel text-panel">
+                  <div className="panel-heading">
+                    <div>
+                      <h2>面试记录</h2>
+                      <p className="section-description">
+                        上传豆包转写后整理的 .md 文件，再校对内容和说话人。
                       </p>
                     </div>
+                    <span className="count">
+                      {transcript.length.toLocaleString()} / 80,000 字
+                    </span>
                   </div>
-                </TabsContent>
-              </Tabs>
-            </section>
-            <aside className="panel context-panel" aria-label="面试准备">
-              <h2>面试准备</h2>
-              <InterviewPreparation {...preparationProps} />
-            </aside>
-          </div>
-          <footer className="page-footer">
-            <span>面谈 · 让面试判断有据可依</span>
-            <button
-              className="text-button"
-              disabled={!hasContent || !!busy}
-              onClick={exportRecord}
-            >
-              <Download size={13} />
-              导出当前记录
-            </button>
-          </footer>
-        </main>
-        <Dialog open={preparationOpen} onOpenChange={setPreparationOpen}>
-          <DialogContent className="preparation-dialog" showCloseButton={false}>
-            <div className="dialog-heading">
-              <DialogTitle>面试准备</DialogTitle>
-              <button
-                className="icon-button"
-                aria-label="关闭面试准备"
-                onClick={() => setPreparationOpen(false)}
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <DialogDescription>
-              设置候选人与本场面试的岗位标准。
-            </DialogDescription>
+                  <div className="panel-body">
+                    <label
+                      className="transcript-upload"
+                      htmlFor="transcript-file"
+                    >
+                      <Upload size={24} />
+                      <strong>
+                        {busy === 'import'
+                          ? '正在读取面试记录…'
+                          : transcriptName
+                            ? '重新导入 Markdown 面试记录'
+                            : '导入 Markdown 面试记录'}
+                      </strong>
+                      <span>仅支持 .md · UTF-8 · 最大 1 MB / 80,000 字</span>
+                      <input
+                        id="transcript-file"
+                        type="file"
+                        accept=".md"
+                        disabled={!!busy}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = '';
+                          if (file) void transcriptFile(file);
+                        }}
+                      />
+                    </label>
+                    {transcriptName && (
+                      <p className="small-note transcript-source">
+                        来源：{transcriptName} · 以下为可编辑正文
+                      </p>
+                    )}
+                    <label htmlFor="transcript" className="sr-only">
+                      面试对话文本
+                    </label>
+                    <textarea
+                      id="transcript"
+                      className="transcript-input"
+                      disabled={!!busy || !transcriptName}
+                      value={transcript}
+                      maxLength={80000}
+                      onChange={(e) => editTranscript(e.target.value)}
+                      placeholder={
+                        '请先导入 .md 面试记录，再在这里预览和校对。\n\n建议按下面的格式整理：\n面试官：请介绍一个你负责的项目。\n候选人：……\n\n不确定的内容请标注“待核实”，不要补写未说过的话。'
+                      }
+                    />
+                    <label
+                      className="review-check"
+                      htmlFor="transcript-reviewed"
+                    >
+                      <Checkbox
+                        id="transcript-reviewed"
+                        checked={reviewed}
+                        disabled={!transcript.trim() || !!busy}
+                        onCheckedChange={(v) => {
+                          setReviewed(v);
+                          setConfirmed(false);
+                        }}
+                      />
+                      <span>已核对文字内容与面试官、候选人的说话归属</span>
+                    </label>
+                    <div className="action-footer">
+                      <span>
+                        {!services?.analysis
+                          ? localCodex
+                            ? '请先登录本地 Codex'
+                            : 'AI 分析服务尚未配置'
+                          : queuedCodex
+                            ? '材料经工作台发送到已配对电脑，由 Codex 联网分析'
+                            : localCodex
+                              ? '使用当前 Codex 登录，材料将发送至 OpenAI 分析'
+                              : '生成评估时，将发送简历、面试偏好与校对后的文字'}
+                      </span>
+                      <button
+                        className="primary-button"
+                        disabled={!!busy || !services?.analysis || !reviewed}
+                        onClick={() => void analyze()}
+                      >
+                        {busy === 'analyze' ? (
+                          <LoaderCircle className="spin" size={16} />
+                        ) : (
+                          <ClipboardCheck size={16} />
+                        )}{' '}
+                        {busy === 'analyze'
+                          ? queuedCodex && remoteJob?.state === 'queued'
+                            ? '等待电脑…'
+                            : '正在分析…'
+                          : '生成辅助评估'}
+                      </button>
+                    </div>
+                    <button
+                      className="text-button"
+                      disabled={!transcript.trim() || !!busy}
+                      onClick={() => setTab('report')}
+                    >
+                      先填写面试官结论 <ArrowRight size={15} />
+                    </button>
+                  </div>
+                </div>
+              </TabsContent>
+              <TabsContent value="report">
+                <div className="panel report-panel">
+                  <div className="panel-heading">
+                    <div>
+                      <h2>结论评估</h2>
+                      <p className="section-description">
+                        把观察和证据，整理成清晰的判断。
+                      </p>
+                    </div>
+                    <span className="badge">
+                      {confirmed ? '已人工确认' : '待人工确认'}
+                    </span>
+                  </div>
+                  {report ? (
+                    <div className="panel-body">
+                      <div className="report-summary">
+                        <span className="eyebrow">AI 辅助评估 · 请核实</span>
+                        <p>{report.summary}</p>
+                      </div>
+                      <p className="small-note">
+                        评分参考：1 明确不符合 · 2 部分达到 · 3 基本达到 · 4
+                        充分达到 · 5 显著超出
+                      </p>
+                      {report.dimensions.map((d) => (
+                        <article className="assessment" key={d.name}>
+                          <div className="assessment-heading">
+                            <h3>{d.name}</h3>
+                            <span
+                              className={
+                                d.score === null ? 'unscored' : 'score'
+                              }
+                            >
+                              {d.score === null ? '证据不足' : `${d.score} / 5`}
+                            </span>
+                          </div>
+                          <p>{d.assessment}</p>
+                          {d.evidence.map((quote, i) => (
+                            <blockquote key={i}>
+                              <span>对话依据</span>
+                              {quote}
+                            </blockquote>
+                          ))}
+                        </article>
+                      ))}
+                      {report.followUps.length > 0 && (
+                        <div className="follow-ups">
+                          <h3>值得进一步核实</h3>
+                          <ul>
+                            {report.followUps.map((q, i) => (
+                              <li key={i}>{q}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="report-empty">
+                      <ClipboardCheck size={30} />
+                      <h3>还没有 AI 辅助评估</h3>
+                      <p>
+                        {services?.analysis
+                          ? '完成对话校对后，即可按岗位标准生成评估。'
+                          : '模型服务尚未配置。你可以先根据对话填写人工结论。'}
+                      </p>
+                      <button
+                        className="text-button"
+                        onClick={() => setTab('transcript')}
+                      >
+                        前往面试记录 <ArrowRight size={15} />
+                      </button>
+                    </div>
+                  )}
+                  <div className="human-review">
+                    <label htmlFor="conclusion">
+                      面试官结论 <span>由你作出最终判断</span>
+                    </label>
+                    <textarea
+                      id="conclusion"
+                      rows={5}
+                      maxLength={10000}
+                      value={conclusion}
+                      disabled={!!busy}
+                      onChange={(e) => {
+                        setConclusion(e.target.value);
+                        setConfirmed(false);
+                      }}
+                      placeholder="结合岗位要求，写下已证实的能力、尚存疑问和下一步建议。"
+                    />
+                    <div className="button-row">
+                      <button
+                        className="primary-button"
+                        disabled={confirmed || !!busy || !conclusion.trim()}
+                        onClick={confirmConclusion}
+                      >
+                        <Check size={16} />
+                        {confirmed ? '已确认结论' : '确认面试结论'}
+                      </button>
+                      <button
+                        className="secondary-button"
+                        disabled={!hasContent || !!busy}
+                        onClick={exportRecord}
+                      >
+                        <Download size={16} />
+                        导出记录
+                      </button>
+                    </div>
+                    <p className="small-note">
+                      确认与草稿都可导出为
+                      Markdown；修改面试资料后，需要重新确认。
+                    </p>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </section>
+          <aside className="panel context-panel" aria-label="面试准备">
+            <h2>面试准备</h2>
             <InterviewPreparation {...preparationProps} />
-          </DialogContent>
-        </Dialog>
-        <LocalLibrary
-          open={historyOpen}
-          onClose={() => setHistoryOpen(false)}
-          library={library}
-          onError={setError}
-          download={download}
-          assertIdle={() => {
-            if (busyRef.current)
-              throw new Error('请等待当前操作结束后管理本地记录');
-          }}
-        />
-        {preferencesOpen && (
-          <GlobalPreferences
-            initialSettings={library.globalSettings}
-            initialTemplates={library.preferences}
-            onSave={library.saveGlobalPreferences}
-            onClose={() => setPreferencesOpen(false)}
-          />
-        )}
-        <Dialog open={settings} onOpenChange={setSettings}>
-          <DialogContent className="settings-dialog" showCloseButton={false}>
-            <div className="dialog-heading">
-              <DialogTitle>模型服务</DialogTitle>
-              <button
-                className="icon-button"
-                aria-label="关闭服务配置"
-                onClick={() => setSettings(false)}
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <DialogDescription>
-              {queuedCodex
-                ? '网页提交任务，已配对电脑上的 Codex 领取并完成分析。通过顶部“电脑连接”管理配对。'
-                : localCodex
-                  ? '使用本机 Codex 的 ChatGPT 登录生成面试评估，无需单独填写 API 密钥。'
-                  : '粘贴简历和导入面试记录可直接使用，生成 AI 辅助评估需要配置分析服务。'}
-            </DialogDescription>
-            <div className="service-row">
-              <span>
-                {queuedCodex
-                  ? '已配对电脑上的 Codex'
-                  : localCodex
-                    ? '本地 Codex'
-                    : 'AI 辅助评估'}
-              </span>
-              <span className="badge">
-                {services?.analysis
-                  ? queuedCodex
-                    ? services.connected
-                      ? '已连接'
-                      : '等待电脑'
-                    : localCodex
-                      ? '已连接'
-                      : '已配置'
-                  : localCodex
-                    ? '需检查登录'
-                    : '未配置'}
-              </span>
-            </div>
-            {queuedCodex ? (
-              <>
-                <p>{services?.message}</p>
-                <p className="small-note">
-                  简历、偏好与面试文字会提交到工作台服务器，由配对电脑发送给
-                  OpenAI，使用该电脑的 Codex
-                  账号额度。登录凭据留在电脑；结果可从评估任务找回，仍需人工核实。
-                </p>
-              </>
-            ) : localCodex ? (
-              <>
-                <p>{services?.message}</p>
-                <p className="small-note">
-                  点击生成后，面试材料会通过 Codex 发送给
-                  OpenAI，并使用当前账号的额度。网页和连接服务在本机运行，模型分析需要联网。报告仍需人工核实。
-                </p>
-              </>
-            ) : (
-              <>
-                <p>请在服务端配置分析 API 地址、模型和密钥。</p>
-                <p className="small-note">
-                  本地 Codex 方式请使用 npm start 启动工作台；兼容 API
-                  方式需单独配置。
-                </p>
-              </>
-            )}
-            {statusError && <p role="alert">无法获取状态，请稍后重试。</p>}
+          </aside>
+        </div>
+        <footer className="page-footer">
+          <span>面谈 · 让面试判断有据可依</span>
+          <button
+            className="text-button"
+            disabled={!hasContent || !!busy}
+            onClick={exportRecord}
+          >
+            <Download size={13} />
+            导出当前记录
+          </button>
+        </footer>
+      </main>
+      <Dialog open={preparationOpen} onOpenChange={setPreparationOpen}>
+        <DialogContent className="preparation-dialog" showCloseButton={false}>
+          <div className="dialog-heading">
+            <DialogTitle>面试准备</DialogTitle>
             <button
-              className="secondary-button"
-              onClick={() => void refreshServices()}
+              className="icon-button"
+              aria-label="关闭面试准备"
+              onClick={() => setPreparationOpen(false)}
             >
-              重新检查配置
+              <X size={18} />
             </button>
-          </DialogContent>
-        </Dialog>
-        <AlertDialog
-          open={pendingWrittenTestSupplement}
-          onOpenChange={setPendingWrittenTestSupplement}
-        >
-          <AlertDialogContent className="written-test-supplement-dialog">
-            <AlertDialogTitle>补充笔试复盘题</AlertDialogTitle>
-            <AlertDialogDescription>
-              Codex 将额外生成 3 道笔试复盘题，追加在原有 6
-              道提纲下方，不修改原提纲。成功后笔试情况会同步为“有笔试”，且不能再次生成。
-            </AlertDialogDescription>
-            <AlertDialogFooter>
-              <AlertDialogCancel>取消</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => void runWrittenTestSupplement()}
-              >
-                确认并生成 3 道题
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-        <AlertDialog
-          open={!!pendingResumeOutline}
-          onOpenChange={(open) => {
-            if (!open) setPendingResumeOutline(null);
-          }}
-        >
-          <AlertDialogContent className="resume-outline-confirmation-dialog">
-            <AlertDialogTitle>确认提纲生成条件</AlertDialogTitle>
-            <AlertDialogDescription>
-              先确认本场岗位；AI
-              产品经理还需确认笔试情况。确认的完整岗位模板会同步到面试准备，再交给
-              Codex 生成提纲。
-            </AlertDialogDescription>
-            <div className="resume-outline-confirmation-form">
-              <label>
-                确认岗位
-                <NativeSelect
-                  className="resume-outline-role-select"
-                  value={pendingResumeOutline?.templateId || ''}
-                  onChange={(event) =>
-                    setPendingResumeOutline((current) =>
-                      current
-                        ? {
-                            ...current,
-                            templateId: event.target.value,
-                            writtenTest:
-                              event.target.value ===
-                                BUILTIN_TEMPLATE_IDS.aiProductManager &&
-                              current.templateId === event.target.value
-                                ? current.writtenTest
-                                : null,
-                          }
-                        : null,
-                    )
-                  }
-                >
-                  <option value="">请选择岗位</option>
-                  {builtInRoleTemplates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </label>
-              {pendingResumeOutline?.templateId ===
-                BUILTIN_TEMPLATE_IDS.aiProductManager && (
-                <fieldset>
-                  <legend>笔试情况</legend>
-                  <label className="resume-outline-written-test-option">
-                    <input
-                      type="radio"
-                      name="resume-outline-written-test"
-                      checked={pendingResumeOutline.writtenTest === true}
-                      onChange={() =>
-                        setPendingResumeOutline((current) =>
-                          current ? { ...current, writtenTest: true } : null,
-                        )
-                      }
-                    />
-                    有笔试
-                  </label>
-                  <label className="resume-outline-written-test-option">
-                    <input
-                      type="radio"
-                      name="resume-outline-written-test"
-                      checked={pendingResumeOutline.writtenTest === false}
-                      onChange={() =>
-                        setPendingResumeOutline((current) =>
-                          current ? { ...current, writtenTest: false } : null,
-                        )
-                      }
-                    />
-                    无笔试
-                  </label>
-                </fieldset>
-              )}
-              <p>提纲成功生成后，本面试记录不能再次生成或替换简历。</p>
-            </div>
-            <AlertDialogFooter>
-              <AlertDialogCancel>取消</AlertDialogCancel>
-              <AlertDialogAction
-                disabled={
-                  !pendingResumeOutline ||
-                  !resolveResumeOutlinePreflight(
-                    pendingResumeOutline.templateId,
-                    pendingResumeOutline.writtenTest,
+          </div>
+          <DialogDescription>
+            设置候选人与本场面试的岗位标准。
+          </DialogDescription>
+          <InterviewPreparation {...preparationProps} />
+        </DialogContent>
+      </Dialog>
+      <LocalLibrary
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        library={library}
+        onError={setError}
+        download={download}
+        assertIdle={() => {
+          if (busyRef.current)
+            throw new Error('请等待当前操作结束后管理本地记录');
+        }}
+      />
+      {preferencesOpen && (
+        <GlobalPreferences
+          initialSettings={library.globalSettings}
+          initialTemplates={library.preferences}
+          onSave={library.saveGlobalPreferences}
+          onClose={() => setPreferencesOpen(false)}
+        />
+      )}
+      <Dialog open={settings} onOpenChange={setSettings}>
+        <DialogContent className="settings-dialog" showCloseButton={false}>
+          <div className="dialog-heading">
+            <DialogTitle>模型服务</DialogTitle>
+            <button
+              className="icon-button"
+              aria-label="关闭服务配置"
+              onClick={() => setSettings(false)}
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <DialogDescription>
+            {queuedCodex
+              ? '网页提交任务，已配对电脑上的 Codex 领取并完成分析。通过顶部“电脑连接”管理配对。'
+              : localCodex
+                ? '使用本机 Codex 的 ChatGPT 登录生成面试评估，无需单独填写 API 密钥。'
+                : '粘贴简历和导入面试记录可直接使用，生成 AI 辅助评估需要配置分析服务。'}
+          </DialogDescription>
+          <div className="service-row">
+            <span>
+              {queuedCodex
+                ? '已配对电脑上的 Codex'
+                : localCodex
+                  ? '本地 Codex'
+                  : 'AI 辅助评估'}
+            </span>
+            <span className="badge">
+              {services?.analysis
+                ? queuedCodex
+                  ? services.connected
+                    ? '已连接'
+                    : '等待电脑'
+                  : localCodex
+                    ? '已连接'
+                    : '已配置'
+                : localCodex
+                  ? '需检查登录'
+                  : '未配置'}
+            </span>
+          </div>
+          {queuedCodex ? (
+            <>
+              <p>{services?.message}</p>
+              <p className="small-note">
+                简历、偏好与面试文字会提交到工作台服务器，由配对电脑发送给
+                OpenAI，使用该电脑的 Codex
+                账号额度。登录凭据留在电脑；结果可从评估任务找回，仍需人工核实。
+              </p>
+            </>
+          ) : localCodex ? (
+            <>
+              <p>{services?.message}</p>
+              <p className="small-note">
+                点击生成后，面试材料会通过 Codex 发送给
+                OpenAI，并使用当前账号的额度。网页和连接服务在本机运行，模型分析需要联网。报告仍需人工核实。
+              </p>
+            </>
+          ) : (
+            <>
+              <p>请在服务端配置分析 API 地址、模型和密钥。</p>
+              <p className="small-note">
+                本地 Codex 方式请使用 npm start 启动工作台；兼容 API
+                方式需单独配置。
+              </p>
+            </>
+          )}
+          {statusError && <p role="alert">无法获取状态，请稍后重试。</p>}
+          <button
+            className="secondary-button"
+            onClick={() => void refreshServices()}
+          >
+            重新检查配置
+          </button>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog
+        open={pendingWrittenTestSupplement}
+        onOpenChange={setPendingWrittenTestSupplement}
+      >
+        <AlertDialogContent className="written-test-supplement-dialog">
+          <AlertDialogTitle>补充笔试复盘题</AlertDialogTitle>
+          <AlertDialogDescription>
+            Codex 将额外生成 3 道笔试复盘题，追加在原有 6 道提纲下方，不修改原提纲。成功后笔试情况会同步为“有笔试”，且不能再次生成。
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void runWrittenTestSupplement()}>
+              确认并生成 3 道题
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={!!pendingResumeOutline}
+        onOpenChange={(open) => {
+          if (!open) setPendingResumeOutline(null);
+        }}
+      >
+        <AlertDialogContent className="resume-outline-confirmation-dialog">
+          <AlertDialogTitle>确认提纲生成条件</AlertDialogTitle>
+          <AlertDialogDescription>
+            先确认本场岗位；AI 产品经理还需确认笔试情况。确认的完整岗位模板会同步到面试准备，再交给 Codex 生成提纲。
+          </AlertDialogDescription>
+          <div className="resume-outline-confirmation-form">
+            <label>
+              确认岗位
+              <NativeSelect
+                className="resume-outline-role-select"
+                value={pendingResumeOutline?.templateId || ''}
+                onChange={(event) =>
+                  setPendingResumeOutline((current) =>
+                    current
+                      ? {
+                          ...current,
+                          templateId: event.target.value,
+                          writtenTest:
+                            event.target.value ===
+                              BUILTIN_TEMPLATE_IDS.aiProductManager &&
+                            current.templateId === event.target.value
+                              ? current.writtenTest
+                              : null,
+                        }
+                      : null,
                   )
                 }
-                onClick={confirmResumeOutlineGeneration}
               >
-                确认并生成提纲
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-        <AlertDialog
-          open={!!pendingCandidateName}
-          onOpenChange={(open) => {
-            if (!open) setPendingCandidateName(null);
-          }}
-        >
-          <AlertDialogContent initialFocus={candidateKeepButton}>
-            <AlertDialogTitle>简历姓名与当前候选人不同</AlertDialogTitle>
-            <AlertDialogDescription>
-              默认保留当前姓名。请选择是否使用简历中识别的姓名；选择不会重新生成提纲。
-            </AlertDialogDescription>
-            <AlertDialogFooter>
-              <AlertDialogCancel ref={candidateKeepButton}>
-                保留当前姓名：{pendingCandidateName?.current}
-              </AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => {
-                  if (pendingCandidateName)
-                    applyDetectedCandidate(pendingCandidateName.detected);
-                  setPendingCandidateName(null);
-                }}
-              >
-                使用简历姓名：{pendingCandidateName?.detected}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-        <AlertDialog
-          open={!!pendingResume}
-          onOpenChange={(open) => {
-            if (!open) setPendingResume(null);
-          }}
-        >
-          <AlertDialogContent>
-            <AlertDialogTitle>替换当前简历？</AlertDialogTitle>
-            <AlertDialogDescription>
-              将使用 {pendingResume?.name}{' '}
-              的文字替换现有简历，并清除旧的辅助评估与人工确认。替换后需要确认岗位，再生成唯一一次提纲。面试对话和人工意见保留。
-            </AlertDialogDescription>
-            <AlertDialogFooter>
-              <AlertDialogCancel>取消，保留原文</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => {
-                  if (!pendingResume || busyRef.current) return;
-                  if (pendingResume.autoRead)
-                    void applyImportedResume(
-                      pendingResume.text,
-                      pendingResume.name,
-                    );
-                }}
-              >
-                替换并确认岗位
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-        <AlertDialog
-          open={!!pendingImport}
-          onOpenChange={(open) => {
-            if (!open) setPendingImport(null);
-          }}
-        >
-          <AlertDialogContent>
-            <AlertDialogTitle>替换当前面试记录？</AlertDialogTitle>
-            <AlertDialogDescription>
-              将使用 {pendingImport?.name} 替换当前正文，并清除旧 AI
-              评估和校对确认。人工意见会保留，需重新核对。如需保留原文，请先取消并导出当前记录。
-            </AlertDialogDescription>
-            <AlertDialogFooter>
-              <AlertDialogCancel>取消，保留原文</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => {
-                  if (pendingImport)
-                    applyTranscript(pendingImport.text, pendingImport.name);
-                }}
-              >
-                替换并重新校对
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-        <AlertDialog open={resetOpen} onOpenChange={setResetOpen}>
-          <AlertDialogContent>
-            <AlertDialogTitle>开始一场新的面试？</AlertDialogTitle>
-            <AlertDialogDescription>
-              当前面试将保留在本地记录中。新面试带入已保存的全局默认标准或默认岗位模板，清空候选人资料和对话。
-            </AlertDialogDescription>
-            <AlertDialogFooter>
-              <AlertDialogCancel>返回并保留</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => void localAction(library.create)}
-              >
-                保存并新建
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+                <option value="">请选择岗位</option>
+                {builtInRoleTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </label>
+            {pendingResumeOutline?.templateId ===
+              BUILTIN_TEMPLATE_IDS.aiProductManager && (
+              <fieldset>
+                <legend>笔试情况</legend>
+                <label className="resume-outline-written-test-option">
+                  <input
+                    type="radio"
+                    name="resume-outline-written-test"
+                    checked={pendingResumeOutline.writtenTest === true}
+                    onChange={() =>
+                      setPendingResumeOutline((current) =>
+                        current ? { ...current, writtenTest: true } : null,
+                      )
+                    }
+                  />
+                  有笔试
+                </label>
+                <label className="resume-outline-written-test-option">
+                  <input
+                    type="radio"
+                    name="resume-outline-written-test"
+                    checked={pendingResumeOutline.writtenTest === false}
+                    onChange={() =>
+                      setPendingResumeOutline((current) =>
+                        current ? { ...current, writtenTest: false } : null,
+                      )
+                    }
+                  />
+                  无笔试
+                </label>
+              </fieldset>
+            )}
+            <p>
+              提纲成功生成后，本面试记录不能再次生成或替换简历。
+            </p>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={
+                !pendingResumeOutline ||
+                !resolveResumeOutlinePreflight(
+                  pendingResumeOutline.templateId,
+                  pendingResumeOutline.writtenTest,
+                )
+              }
+              onClick={confirmResumeOutlineGeneration}
+            >
+              确认并生成提纲
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={!!pendingCandidateName}
+        onOpenChange={(open) => {
+          if (!open) setPendingCandidateName(null);
+        }}
+      >
+        <AlertDialogContent initialFocus={candidateKeepButton}>
+          <AlertDialogTitle>简历姓名与当前候选人不同</AlertDialogTitle>
+          <AlertDialogDescription>
+            默认保留当前姓名。请选择是否使用简历中识别的姓名；选择不会重新生成提纲。
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel ref={candidateKeepButton}>
+              保留当前姓名：{pendingCandidateName?.current}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingCandidateName)
+                  applyDetectedCandidate(pendingCandidateName.detected);
+                setPendingCandidateName(null);
+              }}
+            >
+              使用简历姓名：{pendingCandidateName?.detected}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={!!pendingResume}
+        onOpenChange={(open) => {
+          if (!open) setPendingResume(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>替换当前简历？</AlertDialogTitle>
+          <AlertDialogDescription>
+            将使用 {pendingResume?.name}{' '}
+            的文字替换现有简历，并清除旧的辅助评估与人工确认。替换后需要确认岗位，再生成唯一一次提纲。面试对话和人工意见保留。
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消，保留原文</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!pendingResume || busyRef.current) return;
+                if (pendingResume.autoRead)
+                  void applyImportedResume(
+                    pendingResume.text,
+                    pendingResume.name,
+                  );
+              }}
+            >
+              替换并确认岗位
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={!!pendingImport}
+        onOpenChange={(open) => {
+          if (!open) setPendingImport(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>替换当前面试记录？</AlertDialogTitle>
+          <AlertDialogDescription>
+            将使用 {pendingImport?.name} 替换当前正文，并清除旧 AI
+            评估和校对确认。人工意见会保留，需重新核对。如需保留原文，请先取消并导出当前记录。
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消，保留原文</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingImport)
+                  applyTranscript(pendingImport.text, pendingImport.name);
+              }}
+            >
+              替换并重新校对
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={resetOpen} onOpenChange={setResetOpen}>
+        <AlertDialogContent>
+          <AlertDialogTitle>开始一场新的面试？</AlertDialogTitle>
+          <AlertDialogDescription>
+            当前面试将保留在本地记录中。新面试带入已保存的全局默认标准或默认岗位模板，清空候选人资料和对话。
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>返回并保留</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void localAction(library.create)}>
+              保存并新建
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       </div>
     </div>
   );
