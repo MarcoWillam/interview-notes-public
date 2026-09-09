@@ -82,7 +82,7 @@ export function RemoteWorkspace() {
     return (
       <main className="remote-login">
         <div className="remote-login-card">
-          <span className="eyebrow">面谈 · INTERVIEW NOTES</span>
+          <span className="eyebrow">伯乐 AI · INTERVIEW COPILOT</span>
           <h1>{session ? '登录面试工作台' : '正在连接工作台'}</h1>
           <p>整理面试证据，让判断有据可依。</p>
           {session ? (

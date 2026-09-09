@@ -249,3 +249,20 @@ void test('workbench renders remote and local actions in one account-aware heade
   assert.match(css, /\.interview-sidebar-sort/);
   assert.match(css, /\.interview-sidebar-drag-handle/);
 });
+
+void test('product surfaces use the Bole AI brand consistently', async () => {
+  const surfaces = await Promise.all([
+    readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../app/layout.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../web/index.html', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../components/interview/remote-workspace.tsx', import.meta.url),
+      'utf8',
+    ),
+  ]);
+
+  for (const source of surfaces) {
+    assert.match(source, /伯乐 AI/);
+    assert.doesNotMatch(source, /面谈/);
+  }
+});
