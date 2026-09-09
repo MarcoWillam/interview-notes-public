@@ -59,7 +59,7 @@ npm run connector -- --server https://your-workspace.example --pair 网页上的
 
 配对成功后，连接器凭据存于本机 `.local/connector.json`（仅当前用户可读写，已被 Git 忽略）。之后只需 `npm run connector`，保持运行即可。配对码有效 10 分钟且只能使用一次，重新生成会替换旧码；网页可以解除电脑配对。Codex 自身的认证由 CLI 管理，不复制到连接器文件或服务器。
 
-如果终端找不到 Codex，可设置 `INTERVIEW_CODEX_BIN` 为 CLI 的绝对路径。连接器仅接受 HTTPS 网站根地址，本机调试允许 HTTP loopback；禁止带凭据 URL 和跨站重定向。
+macOS 连接器会依次检查终端中的 `codex`、ChatGPT 应用内置 CLI 和 Codex 应用内置 CLI。也可设置 `INTERVIEW_CODEX_BIN` 为 CLI 的绝对路径；显式路径优先。连接器仅接受 HTTPS 网站根地址，本机调试允许 HTTP loopback；禁止带凭据 URL 和跨站重定向。
 
 ## 分析约束与兼容入口
 
