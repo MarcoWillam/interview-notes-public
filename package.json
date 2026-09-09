@@ -3,16 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=24.0.0"
   },
   "scripts": {
     "dev": "vinext dev",
-    "build": "vinext build",
-    "start": "wrangler dev --config dist/server/wrangler.json",
-    "lint": "oxlint app lib hooks/use-recorder.ts hooks/use-local-access.ts hooks/use-interview-library.ts components/interview tests vite.config.ts",
+    "build": "vinext build && vite build --config vite.queue.config.ts",
+    "start": "node --experimental-strip-types server/start.ts --preview",
+    "lint": "oxlint app lib server hooks/use-recorder.ts hooks/use-local-access.ts hooks/use-interview-library.ts components/interview tests vite.config.ts web vite.queue.config.ts",
     "format": "oxfmt",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "start:api": "wrangler dev --config dist/server/wrangler.json --env-file \"$PWD/.env\"",
+    "start:server": "node --experimental-strip-types server/start.ts",
+    "start:local": "node --experimental-strip-types server/start-local.ts",
+    "connector": "node --experimental-strip-types server/connector.ts",
+    "build:server": "vite build --config vite.queue.config.ts",
+    "prebuild": "node scripts/prepare-pdf-assets.mjs",
+    "prebuild:server": "node scripts/prepare-pdf-assets.mjs",
+    "predev": "node scripts/prepare-pdf-assets.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
@@ -26,6 +34,7 @@
     "input-otp": "1.4.2",
     "lucide-react": "1.31.0",
     "mammoth": "1.12.2",
+    "pdfjs-dist": "6.3.289",
     "react": "19.2.8",
     "react-day-picker": "9.8.1",
     "react-dom": "19.2.8",

@@ -13,7 +13,11 @@ export type RecorderState =
   | 'paused'
   | 'stopping'
   | 'stopped';
-export function useRecorder() {
+export function useRecorder(onEnd?: () => void) {
+  const endCallback = useRef(onEnd);
+  useEffect(() => {
+    endCallback.current = onEnd;
+  });
   const [state, setState] = useState<RecorderState>('idle');
   const [seconds, setSeconds] = useState(0);
   const [levels, setLevels] = useState<number[]>([]);
@@ -36,6 +40,7 @@ export function useRecorder() {
   const cleanup = useCallback(() => {
     if (timer.current) clearInterval(timer.current);
     timer.current = null;
+    if (stream.current) endCallback.current?.();
     stream.current?.getTracks().forEach((track) => {
       track.onended = null;
       track.stop();
@@ -207,6 +212,7 @@ export function useRecorder() {
           setLevels(Array.from(data.slice(0, 55), (n) => n / 255));
         } else setLevels([]);
       }, 120);
+      return media;
     } catch (e) {
       cleanup();
       await localStore()

@@ -1,0 +1,8 @@
+[Unit]
+Description=Renew Interview Notes IP HTTPS certificate
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/.acme.sh/acme.sh --cron --home /root/.acme.sh

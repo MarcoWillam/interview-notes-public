@@ -118,7 +118,7 @@ export function useInterviewLibrary(
         setError('');
       })
       .catch((e: unknown) => {
-        setError('本地保存失败，可能空间不足。请立即导出记录并下载录音。');
+        setError('本地保存失败，可能空间不足。请立即导出记录备份。');
         throw e;
       });
   }

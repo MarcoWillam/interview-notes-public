@@ -87,3 +87,52 @@ void test('deleting a built-in template is durable across ordinary reopen', asyn
   );
   assert.equal(await reopened.getSettings(), undefined);
 });
+void test('Markdown source and edited text survive reopening alongside legacy records', async () => {
+  const factory = new IDBFactory();
+  const store = createLocalStore(factory);
+  await store.saveInterview(session);
+  const imported = {
+    ...session,
+    id: 'markdown',
+    transcriptName: '面试转写.md',
+    transcript: '# 面试\n\n面试官：介绍项目。\n候选人：我负责需求调研。',
+    resumeName: '',
+    reviewed: true,
+  };
+  await store.saveInterview(imported);
+  const reopened = createLocalStore(factory);
+  assert.deepEqual(await reopened.getInterview('markdown'), imported);
+  assert.deepEqual(await reopened.getInterview(session.id), session);
+  const edited = {
+    ...imported,
+    transcript: imported.transcript + '\n候选人：完成了五次访谈。',
+    reviewed: false,
+  };
+  await reopened.saveInterview(edited);
+  assert.deepEqual(
+    await createLocalStore(factory).getInterview('markdown'),
+    edited,
+  );
+});
+void test('resume source, verification and reading survive local history reopening', async () => {
+  const factory = new IDBFactory();
+  const first = createLocalStore(factory);
+  const record = {
+    ...session,
+    resumeName: '简历.pdf',
+    resumeChecked: true,
+    resumeReading: {
+      summary: '候选人自述',
+      sections: ['教育背景', '工作经历', '项目经验', '技能'].map((name) => ({
+        name,
+        items: [],
+      })),
+      followUps: ['请补充项目细节'],
+    },
+  };
+  await first.saveInterview(record);
+  assert.deepEqual(
+    await createLocalStore(factory).getInterview(session.id),
+    record,
+  );
+});

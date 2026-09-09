@@ -15,7 +15,10 @@ export type SavedInterview = {
   focus: string;
   resumeText: string;
   resumeName: string;
+  resumeChecked?: boolean;
+  resumeReading?: import('../resume-reading.ts').ResumeReading | null;
   transcript: string;
+  transcriptName?: string;
   reviewed: boolean;
   report: import('../interview.ts').Report | null;
   conclusion: string;
@@ -304,6 +307,18 @@ export function createLocalStore(
 }
 export type LocalStore = ReturnType<typeof createLocalStore>;
 let store: LocalStore | undefined;
+let scope = '';
+export function configureLocalStore(account: string) {
+  if (scope === account) return;
+  scope = account;
+  store = undefined;
+}
+export function localScope() {
+  return scope;
+}
 export function localStore() {
-  return (store ??= createLocalStore(indexedDB));
+  return (store ??= createLocalStore(
+    indexedDB,
+    scope ? 'interview-notes-local-' + scope : undefined,
+  ));
 }
