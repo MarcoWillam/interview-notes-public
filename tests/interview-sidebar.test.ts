@@ -84,3 +84,16 @@ void test('sidebar exposes current state, responsive preference, and management 
   assert.match(source, /event\.key !== 'Escape'/);
   assert.match(source, /focusSidebarTrigger/);
 });
+
+void test('local library is management-only and keeps destructive safeguards', async () => {
+  const source = await readFile(
+    new URL('../components/interview/local-library.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /<DialogTitle>记录管理<\/DialogTitle>/);
+  assert.match(source, /申请持久保存/);
+  assert.match(source, /aria-label=\{`下载 \$\{row\.candidate/);
+  assert.match(source, /删除这场本地面试/);
+  assert.doesNotMatch(source, /<FolderOpen/);
+  assert.doesNotMatch(source, />\s*打开\s*</);
+});

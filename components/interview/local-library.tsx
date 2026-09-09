@@ -15,7 +15,7 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
-import { Download, Trash2, FolderOpen, X } from 'lucide-react';
+import { Download, Trash2, X } from 'lucide-react';
 import type { useInterviewLibrary } from '@/hooks/use-interview-library';
 import { localStore } from '@/lib/local/store';
 type Library = ReturnType<typeof useInterviewLibrary>;
@@ -25,7 +25,6 @@ export function LocalLibrary({
   library,
   onError,
   download,
-  canSwitch,
   assertIdle,
 }: {
   open: boolean;
@@ -33,7 +32,6 @@ export function LocalLibrary({
   library: Library;
   onError: (message: string) => void;
   download: (blob: Blob, name: string) => void;
-  canSwitch: boolean;
   assertIdle: () => void;
 }) {
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -67,10 +65,10 @@ export function LocalLibrary({
       >
         <DialogContent className="library-dialog" showCloseButton={false}>
           <div className="dialog-heading">
-            <DialogTitle>这台电脑上的面试</DialogTitle>
+            <DialogTitle>记录管理</DialogTitle>
             <button
               className="icon-button"
-              aria-label="关闭本地记录"
+              aria-label="关闭记录管理"
               disabled={pending}
               onClick={onClose}
             >
@@ -78,16 +76,11 @@ export function LocalLibrary({
             </button>
           </div>
           <DialogDescription>
-            保存在当前浏览器，不占本站服务器存储。换设备或清除站点数据后无法访问，请导出重要记录备份。
+            面试从左侧记录栏打开。这里管理当前浏览器中的存储、录音下载和删除操作。
           </DialogDescription>
           {error && (
             <p className="message error" role="alert">
               {error}
-            </p>
-          )}
-          {!canSwitch && (
-            <p className="small-note">
-              当前录音尚未完整保存；请关闭此窗口下载备份或重试保存后再打开其他面试。仍可删除旧记录释放空间。
             </p>
           )}
           <div className="storage-overview">
@@ -131,21 +124,6 @@ export function LocalLibrary({
                       </span>
                     </div>
                     <div className="button-row">
-                      <button
-                        className="secondary-button"
-                        disabled={
-                          pending || !canSwitch || row.id === library.id
-                        }
-                        onClick={() =>
-                          void act(async () => {
-                            await library.open(row.id);
-                            onClose();
-                          })
-                        }
-                      >
-                        <FolderOpen size={14} />
-                        打开
-                      </button>
                       {audio && audio.bytes > 0 && (
                         <button
                           className="icon-button"

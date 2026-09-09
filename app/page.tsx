@@ -1546,7 +1546,6 @@ export default function Home() {
         library={library}
         onError={setError}
         download={download}
-        canSwitch={true}
         assertIdle={() => {
           if (busyRef.current)
             throw new Error('请等待当前操作结束后管理本地记录');
