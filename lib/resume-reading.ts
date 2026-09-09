@@ -3,25 +3,28 @@ import {
   validateStandards,
   type InterviewStandards,
 } from './standards.ts';
+import {
+  interviewQuestionSchema,
+  validateQuestionItems,
+  type InterviewQuestion,
+  type QuestionSource,
+} from './interview-questions.ts';
+import {
+  exportWrittenTestSupplement,
+  validateWrittenTestSupplement,
+} from './written-test-supplement.ts';
+
+export type { InterviewQuestion, QuestionSource } from './interview-questions.ts';
 
 export type ResumeInput = InterviewStandards & {
   resumeText: string;
   hasWrittenTest: boolean;
 };
-export type QuestionSource = 'resume' | 'written-test' | 'role';
-export type InterviewQuestion = {
-  question: string;
-  questionSource?: QuestionSource;
-  dimensions: string[];
-  reason: string;
-  resumeEvidence: string | null;
-  listenFor: string[];
-  probes: string[];
-};
 export type ResumeReading = {
   candidateName?: string | null;
   candidateNameEvidence?: string | null;
   interviewQuestions?: InterviewQuestion[];
+  writtenTestSupplement?: InterviewQuestion[];
   summary: string;
   sections: { name: string; items: { text: string; evidence: string }[] }[];
   followUps: string[];
@@ -45,70 +48,22 @@ export function validateResumeInput(value: unknown): ResumeInput {
   };
 }
 
-function stringList(
-  value: unknown,
-  min: number,
-  max: number,
-  itemMax: number,
-): string[] {
-  if (!Array.isArray(value) || value.length < min || value.length > max)
-    throw new Error('面试问题列表长度不正确。');
-  return value.map((item) => text(item, itemMax));
-}
-
 function validateQuestions(
   value: unknown,
   input: ResumeInput,
 ): InterviewQuestion[] {
-  if (!Array.isArray(value) || value.length !== 6)
-    throw new Error('面试提纲必须包含六道问题。');
   const allowedDimensions = new Set(
     input.dimensionText
       .split(/[、,，\n]/)
       .map((dimension) => dimension.trim())
       .filter(Boolean),
   );
-  const questions = value.map((item: unknown) => {
-    if (!item || typeof item !== 'object')
-      throw new Error('面试问题格式不正确。');
-    const question = item as Record<string, unknown>;
-    const questionSource = question.questionSource as
-      | QuestionSource
-      | undefined;
-    if (
-      questionSource !== 'resume' &&
-      questionSource !== 'written-test' &&
-      questionSource !== 'role'
-    )
-      throw new Error('面试问题来源不正确。');
-    const dimensions = stringList(question.dimensions, 1, 2, 60);
-    if (dimensions.some((dimension) => !allowedDimensions.has(dimension)))
-      throw new Error('面试问题包含未知评估维度。');
-    const resumeEvidence = question.resumeEvidence;
-    if (resumeEvidence !== null) {
-      text(resumeEvidence, 2000);
-      if (!input.resumeText.includes(resumeEvidence as string))
-        throw new Error('面试问题引用无法在简历原文中找到。');
-    }
-    if (questionSource === 'resume' && resumeEvidence === null)
-      throw new Error('简历经历题必须包含原文依据。');
-    if (questionSource !== 'resume' && resumeEvidence !== null)
-      throw new Error('非简历题不能引用简历原文。');
-    return {
-      question: text(question.question, 1000),
-      questionSource,
-      dimensions,
-      reason: text(question.reason, 2000),
-      resumeEvidence: resumeEvidence as string | null,
-      listenFor: stringList(question.listenFor, 1, 3, 1000),
-      probes: stringList(question.probes, 1, 2, 1000),
-    };
+  const questions = validateQuestionItems(value, {
+    expectedCount: 6,
+    allowedDimensions,
+    allowedSources: new Set<QuestionSource>(['resume', 'written-test', 'role']),
+    resumeText: input.resumeText,
   });
-  if (
-    new Set(questions.map((question) => question.question)).size !==
-    questions.length
-  )
-    throw new Error('面试问题不能重复。');
   const writtenPositions = questions
     .map((question, index) =>
       question.questionSource === 'written-test' ? index : -1,
@@ -171,6 +126,26 @@ export function validateResumeReading(
     typeof v.candidateNameEvidence === 'string' &&
     input.resumeText.includes(v.candidateNameEvidence) &&
     v.candidateNameEvidence.includes(v.candidateName);
+  const interviewQuestions =
+    v.interviewQuestions === undefined
+      ? undefined
+      : validateQuestions(v.interviewQuestions, input);
+  const writtenTestSupplement =
+    v.writtenTestSupplement === undefined
+      ? undefined
+      : validateWrittenTestSupplement(
+          { questions: v.writtenTestSupplement },
+          {
+            role: input.role,
+            requirements: input.requirements,
+            dimensionText: input.dimensionText,
+            focus: input.focus,
+            scoringGuidance: input.scoringGuidance,
+            reportRequirements: input.reportRequirements,
+            resumeText: input.resumeText,
+            existingQuestions: interviewQuestions || [],
+          },
+        ).questions;
   return {
     candidateName: validIdentity ? (v.candidateName as string) : null,
     candidateNameEvidence: validIdentity
@@ -179,9 +154,8 @@ export function validateResumeReading(
     summary: text(v.summary, 4000),
     sections,
     followUps: v.followUps.map((q) => text(q, 1000)),
-    ...(v.interviewQuestions === undefined
-      ? {}
-      : { interviewQuestions: validateQuestions(v.interviewQuestions, input) }),
+    ...(interviewQuestions ? { interviewQuestions } : {}),
+    ...(writtenTestSupplement ? { writtenTestSupplement } : {}),
   };
 }
 export const resumeInstructions =
@@ -208,50 +182,7 @@ export const resumeSchema = {
       type: 'array',
       minItems: 6,
       maxItems: 6,
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: [
-          'question',
-          'questionSource',
-          'dimensions',
-          'reason',
-          'resumeEvidence',
-          'listenFor',
-          'probes',
-        ],
-        properties: {
-          question: { type: 'string', minLength: 1, maxLength: 1000 },
-          questionSource: {
-            type: 'string',
-            enum: ['resume', 'written-test', 'role'],
-          },
-          dimensions: {
-            type: 'array',
-            minItems: 1,
-            maxItems: 2,
-            items: { type: 'string', minLength: 1, maxLength: 60 },
-          },
-          reason: { type: 'string', minLength: 1, maxLength: 2000 },
-          resumeEvidence: {
-            type: ['string', 'null'],
-            minLength: 1,
-            maxLength: 2000,
-          },
-          listenFor: {
-            type: 'array',
-            minItems: 1,
-            maxItems: 3,
-            items: { type: 'string', minLength: 1, maxLength: 1000 },
-          },
-          probes: {
-            type: 'array',
-            minItems: 1,
-            maxItems: 2,
-            items: { type: 'string', minLength: 1, maxLength: 1000 },
-          },
-        },
-      },
+      items: interviewQuestionSchema,
     },
     summary: { type: 'string' },
     sections: {
@@ -337,6 +268,9 @@ export function exportResumeReading(reading: ResumeReading): string {
             ...q.probes.map((probe) => '- ' + probe),
           ]),
         ]
+      : []),
+    ...(reading.writtenTestSupplement?.length
+      ? ['', exportWrittenTestSupplement(reading.writtenTestSupplement)]
       : []),
     '',
     reading.interviewQuestions?.length ? '## 其他建议追问' : '## 建议追问',
