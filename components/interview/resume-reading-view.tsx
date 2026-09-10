@@ -9,6 +9,7 @@ import {
 const sourceLabels: Record<QuestionSource, string> = {
   resume: '简历经历',
   'written-test': '笔试复盘',
+  'work-sample': '笔试作品',
   role: '岗位通用',
 };
 

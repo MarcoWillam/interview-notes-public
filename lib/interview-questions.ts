@@ -1,4 +1,13 @@
-export type QuestionSource = 'resume' | 'written-test' | 'role';
+export type QuestionSource =
+  | 'resume'
+  | 'written-test'
+  | 'work-sample'
+  | 'role';
+
+export type WorkSampleEvidence = {
+  path: string;
+  excerpt: string;
+};
 
 export type InterviewQuestion = {
   question: string;
@@ -6,6 +15,7 @@ export type InterviewQuestion = {
   dimensions: string[];
   reason: string;
   resumeEvidence: string | null;
+  workSampleEvidence?: WorkSampleEvidence;
   listenFor: string[];
   probes: string[];
 };
@@ -25,6 +35,29 @@ function stringList(
   if (!Array.isArray(value) || value.length < min || value.length > max)
     throw new Error('面试问题列表长度不正确。');
   return value.map((item) => boundedText(item, itemMax));
+}
+
+export function safeWorkSamplePath(value: unknown): string {
+  const path = boundedText(value, 500).replaceAll('\\', '/');
+  if (
+    path.startsWith('/') ||
+    /^[a-z]:\//i.test(path) ||
+    path.split('/').some((part) => !part || part === '.' || part === '..')
+  )
+    throw new Error('作品证据路径不安全。');
+  return path;
+}
+
+export function validateWorkSampleEvidence(
+  value: unknown,
+): WorkSampleEvidence {
+  if (!value || typeof value !== 'object')
+    throw new Error('作品证据格式不正确。');
+  const evidence = value as Record<string, unknown>;
+  return {
+    path: safeWorkSamplePath(evidence.path),
+    excerpt: boundedText(evidence.excerpt, 4000),
+  };
 }
 
 export function validateQuestionItems(
@@ -64,12 +97,22 @@ export function validateQuestionItems(
       throw new Error('简历经历题必须包含原文依据。');
     if (questionSource !== 'resume' && resumeEvidence !== null)
       throw new Error('非简历题不能引用简历原文。');
+    const workSampleEvidence =
+      question.workSampleEvidence === undefined ||
+      question.workSampleEvidence === null
+        ? undefined
+        : validateWorkSampleEvidence(question.workSampleEvidence);
+    if (questionSource === 'work-sample' && !workSampleEvidence)
+      throw new Error('作品复盘题必须包含文件依据。');
+    if (questionSource !== 'work-sample' && workSampleEvidence)
+      throw new Error('非作品题不能引用作品文件。');
     return {
       question: boundedText(question.question, 1000),
       questionSource,
       dimensions,
       reason: boundedText(question.reason, 2000),
       resumeEvidence: resumeEvidence as string | null,
+      ...(workSampleEvidence ? { workSampleEvidence } : {}),
       listenFor: stringList(question.listenFor, 1, 3, 1000),
       probes: stringList(question.probes, 1, 2, 1000),
     };
@@ -98,7 +141,7 @@ export const interviewQuestionSchema = {
     question: { type: 'string', minLength: 1, maxLength: 1000 },
     questionSource: {
       type: 'string',
-      enum: ['resume', 'written-test', 'role'],
+      enum: ['resume', 'written-test', 'work-sample', 'role'],
     },
     dimensions: {
       type: 'array',
@@ -111,6 +154,15 @@ export const interviewQuestionSchema = {
       type: ['string', 'null'],
       minLength: 1,
       maxLength: 2000,
+    },
+    workSampleEvidence: {
+      type: ['object', 'null'],
+      additionalProperties: false,
+      required: ['path', 'excerpt'],
+      properties: {
+        path: { type: 'string', minLength: 1, maxLength: 500 },
+        excerpt: { type: 'string', minLength: 1, maxLength: 4000 },
+      },
     },
     listenFor: {
       type: 'array',

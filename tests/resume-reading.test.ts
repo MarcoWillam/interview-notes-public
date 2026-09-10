@@ -90,6 +90,15 @@ const supplementQuestions = Array.from({ length: 3 }, (_, index) => ({
   probes: ['如果假设不成立，你会如何调整？'],
 }));
 
+const workSampleReference = {
+  id: 'artifact-12345678',
+  deviceId: 'device-12345678',
+  name: 'ai-pm-work.zip',
+  sha256: 'b'.repeat(64),
+  bytes: 2048,
+  modifiedAt: 2,
+};
+
 void test('complete standards and six grounded interview questions survive validation', () => {
   assert.deepEqual(validateResumeInput(input), input);
   assert.equal(
@@ -124,6 +133,38 @@ void test('written-test guides require review questions in positions two through
   );
   assert.throws(() => validateResumeReading(structuredResult, writtenInput));
   assert.throws(() => validateResumeReading(writtenGuide, input));
+});
+
+void test('an attached work sample grounds questions two through four', () => {
+  const workInput = {
+    ...input,
+    hasWrittenTest: true,
+    workSample: workSampleReference,
+  };
+  const workEvidence = {
+    path: 'docs/brief.md',
+    excerpt: '目标用户是运营人员',
+  };
+  const workGuide = {
+    ...structuredResult,
+    interviewQuestions: structuredResult.interviewQuestions.map(
+      (question, index) => ({
+        ...question,
+        questionSource:
+          index >= 1 && index <= 3
+            ? ('work-sample' as const)
+            : question.questionSource,
+        resumeEvidence:
+          index >= 1 && index <= 3 ? null : question.resumeEvidence,
+        workSampleEvidence:
+          index >= 1 && index <= 3 ? workEvidence : undefined,
+      }),
+    ),
+  };
+  assert.deepEqual(validateResumeInput(workInput), workInput);
+  const validated = validateResumeReading(workGuide, workInput);
+  assert.equal(validated.interviewQuestions?.[1].questionSource, 'work-sample');
+  assert.throws(() => validateResumeReading(structuredResult, workInput));
 });
 
 void test('regular guides reject written-test wording', () => {
@@ -281,6 +322,7 @@ void test('model schema requires identity and bounded structured questions', () 
   assert.deepEqual(questions.items.properties.questionSource.enum, [
     'resume',
     'written-test',
+    'work-sample',
     'role',
   ]);
   for (const [field, min, max] of [
