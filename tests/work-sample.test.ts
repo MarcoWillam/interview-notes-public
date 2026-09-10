@@ -4,6 +4,8 @@ import {
   validateWorkSampleAssessment,
   validateWorkSampleEvidenceFiles,
   validateWorkSampleReference,
+  exportWorkSampleAssessment,
+  workSampleRubricLabel,
   type WorkSampleAssessment,
 } from '../lib/work-sample.ts';
 import {
@@ -178,6 +180,16 @@ void test('historical work sample results require the explicit compatibility pat
     }),
     historical,
   );
+  assert.equal(workSampleRubricLabel(historical), '历史评估口径');
+  assert.match(exportWorkSampleAssessment(historical), /历史评估口径/);
+});
+
+void test('current work sample exports name the unified assessment basis without a total', () => {
+  assert.equal(workSampleRubricLabel(assessment), '依据统一笔试目的评估');
+  const markdown = exportWorkSampleAssessment(assessment);
+  assert.match(markdown, /评估口径：依据统一笔试目的评估/);
+  for (const { name } of aiPmWorkSampleRubric) assert.match(markdown, new RegExp(name));
+  assert.doesNotMatch(markdown, /100 分/);
 });
 
 void test('work sample evidence must exist verbatim in the referenced local file', async () => {

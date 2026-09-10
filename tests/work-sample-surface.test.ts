@@ -44,6 +44,7 @@ void test('locked AI PM outline offers one later submission and renders a collap
   assert.match(reading, /补交笔试作品/);
   assert.match(reading, /<WorkSampleView/);
   assert.match(view, /作品表现/);
+  assert.match(view, /workSampleRubricLabel/);
   assert.match(view, /查看维度依据与读取范围/);
   assert.match(view, /<details/);
 });

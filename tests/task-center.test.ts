@@ -202,4 +202,5 @@ void test('completed interview tasks separate work-sample verification in result
   assert.match(source, /作品表现（归属与过程待核实）/);
   assert.match(source, /workSampleReview/);
   assert.match(source, /transcriptEvidence/);
+  assert.match(source, /workSampleRubricLabel/);
 });

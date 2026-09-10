@@ -1,4 +1,7 @@
-import type { WorkSampleAssessment } from '@/lib/work-sample';
+import {
+  workSampleRubricLabel,
+  type WorkSampleAssessment,
+} from '@/lib/work-sample';
 
 export function WorkSampleView({
   value,
@@ -16,6 +19,7 @@ export function WorkSampleView({
         </div>
         <span className="badge">有笔试 · 作品已分析</span>
       </div>
+      <p className="small-note">{workSampleRubricLabel(value)}</p>
       <p>{value.summary}</p>
       <div className="work-sample-observations">
         <div>
