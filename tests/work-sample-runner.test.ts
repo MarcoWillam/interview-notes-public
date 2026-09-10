@@ -206,8 +206,10 @@ void test('later analysis returns three grounded questions and rejects fabricate
           dimensions: valid.dimensions.map((dimension, index) =>
             index === 0
               ? {
-              ...valid.dimensions[0],
-              evidence: [{ path: 'docs/brief.md', excerpt: '不存在的原文' }],
+                  ...valid.dimensions[0],
+                  evidence: [
+                    { path: 'docs/brief.md', excerpt: '不存在的原文' },
+                  ],
                 }
               : dimension,
           ),

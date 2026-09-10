@@ -68,10 +68,7 @@ const assessment: WorkSampleAssessment = {
 };
 
 void test('AI PM work sample rubric fixes the unified written-test purpose', () => {
-  assert.equal(
-    AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
-    'ai-pm-written-test-v1',
-  );
+  assert.equal(AI_PM_WORK_SAMPLE_RUBRIC_VERSION, 'ai-pm-written-test-v1');
   assert.deepEqual(
     aiPmWorkSampleRubric.map(({ name, priority }) => [name, priority]),
     [
@@ -188,7 +185,8 @@ void test('current work sample exports name the unified assessment basis without
   assert.equal(workSampleRubricLabel(assessment), '依据统一笔试目的评估');
   const markdown = exportWorkSampleAssessment(assessment);
   assert.match(markdown, /评估口径：依据统一笔试目的评估/);
-  for (const { name } of aiPmWorkSampleRubric) assert.match(markdown, new RegExp(name));
+  for (const { name } of aiPmWorkSampleRubric)
+    assert.match(markdown, new RegExp(name));
   assert.doesNotMatch(markdown, /100 分/);
 });
 
