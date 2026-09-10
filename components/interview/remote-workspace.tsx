@@ -420,11 +420,47 @@ function RemotePanel({
               <Download size={16} />
               下载连接器包
             </a>
+            <div className="remote-connector-guide" aria-label="连接器使用流程">
+              <section className="remote-connector-step">
+                <strong className="remote-connector-step-title">
+                  <span className="remote-connector-step-index">1</span>
+                  首次配对
+                </strong>
+                <p>
+                  进入解压后的 <code>interview-connector</code>{' '}
+                  目录，生成配对码并运行首次配对命令。
+                  {'配对码仅可使用一次，10 分钟内有效。'}
+                </p>
+              </section>
+              <section className="remote-connector-step">
+                <strong className="remote-connector-step-title">
+                  <span className="remote-connector-step-index">2</span>
+                  保持连接
+                </strong>
+                <p>
+                  连接器运行期间才能领取任务。关闭终端会停止领取任务，但不会使已保存的配对失效；未领取任务会继续排队。
+                </p>
+              </section>
+              <section className="remote-connector-step">
+                <strong className="remote-connector-step-title">
+                  <span className="remote-connector-step-index">3</span>
+                  以后启动
+                </strong>
+                <p>
+                  回到首次配对使用的同一目录，只需运行下面的命令，无需重新生成配对码。
+                </p>
+                <code className="remote-connector-command">
+                  npm run connector
+                </code>
+              </section>
+            </div>
             <p className="small-note">
               终端提示符如果仍是 <code>~ %</code>，或提示找不到{' '}
               <code>/Users/用户名/package.json</code>
               ，说明当前不在连接器目录。请先进入解压后的{' '}
-              <code>interview-connector</code> 文件夹。
+              <code>interview-connector</code> 文件夹。连接凭据保存在该目录的{' '}
+              <code>.local/connector.json</code>
+              ；重新下载、移动或删除目录，或凭据文件丢失时，才需要重新配对。
             </p>
             {preview && (
               <p className="small-note">
@@ -456,11 +492,10 @@ function RemotePanel({
                 </span>
                 <p>进入解压后的连接器目录：</p>
                 <pre>cd ~/Downloads/interview-connector</pre>
-                <p>确认当前目录中能看到 package.json 后运行：</p>
+                <p>首次配对命令：</p>
                 <pre>{`npm run connector -- --server ${window.location.origin} --pair ${pair.code}`}</pre>
                 <p className="small-note">
-                  首次成功后，后续只需运行 npm run
-                  connector。请仅将配对码用于自己的电脑。
+                  此命令只在首次配对时使用。配对成功后，请按上方“以后启动”运行连接器。请仅将配对码用于自己的电脑。
                 </p>
               </div>
             )}

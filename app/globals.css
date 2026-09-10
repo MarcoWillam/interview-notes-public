@@ -397,6 +397,45 @@
   gap: 7px;
   text-decoration: none;
 }
+.remote-connector-guide {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 4px;
+}
+.remote-connector-step {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #dce6e3;
+  border-radius: 8px;
+  background: #fff;
+}
+.remote-connector-step-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #294a42;
+  font-size: 13px;
+}
+.remote-connector-step-index {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  place-items: center;
+  border-radius: 50%;
+  background: #e6f3ef;
+  color: #087d70;
+  font-size: 12px;
+}
+.remote-connector-step p {
+  margin: 7px 0 0;
+}
+.remote-connector-command {
+  display: block;
+  margin-top: 8px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
 .remote-pair-code {
   margin-top: 20px;
 }
