@@ -16,7 +16,11 @@ import {
   validateWrittenTestSupplement,
   validateWrittenTestSupplementInput,
 } from '../../lib/written-test-supplement.ts';
-export type JobKind = 'interview' | 'resume' | 'written-test';
+import {
+  validateWorkSampleReference,
+  type WorkSampleReference,
+} from '../../lib/work-sample.ts';
+export type JobKind = 'interview' | 'resume' | 'written-test' | 'work-sample';
 export class QueueError extends Error {
   status: number;
   constructor(message: string, status = 400) {
@@ -41,9 +45,11 @@ export class QueueStore {
       CREATE TABLE IF NOT EXISTS pairs(hash TEXT PRIMARY KEY,user TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,user TEXT NOT NULL,name TEXT NOT NULL,hash TEXT UNIQUE NOT NULL,seen INTEGER NOT NULL,ready INTEGER NOT NULL DEFAULT 0,revoked INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,kind TEXT NOT NULL DEFAULT 'interview',queued INTEGER,started INTEGER,UNIQUE(user,client));
+      CREATE TABLE IF NOT EXISTS artifacts(user TEXT NOT NULL,device TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,sha256 TEXT NOT NULL,bytes INTEGER NOT NULL,modified INTEGER NOT NULL,seen INTEGER NOT NULL,PRIMARY KEY(device,id));
       CREATE INDEX IF NOT EXISTS jobs_owner_created ON jobs(user,created);
       CREATE INDEX IF NOT EXISTS jobs_claim ON jobs(user,state,created);
-      CREATE INDEX IF NOT EXISTS devices_owner ON devices(user);`);
+      CREATE INDEX IF NOT EXISTS devices_owner ON devices(user);
+      CREATE INDEX IF NOT EXISTS artifacts_owner ON artifacts(user,seen);`);
     if (
       !(this.db.prepare('PRAGMA table_info(users)').all() as Row[]).some(
         (column) => column.name === 'active',
@@ -63,6 +69,10 @@ export class QueueStore {
       this.db.exec('ALTER TABLE jobs ADD COLUMN queued INTEGER');
     if (!jobColumns.some((column) => column.name === 'started'))
       this.db.exec('ALTER TABLE jobs ADD COLUMN started INTEGER');
+    if (!jobColumns.some((column) => column.name === 'targetDevice'))
+      this.db.exec('ALTER TABLE jobs ADD COLUMN targetDevice TEXT');
+    if (!jobColumns.some((column) => column.name === 'artifactId'))
+      this.db.exec('ALTER TABLE jobs ADD COLUMN artifactId TEXT');
     this.db.exec('UPDATE jobs SET queued=created WHERE queued IS NULL');
   }
   close() {
@@ -286,6 +296,69 @@ export class QueueStore {
       ready: !!row.ready,
     }));
   }
+  syncArtifacts(secret: string, values: unknown): WorkSampleReference[] {
+    const device = this.device(secret);
+    if (!Array.isArray(values) || values.length > 100)
+      throw new QueueError('作品清单超过限制。');
+    const artifacts = values.map((value) => {
+      try {
+        const artifact = validateWorkSampleReference(value);
+        if (artifact.deviceId !== device.id) throw new Error();
+        return artifact;
+      } catch {
+        throw new QueueError('作品清单包含无效项目。');
+      }
+    });
+    const now = this.now();
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db.prepare('DELETE FROM artifacts WHERE device=?').run(device.id);
+      const insert = this.db.prepare(
+        'INSERT INTO artifacts(user,device,id,name,sha256,bytes,modified,seen) VALUES(?,?,?,?,?,?,?,?)',
+      );
+      for (const artifact of artifacts)
+        insert.run(
+          device.user,
+          device.id,
+          artifact.id,
+          artifact.name,
+          artifact.sha256,
+          artifact.bytes,
+          artifact.modifiedAt,
+          now,
+        );
+      this.db.prepare('UPDATE devices SET seen=? WHERE id=?').run(now, device.id);
+      this.db.exec('COMMIT');
+      return artifacts;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+  artifacts(user: string) {
+    const now = this.now();
+    return (
+      this.db
+        .prepare(
+          `SELECT artifacts.id,artifacts.device AS deviceId,artifacts.name,artifacts.sha256,artifacts.bytes,artifacts.modified AS modifiedAt,artifacts.seen,devices.name AS deviceName,devices.seen AS deviceSeen,devices.revoked
+           FROM artifacts JOIN devices ON devices.id=artifacts.device
+           WHERE artifacts.user=? ORDER BY artifacts.modified DESC,artifacts.name`,
+        )
+        .all(user) as Row[]
+    ).map((row) => ({
+      id: String(row.id),
+      deviceId: String(row.deviceId),
+      name: String(row.name),
+      sha256: String(row.sha256),
+      bytes: Number(row.bytes),
+      modifiedAt: Number(row.modifiedAt),
+      deviceName: String(row.deviceName),
+      available:
+        !row.revoked &&
+        Number(row.seen) > now - 45000 &&
+        Number(row.deviceSeen) > now - 45000,
+    }));
+  }
   revoke(user: string, id: string) {
     this.db
       .prepare('UPDATE devices SET revoked=1 WHERE id=? AND user=?')
@@ -295,6 +368,12 @@ export class QueueStore {
         "UPDATE jobs SET state='failed',input=NULL,error='执行电脑已解除配对，请重新提交。',updated=? WHERE device=? AND user=? AND state='running'",
       )
       .run(this.now(), id, user);
+    this.db
+      .prepare(
+        "UPDATE jobs SET state='failed',input=NULL,error='保存作品的电脑已解除配对，请重新选择作品。',device=NULL,lease=NULL,until=NULL,updated=? WHERE targetDevice=? AND user=? AND state IN ('queued','running','paused')",
+      )
+      .run(this.now(), id, user);
+    this.db.prepare('DELETE FROM artifacts WHERE device=? AND user=?').run(id, user);
   }
   sweep() {
     const now = this.now();
@@ -315,6 +394,7 @@ export class QueueStore {
       .run(now - 7 * 86400000);
     this.db.prepare('DELETE FROM sessions WHERE expires<?').run(now);
     this.db.prepare('DELETE FROM pairs WHERE expires<?').run(now);
+    this.db.prepare('DELETE FROM artifacts WHERE seen<?').run(now - 86400000);
   }
   submit(
     user: string,
@@ -336,10 +416,39 @@ export class QueueStore {
           ? validateResumeInput(value)
           : kind === 'written-test'
             ? validateWrittenTestSupplementInput(value)
-            : validateInput(value),
+            : kind === 'interview'
+              ? validateInput(value)
+              : (() => {
+                  throw new QueueError('作品评估任务尚未包含有效输入。');
+                })(),
       input = JSON.stringify(validatedInput),
       digest = hash(kind + (scope ? '\n' + scope + '\n' : '') + input),
       safeLabel = label.slice(0, 100) || '未命名面试';
+    const workSample =
+      kind === 'resume' && 'workSample' in validatedInput
+        ? validatedInput.workSample
+        : undefined;
+    let targetDevice: string | null = null,
+      artifactId: string | null = null;
+    if (workSample) {
+      const artifact = this.db
+        .prepare(
+          'SELECT device,id,seen FROM artifacts WHERE user=? AND device=? AND id=? AND name=? AND sha256=? AND bytes=? AND modified=?',
+        )
+        .get(
+          user,
+          workSample.deviceId,
+          workSample.id,
+          workSample.name,
+          workSample.sha256,
+          workSample.bytes,
+          workSample.modifiedAt,
+        ) as Row | undefined;
+      if (!artifact || Number(artifact.seen) <= this.now() - 45000)
+        throw new QueueError('所选笔试作品已离线或发生变化，请刷新作品清单。', 409);
+      targetDevice = String(artifact.device);
+      artifactId = String(artifact.id);
+    }
     const previous = this.db
       .prepare('SELECT id,inputHash FROM jobs WHERE user=? AND client=?')
       .get(user, client) as Row | undefined;
@@ -369,7 +478,7 @@ export class QueueStore {
     const id = randomUUID();
     this.db
       .prepare(
-        "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued) VALUES(?,?,?,?,?,'queued',?,?,?,?,?)",
+        "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued,targetDevice,artifactId) VALUES(?,?,?,?,?,'queued',?,?,?,?,?,?,?)",
       )
       .run(
         id,
@@ -382,6 +491,8 @@ export class QueueStore {
         this.now(),
         kind,
         this.now(),
+        targetDevice,
+        artifactId,
       );
     return this.get(user, id);
   }
@@ -389,10 +500,15 @@ export class QueueStore {
     this.sweep();
     const row = this.db
       .prepare(
-        'SELECT id,label,kind,state,report,error,created,updated,queued,started FROM jobs WHERE user=? AND id=?',
+        'SELECT id,label,kind,state,report,error,created,updated,queued,started,targetDevice,artifactId FROM jobs WHERE user=? AND id=?',
       )
       .get(user, id) as Row | undefined;
     if (!row) throw new QueueError('任务不存在。', 404);
+    const target = row.targetDevice
+      ? (this.db
+          .prepare('SELECT name,seen,ready,revoked FROM devices WHERE id=? AND user=?')
+          .get(row.targetDevice, user) as Row | undefined)
+      : undefined;
     return {
       id: String(row.id),
       label: String(row.label),
@@ -406,6 +522,15 @@ export class QueueStore {
         row.state === 'queued' ? this.queuePosition(user, String(row.id)) : null,
       error: row.error,
       report: row.report ? (JSON.parse(String(row.report)) as unknown) : null,
+      artifactId: row.artifactId ? String(row.artifactId) : null,
+      targetDeviceName: target ? String(target.name) : null,
+      waitingForDevice:
+        row.state === 'queued' &&
+        !!row.targetDevice &&
+        (!target ||
+          !!target.revoked ||
+          !target.ready ||
+          Number(target.seen) <= this.now() - 45000),
     };
   }
   private queuePosition(user: string, id: string) {
@@ -422,22 +547,23 @@ export class QueueStore {
     return (
       this.db
         .prepare(
-          'SELECT id,label,kind,state,error,created,updated,queued,started FROM jobs WHERE user=? ORDER BY created DESC LIMIT 100',
+          'SELECT id,label,kind,state,error,created,updated,queued,started,targetDevice,artifactId FROM jobs WHERE user=? ORDER BY created DESC LIMIT 100',
         )
         .all(user) as Row[]
-    ).map((row) => ({
-      id: String(row.id),
-      label: String(row.label),
-      kind: String(row.kind),
-      state: String(row.state),
-      created: Number(row.created),
-      updated: Number(row.updated),
-      queuedAt: Number(row.queued),
-      startedAt: row.started === null ? null : Number(row.started),
-      position:
-        row.state === 'queued' ? this.queuePosition(user, String(row.id)) : null,
-      error: row.error,
-    }));
+    ).map((row) => {
+      const target = row.targetDevice
+        ? (this.db.prepare('SELECT name,seen,ready,revoked FROM devices WHERE id=? AND user=?').get(row.targetDevice, user) as Row | undefined)
+        : undefined;
+      return {
+        id: String(row.id), label: String(row.label), kind: String(row.kind),
+        state: String(row.state), created: Number(row.created), updated: Number(row.updated),
+        queuedAt: Number(row.queued), startedAt: row.started === null ? null : Number(row.started),
+        position: row.state === 'queued' ? this.queuePosition(user, String(row.id)) : null,
+        error: row.error, artifactId: row.artifactId ? String(row.artifactId) : null,
+        targetDeviceName: target ? String(target.name) : null,
+        waitingForDevice: row.state === 'queued' && !!row.targetDevice && (!target || !!target.revoked || !target.ready || Number(target.seen) <= this.now() - 45000),
+      };
+    });
   }
   action(
     user: string,
@@ -505,7 +631,7 @@ export class QueueStore {
     const lease = token();
     const row = this.db
       .prepare(
-        `UPDATE jobs SET state='running',device=?,lease=?,until=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY CASE WHEN kind IN ('resume','written-test') THEN 0 ELSE 1 END,queued,created,rowid LIMIT 1) RETURNING id,input,kind`,
+        `UPDATE jobs SET state='running',device=?,lease=?,until=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY CASE WHEN kind IN ('resume','written-test','work-sample') THEN 0 ELSE 1 END,queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId`,
       )
       .get(
         device.id,
@@ -514,8 +640,10 @@ export class QueueStore {
         this.now(),
         this.now(),
         device.user,
+        device.id,
         kinds.includes('resume') ? 1 : 0,
         kinds.includes('written-test') ? 1 : 0,
+        kinds.includes('work-sample') ? 1 : 0,
         device.id,
       ) as Row | undefined;
     return row
@@ -523,6 +651,7 @@ export class QueueStore {
           id: String(row.id),
           lease,
           kind: String(row.kind),
+          artifactId: row.artifactId ? String(row.artifactId) : null,
           input: JSON.parse(String(row.input)) as unknown,
         }
       : null;

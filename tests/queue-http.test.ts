@@ -87,6 +87,14 @@ const status = async () => ({
   analysis: true,
   message: 'ready',
 });
+const workSampleFor = (deviceId: string) => ({
+  id: 'artifact-12345678',
+  deviceId,
+  name: 'ai-pm-work.zip',
+  sha256: 'b'.repeat(64),
+  bytes: 2048,
+  modifiedAt: 123456,
+});
 const until = async (check: () => boolean) => {
   const deadline = Date.now() + 5000;
   while (!check()) {
@@ -203,6 +211,12 @@ void test('HTTP queue holds offline jobs, pairs a connector, and returns a valid
           assert.deepEqual(actual, input);
           return report;
         },
+        workSamples: async () => ({
+          artifacts: [workSampleFor(String(d.id))],
+          files: new Map([
+            ['artifact-12345678', '/local-only/ai-pm-work.zip'],
+          ]),
+        }),
       },
       { pollMs: 10, heartbeatMs: 20 },
     );
@@ -212,6 +226,7 @@ void test('HTTP queue holds offline jobs, pairs a connector, and returns a valid
     };
     assert.deepEqual(restored.report, report);
     assert.equal(calls, 1);
+    assert.equal(f.store.artifacts(f.user)[0]?.name, 'ai-pm-work.zip');
     assert.equal(
       f.store.db.prepare('SELECT input FROM jobs WHERE id=?').get(job.id)
         ?.input,
@@ -221,6 +236,46 @@ void test('HTTP queue holds offline jobs, pairs a connector, and returns a valid
   } finally {
     controller.abort();
     await worker;
+    await f.close();
+  }
+});
+void test('worker syncs metadata-only artifacts and web submissions keep device affinity', async () => {
+  const f = await fixture();
+  try {
+    const device = f.store.redeem(f.store.pairing(f.user).code, '作品电脑');
+    const artifact = workSampleFor(device.id);
+    const claim = await connectorRequest(
+      f.origin,
+      '/api/worker/claim',
+      {
+        ready: true,
+        kinds: ['interview', 'resume', 'written-test', 'work-sample'],
+        capabilities: ['work-sample'],
+        artifacts: [artifact],
+      },
+      device.token,
+    );
+    assert.equal(claim.job, null);
+    const listed = (await (await f.api('/api/artifacts')).json()) as {
+      artifacts: Array<Record<string, unknown>>;
+    };
+    assert.equal(listed.artifacts[0]?.name, artifact.name);
+    assert.equal(listed.artifacts[0]?.deviceName, '作品电脑');
+    assert.equal('path' in listed.artifacts[0], false);
+    const submitted = await f.api('/api/jobs', 'POST', {
+      client: 'artifact-http-123',
+      kind: 'resume',
+      label: '候选人作品',
+      input: { ...resumeInput, hasWrittenTest: true, workSample: artifact },
+    });
+    assert.equal(submitted.status, 202);
+    const job = (await submitted.json()) as {
+      artifactId: string;
+      targetDeviceName: string;
+    };
+    assert.equal(job.artifactId, artifact.id);
+    assert.equal(job.targetDeviceName, '作品电脑');
+  } finally {
     await f.close();
   }
 });

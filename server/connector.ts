@@ -2,8 +2,12 @@ import { parseArgs } from 'node:util';
 import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { hostname } from 'node:os';
-import { ensureWorkSampleInbox } from './work-samples/inventory.ts';
+import {
+  ensureWorkSampleInbox,
+  scanWorkSampleInbox,
+} from './work-samples/inventory.ts';
 import { cleanupStaleWorkSampleDirectories } from './work-samples/archive.ts';
+import { analyzeWithCodex, codexStatus } from './codex.ts';
 import {
   connectorRequest,
   runConnector,
@@ -57,7 +61,11 @@ try {
   await cleanupStaleWorkSampleDirectories();
   console.log(`本地作品箱：${workSampleInbox}`);
   console.log('连接器已启动，等待属于此账号的面试评估任务。');
-  await runConnector(credentials, controller.signal);
+  await runConnector(credentials, controller.signal, {
+    analyze: analyzeWithCodex,
+    status: codexStatus,
+    workSamples: () => scanWorkSampleInbox(workSampleInbox, credentials.id),
+  });
 } catch (e) {
   console.error(e instanceof Error ? e.message : '连接器启动失败。');
   process.exitCode = 1;

@@ -17,6 +17,14 @@ const resumeInput = {
   resumeText: '姓名：张三。示例大学毕业。我访谈了五位用户。',
   hasWrittenTest: false,
 };
+const workSample = {
+  id: 'artifact-12345678',
+  deviceId: 'device-12345678',
+  name: 'candidate-work.zip',
+  sha256: 'a'.repeat(64),
+  bytes: 1024,
+  modifiedAt: 900000,
+};
 const reading = {
   candidateName: '张三',
   candidateNameEvidence: '姓名：张三。',
@@ -237,6 +245,68 @@ void test('queued work survives a database restart and separate connections cann
   } finally {
     first?.close();
     second?.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+void test('work sample inventory is account isolated and binds resume work to its device', () => {
+  const { s, a, b, tick } = setup();
+  try {
+    const target = s.redeem(s.pairing(a).code, '作品电脑');
+    const other = s.redeem(s.pairing(a).code, '其他电脑');
+    const foreign = s.redeem(s.pairing(b).code, 'Bob 电脑');
+    const reference = { ...workSample, deviceId: target.id };
+    s.syncArtifacts(target.token, [reference]);
+    assert.deepEqual(s.artifacts(a), [
+      { ...reference, deviceName: '作品电脑', available: true },
+    ]);
+    assert.deepEqual(s.artifacts(b), []);
+    assert.throws(() =>
+      s.submit(
+        b,
+        'foreign-work-123',
+        '外部作品',
+        { ...resumeInput, hasWrittenTest: true, workSample: reference },
+        'resume',
+      ),
+    );
+    const job = s.submit(
+      a,
+      'bound-work-123',
+      '作品简历',
+      { ...resumeInput, hasWrittenTest: true, workSample: reference },
+      'resume',
+    );
+    assert.equal(s.claim(other.token, true, ['resume']), null);
+    assert.equal(s.claim(foreign.token, true, ['resume']), null);
+    assert.equal(s.claim(target.token, true, ['resume'])?.id, job.id);
+    assert.equal(s.action(a, job.id, 'pause').targetDeviceName, '作品电脑');
+    assert.equal(s.action(a, job.id, 'resume').targetDeviceName, '作品电脑');
+    assert.equal(s.claim(other.token, true, ['resume']), null);
+    tick(46000);
+    assert.equal(s.artifacts(a)[0]?.available, false);
+    s.revoke(a, target.id);
+    assert.equal(s.get(a, job.id).state, 'failed');
+    assert.deepEqual(s.artifacts(a), []);
+  } finally {
+    s.close();
+  }
+});
+
+void test('legacy job databases gain artifact binding columns without losing work', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'interview-artifact-migration-'));
+  const file = join(directory, 'queue.sqlite');
+  try {
+    const legacy = new DatabaseSync(file);
+    legacy.exec(`CREATE TABLE jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,kind TEXT NOT NULL DEFAULT 'interview',queued INTEGER,started INTEGER,UNIQUE(user,client));`);
+    legacy.prepare("INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued) VALUES('job','user','client','hash','历史任务','queued','{}',100,200,'interview',100)").run();
+    legacy.close();
+    const migrated = new QueueStore(file);
+    const columns = migrated.db.prepare('PRAGMA table_info(jobs)').all() as { name: string }[];
+    assert.ok(columns.some((column) => column.name === 'targetDevice'));
+    assert.ok(columns.some((column) => column.name === 'artifactId'));
+    assert.equal(migrated.db.prepare('SELECT label FROM jobs WHERE id=?').get('job')?.label, '历史任务');
+    migrated.close();
+  } finally {
     await rm(directory, { recursive: true, force: true });
   }
 });
