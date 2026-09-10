@@ -13,18 +13,27 @@ import {
   exportWrittenTestSupplement,
   validateWrittenTestSupplement,
 } from './written-test-supplement.ts';
+import {
+  validateWorkSampleAssessment,
+  validateWorkSampleReference,
+  workSampleAssessmentSchema,
+  type WorkSampleAssessment,
+  type WorkSampleReference,
+} from './work-sample.ts';
 
 export type { InterviewQuestion, QuestionSource } from './interview-questions.ts';
 
 export type ResumeInput = InterviewStandards & {
   resumeText: string;
   hasWrittenTest: boolean;
+  workSample?: WorkSampleReference;
 };
 export type ResumeReading = {
   candidateName?: string | null;
   candidateNameEvidence?: string | null;
   interviewQuestions?: InterviewQuestion[];
   writtenTestSupplement?: InterviewQuestion[];
+  workSample?: WorkSampleAssessment;
   summary: string;
   sections: { name: string; items: { text: string; evidence: string }[] }[];
   followUps: string[];
@@ -41,10 +50,17 @@ export function validateResumeInput(value: unknown): ResumeInput {
   const v = value as Record<string, unknown>;
   const standards = normalizeStandards(v);
   validateStandards(standards, false);
+  const workSample =
+    v.workSample === undefined
+      ? undefined
+      : validateWorkSampleReference(v.workSample);
+  if (workSample && v.hasWrittenTest !== true)
+    throw new Error('选择笔试作品前需要确认有笔试。');
   return {
     ...standards,
     resumeText: text(v.resumeText, 30000),
     hasWrittenTest: v.hasWrittenTest === true,
+    ...(workSample ? { workSample } : {}),
   };
 }
 
@@ -61,7 +77,12 @@ function validateQuestions(
   const questions = validateQuestionItems(value, {
     expectedCount: 6,
     allowedDimensions,
-    allowedSources: new Set<QuestionSource>(['resume', 'written-test', 'role']),
+    allowedSources: new Set<QuestionSource>([
+      'resume',
+      'written-test',
+      'work-sample',
+      'role',
+    ]),
     resumeText: input.resumeText,
   });
   const writtenPositions = questions
@@ -69,7 +90,22 @@ function validateQuestions(
       question.questionSource === 'written-test' ? index : -1,
     )
     .filter((index) => index >= 0);
-  if (input.hasWrittenTest && writtenPositions.join(',') !== '1,2,3')
+  const workPositions = questions
+    .map((question, index) =>
+      question.questionSource === 'work-sample' ? index : -1,
+    )
+    .filter((index) => index >= 0);
+  if (input.workSample && workPositions.join(',') !== '1,2,3')
+    throw new Error('作品复盘题必须位于第 2–4 题。');
+  if (input.workSample && writtenPositions.length)
+    throw new Error('已提供作品时不能生成无文件依据的笔试题。');
+  if (!input.workSample && workPositions.length)
+    throw new Error('未提供作品时不能生成作品复盘题。');
+  if (
+    input.hasWrittenTest &&
+    !input.workSample &&
+    writtenPositions.join(',') !== '1,2,3'
+  )
     throw new Error('笔试复盘题必须位于第 2–4 题。');
   if (!input.hasWrittenTest && writtenPositions.length)
     throw new Error('无笔试时不能生成笔试复盘题。');
@@ -152,6 +188,28 @@ export function validateResumeReading(
             existingQuestions: interviewQuestions || [],
           },
         ).questions;
+  const workSample =
+    v.workSample === undefined
+      ? undefined
+      : input.workSample
+        ? validateWorkSampleAssessment(v.workSample, {
+            reference: input.workSample,
+            dimensionText: input.dimensionText,
+            questionCount: 3,
+            existingQuestions: [],
+          })
+        : (() => {
+            throw new Error('作品评估缺少对应的本地作品。');
+          })();
+  if (
+    workSample &&
+    interviewQuestions &&
+    workSample.questions.some(
+      (question, index) =>
+        question.question !== interviewQuestions[index + 1]?.question,
+    )
+  )
+    throw new Error('作品评估问题与第 2–4 题不一致。');
   return {
     candidateName: validIdentity ? (v.candidateName as string) : null,
     candidateNameEvidence: validIdentity
@@ -162,6 +220,7 @@ export function validateResumeReading(
     followUps: v.followUps.map((q) => text(q, 1000)),
     ...(interviewQuestions ? { interviewQuestions } : {}),
     ...(writtenTestSupplement ? { writtenTestSupplement } : {}),
+    ...(workSample ? { workSample } : {}),
   };
 }
 export const resumeInstructions =
@@ -215,6 +274,7 @@ export const resumeSchema = {
       },
     },
     followUps: { type: 'array', items: { type: 'string' } },
+    workSample: workSampleAssessmentSchema,
   },
 };
 export function exportResumeReading(reading: ResumeReading): string {
