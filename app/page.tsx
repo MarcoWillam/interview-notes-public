@@ -33,6 +33,7 @@ import {
   Monitor,
   MoreHorizontal,
   UserPlus,
+  LayoutDashboard,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -74,6 +75,7 @@ import { InterviewSidebar } from '@/components/interview/interview-sidebar';
 import { GlobalPreferences } from '@/components/interview/global-preferences';
 import { InterviewPreparation } from '@/components/interview/interview-preparation';
 import { InterviewSessionSummary } from '@/components/interview/interview-session-summary';
+import { CandidateDashboard } from '@/components/interview/candidate-dashboard';
 import { TaskCenter } from '@/components/interview/task-center';
 import {
   defaultStandards,
@@ -86,6 +88,7 @@ import {
   remoteRequest,
   type RemoteJob,
 } from '@/lib/remote-analysis';
+import { interviewStatus } from '@/lib/interview-status';
 
 const defaultDimensions = defaultStandards.dimensionText;
 const MANUAL_TRANSCRIPT_SOURCE = '手动粘贴 / 输入';
@@ -113,6 +116,7 @@ export default function Home({
 }: {
   workspaceAccount?: WorkspaceAccount;
 } = {}) {
+  const [view, setView] = useState<'dashboard' | 'workbench'>('dashboard');
   const [tab, setTab] = useState('resume');
   const [candidate, setCandidate] = useState('');
   const [role, setRole] = useState('');
@@ -1001,6 +1005,14 @@ export default function Home({
             : '模型服务待配置',
     onOpenService: () => setSettings(true),
   };
+  async function openInterview(id: string) {
+    await library.open(id);
+    setView('workbench');
+  }
+  async function createInterview() {
+    await library.create();
+    setView('workbench');
+  }
   return (
     <div className="workbench-root">
       <header className="topbar">
@@ -1013,7 +1025,25 @@ export default function Home({
               伯乐 AI<span>INTERVIEW COPILOT</span>
             </b>
           </div>
-          <span className="workspace-label">面试工作台</span>
+          <nav className="workspace-view-nav" aria-label="页面导航">
+            <button
+              type="button"
+              aria-label="候选人看板"
+              aria-current={view === 'dashboard' ? 'page' : undefined}
+              onClick={() => setView('dashboard')}
+            >
+              <LayoutDashboard size={15} /> <span>候选人看板</span>
+            </button>
+            <button
+              type="button"
+              aria-label="面试工作台"
+              aria-current={view === 'workbench' ? 'page' : undefined}
+              disabled={!library.ready}
+              onClick={() => setView('workbench')}
+            >
+              <ClipboardCheck size={15} /> <span>面试工作台</span>
+            </button>
+          </nav>
         </div>
         <nav className="topbar-actions" aria-label="工作台操作">
           <span className="privacy-label" title="当前面试资料保存在这台设备">
@@ -1115,16 +1145,16 @@ export default function Home({
           storageScope={workspaceAccount?.id || 'standalone-preview'}
           sessions={library.sessions}
           groups={library.groups}
-          currentId={library.id}
+          currentId={view === 'workbench' ? library.id : ''}
           disabled={!library.ready || library.working || !!busy}
           saveStatus={
             library.unsaved ? '正在保存到本地…' : '已保存在当前浏览器'
           }
           onCreate={() => {
             if (hasContent) setResetOpen(true);
-            else void localAction(library.create);
+            else void localAction(createInterview);
           }}
-          onOpen={(id) => void localAction(() => library.open(id))}
+          onOpen={(id) => void localAction(() => openInterview(id))}
           onManage={() =>
             void localAction(async () => {
               await library.refresh();
@@ -1149,8 +1179,21 @@ export default function Home({
               </div>
             </div>
           )}
+          {view === 'dashboard' && (
+            <CandidateDashboard
+              sessions={library.sessions}
+              groups={library.groups}
+              disabled={!library.ready || library.working || !!busy}
+              onCreate={() => {
+                if (hasContent) setResetOpen(true);
+                else void localAction(createInterview);
+              }}
+              onOpen={(id) => void localAction(() => openInterview(id))}
+            />
+          )}
           <main
             className="workspace"
+            hidden={view !== 'workbench'}
             inert={!library.ready || library.working || busy === 'prepare'}
           >
             <div className="page-heading">
@@ -1159,6 +1202,13 @@ export default function Home({
             <InterviewSessionSummary
               candidate={candidate}
               role={standards.role}
+              status={interviewStatus({
+                transcript,
+                reviewed,
+                report,
+                conclusion,
+                confirmed,
+              })}
               writtenTestSupported={supportsWrittenTest(sourceTemplateId)}
               writtenTestConfirmed={effectiveWrittenTestConfirmed}
               hasWrittenTest={effectiveHasWrittenTest}
@@ -1978,7 +2028,7 @@ export default function Home({
               <AlertDialogFooter>
                 <AlertDialogCancel>返回并保留</AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={() => void localAction(library.create)}
+                  onClick={() => void localAction(createInterview)}
                 >
                   保存并新建
                 </AlertDialogAction>

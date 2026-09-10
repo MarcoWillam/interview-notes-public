@@ -22,7 +22,11 @@ async function loadSummary() {
     .outputText.replace(
       /from (["'])([^"']+)\1/g,
       (_match, quote: string, specifier: string) =>
-        `from ${quote}${import.meta.resolve(specifier)}${quote}`,
+        `from ${quote}${
+          specifier.startsWith('@/')
+            ? new URL(`../${specifier.slice(2)}.ts`, import.meta.url).href
+            : import.meta.resolve(specifier)
+        }${quote}`,
     );
   return import(
     'data:text/javascript;base64,' + Buffer.from(compiled).toString('base64')
@@ -61,6 +65,7 @@ void test('current interview summary shows the actionable session state', async 
     createElement(InterviewSessionSummary, {
       candidate: '林晓雨',
       role: 'AI 产品经理（校招）',
+      status: 'completed',
       writtenTestSupported: true,
       writtenTestConfirmed: true,
       hasWrittenTest: true,
@@ -87,6 +92,7 @@ void test('current interview summary uses compact fallbacks and hides unsupporte
     createElement(InterviewSessionSummary, {
       candidate: '',
       role: '',
+      status: 'preparing',
       writtenTestSupported: false,
       writtenTestConfirmed: false,
       hasWrittenTest: false,

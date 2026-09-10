@@ -1,10 +1,15 @@
 'use client';
 
 import { Settings2 } from 'lucide-react';
+import {
+  interviewStatusLabel,
+  type InterviewStatus,
+} from '@/lib/interview-status';
 
 export type InterviewSessionSummaryProps = {
   candidate: string;
   role: string;
+  status: InterviewStatus;
   writtenTestSupported: boolean;
   writtenTestConfirmed: boolean;
   hasWrittenTest: boolean;
@@ -18,6 +23,7 @@ export type InterviewSessionSummaryProps = {
 export function InterviewSessionSummary({
   candidate,
   role,
+  status,
   writtenTestSupported,
   writtenTestConfirmed,
   hasWrittenTest,
@@ -55,6 +61,14 @@ export function InterviewSessionSummary({
         <div>
           <dt>提纲</dt>
           <dd>{outlineLocked ? '已生成' : '待生成'}</dd>
+        </div>
+        <div>
+          <dt>进度</dt>
+          <dd>
+            <span className="interview-status-badge" data-status={status}>
+              {interviewStatusLabel(status)}
+            </span>
+          </dd>
         </div>
       </dl>
       <button
