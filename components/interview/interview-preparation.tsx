@@ -5,7 +5,6 @@ import { StandardsFields } from '@/components/interview/standards-fields';
 import { NativeSelect } from '@/components/ui/native-select';
 import type { InterviewStandards } from '@/lib/standards';
 import {
-  COMMON_TEMPLATE_ID,
   TEMPLATE_STATUS_VALUE,
   type TemplateSelection,
 } from '@/lib/interview-template-state';
@@ -80,7 +79,6 @@ export function InterviewPreparation({
                 {templateSelection.label}
               </option>
             )}
-            <option value={COMMON_TEMPLATE_ID}>通用默认标准</option>
             {templates.map((template) => (
               <option key={template.id} value={template.id}>
                 {template.name}

@@ -92,6 +92,25 @@ void test('selection priority distinguishes modified, deleted and updated snapsh
   );
 });
 
+void test('historical common standards remain visible but cannot be selected again', () => {
+  assert.deepEqual(
+    resolveTemplateSelection(
+      common,
+      COMMON_TEMPLATE_ID,
+      false,
+      [template],
+      common,
+    ),
+    {
+      sourceTemplateId: COMMON_TEMPLATE_ID,
+      templateModified: false,
+      kind: 'custom',
+      selectValue: TEMPLATE_STATUS_VALUE,
+      label: '历史通用标准 · 本场保留',
+    },
+  );
+});
+
 void test('custom records display a stable non-action status option', () => {
   assert.deepEqual(
     resolveTemplateSelection(template, null, true, [template], common),
@@ -114,6 +133,7 @@ void test('written-test support belongs only to the built-in AI PM source', () =
     supportsWrittenTest(BUILTIN_TEMPLATE_IDS.productOperations),
     false,
   );
+  assert.equal(supportsWrittenTest(BUILTIN_TEMPLATE_IDS.aiEngineering), false);
   assert.equal(supportsWrittenTest(COMMON_TEMPLATE_ID), false);
 });
 
@@ -163,29 +183,27 @@ void test('resume reading asks only when AI PM written-test status is unconfirme
 
 void test('resume outline preflight requires AI PM written-test choice and normalizes operations', () => {
   assert.deepEqual(
-    resolveResumeOutlinePreflight(
-      BUILTIN_TEMPLATE_IDS.aiProductManager,
-      true,
-    ),
+    resolveResumeOutlinePreflight(BUILTIN_TEMPLATE_IDS.aiProductManager, true),
     {
       templateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
       hasWrittenTest: true,
     },
   );
   assert.equal(
-    resolveResumeOutlinePreflight(
-      BUILTIN_TEMPLATE_IDS.aiProductManager,
-      null,
-    ),
+    resolveResumeOutlinePreflight(BUILTIN_TEMPLATE_IDS.aiProductManager, null),
     null,
   );
   assert.deepEqual(
-    resolveResumeOutlinePreflight(
-      BUILTIN_TEMPLATE_IDS.productOperations,
-      null,
-    ),
+    resolveResumeOutlinePreflight(BUILTIN_TEMPLATE_IDS.productOperations, null),
     {
       templateId: BUILTIN_TEMPLATE_IDS.productOperations,
+      hasWrittenTest: false,
+    },
+  );
+  assert.deepEqual(
+    resolveResumeOutlinePreflight(BUILTIN_TEMPLATE_IDS.aiEngineering, null),
+    {
+      templateId: BUILTIN_TEMPLATE_IDS.aiEngineering,
       hasWrittenTest: false,
     },
   );
@@ -237,7 +255,11 @@ void test('applying a supplement preserves the original six questions', () => {
     interviewQuestions: [question],
   };
   const questions = [
-    { ...question, question: '补充题', questionSource: 'written-test' as const },
+    {
+      ...question,
+      question: '补充题',
+      questionSource: 'written-test' as const,
+    },
   ];
   const merged = applyWrittenTestSupplement(reading, { questions });
   assert.notEqual(merged, reading);

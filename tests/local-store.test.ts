@@ -6,6 +6,7 @@ import { createLocalStore, type SavedInterview } from '../lib/local/store.ts';
 const builtInTemplateIds = [
   'builtin-campus-ai-product-manager',
   'builtin-campus-product-operations',
+  'builtin-campus-ai-engineering',
 ];
 const session: SavedInterview = {
   id: 'first',
@@ -244,9 +245,42 @@ void test('deleting a built-in template is durable across ordinary reopen', asyn
   const reopened = createLocalStore(factory, 'deleted-built-in');
   assert.deepEqual(
     (await reopened.listPreferences()).map(({ id }) => id),
-    [builtInTemplateIds[1]],
+    builtInTemplateIds.slice(1),
   );
-  assert.equal(await reopened.getSettings(), undefined);
+  assert.equal(
+    (await reopened.getSettings())?.defaultTemplateId,
+    builtInTemplateIds[1],
+  );
+});
+void test('the final template cannot be deleted', async () => {
+  const store = createLocalStore(new IDBFactory(), 'last-template');
+  const only = {
+    id: 'only',
+    name: '唯一模板',
+    role: '测试岗位',
+    requirements: '测试要求',
+    dimensionText: '专业能力',
+    focus: '',
+    scoringGuidance: '',
+    reportRequirements: '',
+  };
+  await store.savePreferencesConfig(
+    {
+      id: 'global',
+      defaultTemplateId: only.id,
+      defaults: {
+        role: '',
+        requirements: '',
+        dimensionText: '专业能力',
+        focus: '',
+        scoringGuidance: '',
+        reportRequirements: '',
+      },
+    },
+    [only],
+  );
+  await assert.rejects(store.deletePreference(only.id), /至少保留一个岗位模板/);
+  assert.deepEqual(await store.listPreferences(), [only]);
 });
 void test('Markdown source and edited text survive reopening alongside legacy records', async () => {
   const factory = new IDBFactory();

@@ -5,6 +5,7 @@ export type RoleTemplate = InterviewStandards & { id: string; name: string };
 export const BUILTIN_TEMPLATE_IDS = {
   aiProductManager: 'builtin-campus-ai-product-manager',
   productOperations: 'builtin-campus-product-operations',
+  aiEngineering: 'builtin-campus-ai-engineering',
 } as const;
 
 export const builtInRoleTemplates = [
@@ -37,6 +38,21 @@ export const builtInRoleTemplates = [
       '用户运营约占岗位能力判断的 60%，数据增长约占 40%，用于提问和结论组织，不机械计算总分。自驱力中，仅按要求完成通常不高于 3 分；主动定义阶段目标、协调资源并闭环可评 4 分；发现无人负责的重要问题，在资源不足或路径不明时推动形成可验证成果可评 5 分。活动规模、曝光量和用户数量不能脱离目标、个人动作与复盘单独证明能力。',
     reportRequirements:
       '先总结自驱力和结果闭环，再按用户运营、数据增长、学习与挑战、团队协作组织结论。明确个人贡献、具体动作、数据和结果；未确认内容列入待核实事项。',
+  },
+  {
+    id: BUILTIN_TEMPLATE_IDS.aiEngineering,
+    name: 'AI 研发（校招）',
+    role: 'AI 研发（校招）',
+    requirements:
+      '工作城市为福州，学历要求本科，部门填报 AI 等级为 L2 熟练级（校招建议等级）。必备能力：JavaScript／TypeScript 基础扎实；熟悉 React 全家桶，掌握 HTML／CSS、响应式布局和常见浏览器调试方法；具备前端组件化开发、接口联调和基础工程化经验；能使用 AI 工具辅助编码、调试、资料检索和方案梳理；具备基础 Prompt 设计与优化能力，能将 AI 嵌入个人开发工作流；了解服务端架构。加分项：有 AI 应用、智能体、RAG、工作流编排或大模型 API 调用实践；有前端低代码、可视化搭建、数据看板、浏览器插件、跨端应用或 Node.js BFF 开发经验；了解前端性能优化、工程规范、自动化测试或 CI/CD；有完整项目作品、实习经历、开源贡献或技术博客；对产品体验、业务流程和用户效率提升有主动思考。',
+    dimensionText:
+      'JavaScript／TypeScript 与浏览器基础、React 组件化与前端交付、接口联调与服务端理解、AI 工具使用与 Prompt 能力、AI 应用实践与架构判断、问题定位与工程质量、自驱力及学习力与挑战力、团队协作与产品体验意识',
+    focus:
+      '核实候选人在项目中的真实贡献、技术决策、调试过程、AI 使用场景、Prompt 调整、输出验证、失败处理和结果复盘。重点追问是否主动发现问题、定义目标、寻找资源、推动落地并对结果负责。',
+    scoringGuidance:
+      '必备能力作为核心判断；加分项有具体证据才加分，缺少加分项不扣分。使用过 AI 工具本身不能证明达到 L2，需说明实际场景、输入设计、迭代过程、结果验证及如何嵌入开发工作流。不得以工具数量、技术名词、生成代码量或界面效果代替能力证据。自驱力中，仅按要求完成通常不高于 3 分；主动定义目标并推动闭环可评 4 分；在资源不足或路径不明时发现并解决无人负责的重要问题可评 5 分。',
+    reportRequirements:
+      '先总结自驱力及真实项目贡献，再按前端基础与交付、服务端理解、AI 工程实践、问题定位和团队协作组织结论。区分已验证事实、候选人自述与待核实事项；课程项目、个人作品、实习和开源经历均可作为证据，不把正式工作年限作为必要条件。不得自动生成录用或淘汰决定。',
   },
 ] as const satisfies readonly RoleTemplate[];
 

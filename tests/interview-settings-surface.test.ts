@@ -128,7 +128,10 @@ void test('workbench keeps preparation dialog-only and hides fixed standards by 
 });
 
 void test('current interview summary replaces the sidebar with a wrapping full-width layout', async () => {
-  const css = await readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
+  const css = await readFile(
+    new URL('../app/globals.css', import.meta.url),
+    'utf8',
+  );
   const summary = css.match(
     /\.interview-session-summary\s*\{([\s\S]*?)\}/,
   )?.[1];
@@ -148,4 +151,39 @@ void test('current interview summary replaces the sidebar with a wrapping full-w
   assert.doesNotMatch(css, /\.preparation-toggle/);
   assert.doesNotMatch(css, /\.context-panel/);
   assert.doesNotMatch(css, /\.session-standard-summary/);
+});
+
+void test('global and current interview settings require a role template', async () => {
+  const [globalPreferences, preparation, page, library] = await Promise.all([
+    readFile(
+      new URL(
+        '../components/interview/global-preferences.tsx',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+    readFile(
+      new URL(
+        '../components/interview/interview-preparation.tsx',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+    readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../hooks/use-interview-library.ts', import.meta.url),
+      'utf8',
+    ),
+  ]);
+
+  assert.doesNotMatch(globalPreferences, /通用默认标准/);
+  assert.match(
+    globalPreferences,
+    /initialSettings\.defaultTemplateId \|\| initialTemplates\[0\]\?\.id/,
+  );
+  assert.doesNotMatch(globalPreferences, /<option value="">/);
+  assert.match(globalPreferences, /至少保留一个岗位模板/);
+  assert.doesNotMatch(preparation, /COMMON_TEMPLATE_ID|通用默认标准/);
+  assert.doesNotMatch(page, /id === COMMON_TEMPLATE_ID/);
+  assert.match(library, /BUILTIN_TEMPLATE_IDS\.aiProductManager/);
 });

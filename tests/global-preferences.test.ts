@@ -7,6 +7,7 @@ import { validateStandards } from '../lib/standards.ts';
 const builtInIds = {
   aiProductManager: 'builtin-campus-ai-product-manager',
   productOperations: 'builtin-campus-product-operations',
+  aiEngineering: 'builtin-campus-ai-engineering',
 } as const;
 
 const approvedBuiltInTemplates = [
@@ -39,6 +40,21 @@ const approvedBuiltInTemplates = [
       '用户运营约占岗位能力判断的 60%，数据增长约占 40%，用于提问和结论组织，不机械计算总分。自驱力中，仅按要求完成通常不高于 3 分；主动定义阶段目标、协调资源并闭环可评 4 分；发现无人负责的重要问题，在资源不足或路径不明时推动形成可验证成果可评 5 分。活动规模、曝光量和用户数量不能脱离目标、个人动作与复盘单独证明能力。',
     reportRequirements:
       '先总结自驱力和结果闭环，再按用户运营、数据增长、学习与挑战、团队协作组织结论。明确个人贡献、具体动作、数据和结果；未确认内容列入待核实事项。',
+  },
+  {
+    id: builtInIds.aiEngineering,
+    name: 'AI 研发（校招）',
+    role: 'AI 研发（校招）',
+    requirements:
+      '工作城市为福州，学历要求本科，部门填报 AI 等级为 L2 熟练级（校招建议等级）。必备能力：JavaScript／TypeScript 基础扎实；熟悉 React 全家桶，掌握 HTML／CSS、响应式布局和常见浏览器调试方法；具备前端组件化开发、接口联调和基础工程化经验；能使用 AI 工具辅助编码、调试、资料检索和方案梳理；具备基础 Prompt 设计与优化能力，能将 AI 嵌入个人开发工作流；了解服务端架构。加分项：有 AI 应用、智能体、RAG、工作流编排或大模型 API 调用实践；有前端低代码、可视化搭建、数据看板、浏览器插件、跨端应用或 Node.js BFF 开发经验；了解前端性能优化、工程规范、自动化测试或 CI/CD；有完整项目作品、实习经历、开源贡献或技术博客；对产品体验、业务流程和用户效率提升有主动思考。',
+    dimensionText:
+      'JavaScript／TypeScript 与浏览器基础、React 组件化与前端交付、接口联调与服务端理解、AI 工具使用与 Prompt 能力、AI 应用实践与架构判断、问题定位与工程质量、自驱力及学习力与挑战力、团队协作与产品体验意识',
+    focus:
+      '核实候选人在项目中的真实贡献、技术决策、调试过程、AI 使用场景、Prompt 调整、输出验证、失败处理和结果复盘。重点追问是否主动发现问题、定义目标、寻找资源、推动落地并对结果负责。',
+    scoringGuidance:
+      '必备能力作为核心判断；加分项有具体证据才加分，缺少加分项不扣分。使用过 AI 工具本身不能证明达到 L2，需说明实际场景、输入设计、迭代过程、结果验证及如何嵌入开发工作流。不得以工具数量、技术名词、生成代码量或界面效果代替能力证据。自驱力中，仅按要求完成通常不高于 3 分；主动定义目标并推动闭环可评 4 分；在资源不足或路径不明时发现并解决无人负责的重要问题可评 5 分。',
+    reportRequirements:
+      '先总结自驱力及真实项目贡献，再按前端基础与交付、服务端理解、AI 工程实践、问题定位和团队协作组织结论。区分已验证事实、候选人自述与待核实事项；课程项目、个人作品、实习和开源经历均可作为证据，不把正式工作年限作为必要条件。不得自动生成录用或淘汰决定。',
   },
 ] as const;
 
@@ -128,10 +144,46 @@ async function createVersionThreeDatabase(
   });
 }
 
+async function createVersionFiveDatabase(
+  factory: IDBFactory,
+  name: string,
+  preferences: readonly object[],
+  settings?: object,
+  interviews: readonly object[] = [],
+) {
+  await new Promise<void>((resolve, reject) => {
+    const request = factory.open(name, 5);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      const interviewStore = db.createObjectStore('interviews', {
+        keyPath: 'id',
+      });
+      interviews.forEach((item) => interviewStore.put(item));
+      db.createObjectStore('audio', { keyPath: 'id' });
+      const preferenceStore = db.createObjectStore('preferences', {
+        keyPath: 'id',
+      });
+      preferences.forEach((item) => preferenceStore.put(item));
+      db.createObjectStore('chunks', {
+        keyPath: ['id', 'sequence'],
+      }).createIndex('session', 'id');
+      const settingsStore = db.createObjectStore('settings', {
+        keyPath: 'id',
+      });
+      if (settings) settingsStore.put(settings);
+      db.createObjectStore('interviewGroups', { keyPath: 'id' });
+    };
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      request.result.close();
+      resolve();
+    };
+  });
+}
+
 void test('built-in campus templates expose the required roles, dimensions and guidance', async () => {
-  const templateExports = await import('../lib/default-role-templates.ts').catch(
-    () => null,
-  );
+  const templateExports =
+    await import('../lib/default-role-templates.ts').catch(() => null);
   assert.ok(templateExports, '应导出内置校招岗位模板');
   assert.deepEqual(templateExports.BUILTIN_TEMPLATE_IDS, builtInIds);
   assert.deepEqual(
@@ -151,10 +203,13 @@ void test('built-in campus templates expose the required roles, dimensions and g
   assert.doesNotMatch(operations.scoringGuidance, /与 AI 产品经理模板一致/);
 });
 
-void test('a new database seeds two templates without selecting a default', async () => {
+void test('a new database seeds three templates with AI PM as default', async () => {
   const store = createLocalStore(new IDBFactory());
   assert.deepEqual(await store.listPreferences(), approvedBuiltInTemplates);
-  assert.equal(await store.getSettings(), undefined);
+  assert.equal(
+    (await store.getSettings())?.defaultTemplateId,
+    builtInIds.aiProductManager,
+  );
 });
 
 void test('version 3 upgrades untouched built-ins without changing default, custom templates or history', async () => {
@@ -218,16 +273,80 @@ void test('version 3 preserves an edited built-in while updating the untouched o
   );
 });
 
-void test('version 3 keeps a deleted built-in absent while updating the remaining one', async () => {
+void test('version 3 restores AI PM when the default is missing', async () => {
   const factory = new IDBFactory();
   await createVersionThreeDatabase(factory, 'deleted-version-three', [
     legacyBuiltInTemplatesV1[1],
   ]);
 
-  assert.deepEqual(
-    await createLocalStore(factory, 'deleted-version-three').listPreferences(),
-    [approvedBuiltInTemplates[1]],
+  const store = createLocalStore(factory, 'deleted-version-three');
+  assert.deepEqual(await store.listPreferences(), [
+    approvedBuiltInTemplates[0],
+    approvedBuiltInTemplates[1],
+    approvedBuiltInTemplates[2],
+  ]);
+  assert.equal(
+    (await store.getSettings())?.defaultTemplateId,
+    builtInIds.aiProductManager,
   );
+});
+
+void test('version 5 adds AI engineering and preserves an explicit custom default', async () => {
+  const factory = new IDBFactory();
+  const customTemplate = { ...template, id: 'custom-default' };
+  await createVersionFiveDatabase(
+    factory,
+    'version-five-custom-default',
+    [approvedBuiltInTemplates[0], customTemplate],
+    {
+      id: 'global',
+      defaultTemplateId: customTemplate.id,
+      defaults,
+    },
+  );
+
+  const store = createLocalStore(factory, 'version-five-custom-default');
+  assert.equal(
+    (await store.getSettings())?.defaultTemplateId,
+    customTemplate.id,
+  );
+  assert.deepEqual(
+    (await store.listPreferences()).find(
+      ({ id }) => id === builtInIds.aiEngineering,
+    ),
+    approvedBuiltInTemplates[2],
+  );
+  assert.equal(
+    (await store.listPreferences()).some(
+      ({ id }) => id === builtInIds.productOperations,
+    ),
+    false,
+  );
+});
+
+void test('version 5 repairs a null default without changing interview history', async () => {
+  const factory = new IDBFactory();
+  const history = { id: 'history', candidate: '历史候选人', role: '原岗位' };
+  await createVersionFiveDatabase(
+    factory,
+    'version-five-null-default',
+    [approvedBuiltInTemplates[1]],
+    { id: 'global', defaultTemplateId: null, defaults },
+    [history],
+  );
+
+  const store = createLocalStore(factory, 'version-five-null-default');
+  assert.equal(
+    (await store.getSettings())?.defaultTemplateId,
+    builtInIds.aiProductManager,
+  );
+  assert.deepEqual(
+    (await store.listPreferences()).find(
+      ({ id }) => id === builtInIds.aiProductManager,
+    ),
+    approvedBuiltInTemplates[0],
+  );
+  assert.deepEqual(await store.getInterview(history.id), history);
 });
 
 void test('version 2 upgrade preserves user data and adds only the built-in templates', async () => {
@@ -295,31 +414,30 @@ void test('version 2 upgrade never overwrites an existing stable template id', a
       resolve();
     };
   });
-  const templates = await createLocalStore(factory, 'stable-id').listPreferences();
+  const templates = await createLocalStore(
+    factory,
+    'stable-id',
+  ).listPreferences();
   assert.equal(
     templates.find(({ id }) => id === customized.id)?.name,
     customized.name,
   );
-  assert.equal(
-    templates.filter(({ id }) => id === customized.id).length,
-    1,
-  );
-  assert.ok(
-    templates.some(({ id }) => id === builtInIds.productOperations),
-  );
+  assert.equal(templates.filter(({ id }) => id === customized.id).length, 1);
+  assert.ok(templates.some(({ id }) => id === builtInIds.productOperations));
 });
 void test('new interviews resolve saved global defaults and return isolated values', async () => {
   const store = createLocalStore(new IDBFactory());
-  await store.saveSettings({ id: 'global', defaultTemplateId: null, defaults });
   const first = await store.getNewInterviewSeed();
-  assert.deepEqual(first, {
-    standards: defaults,
-    sourceTemplateId: '__common__',
-  });
+  assert.equal(first.sourceTemplateId, builtInIds.aiProductManager);
+  assert.equal(first.standards.role, 'AI 产品经理（校招）');
   first.standards.focus = '本场修改';
-  assert.equal(
+  assert.notEqual(
     (await store.getNewInterviewSeed()).standards.focus,
-    defaults.focus,
+    '本场修改',
+  );
+  await assert.rejects(
+    store.saveSettings({ id: 'global', defaultTemplateId: null, defaults }),
+    /默认模板/,
   );
 });
 void test('default template updates affect future snapshots only and deletion falls back', async () => {
@@ -337,11 +455,25 @@ void test('default template updates affect future snapshots only and deletion fa
   );
   assert.equal(snapshot.standards.focus, '说明决策过程');
   await store.deletePreference('pm');
-  assert.equal((await store.getSettings())?.defaultTemplateId, null);
-  assert.deepEqual(await store.getNewInterviewSeed(), {
-    standards: defaults,
-    sourceTemplateId: '__common__',
+  assert.equal(
+    (await store.getSettings())?.defaultTemplateId,
+    builtInIds.aiProductManager,
+  );
+  assert.equal(
+    (await store.getNewInterviewSeed()).sourceTemplateId,
+    builtInIds.aiProductManager,
+  );
+
+  await store.saveSettings({
+    id: 'global',
+    defaultTemplateId: builtInIds.aiProductManager,
+    defaults,
   });
+  await store.deletePreference(builtInIds.aiProductManager);
+  assert.equal(
+    (await store.getSettings())?.defaultTemplateId,
+    builtInIds.productOperations,
+  );
 });
 void test('cannot save a default selection pointing to a missing template', async () => {
   const store = createLocalStore(new IDBFactory());
@@ -388,10 +520,7 @@ void test('version 1 upgrade preserves existing recordings and templates', async
     '产品一面',
   );
   await store.saveSettings({ id: 'global', defaultTemplateId: 'pm', defaults });
-  assert.equal(
-    (await store.getNewInterviewSeed()).standards.role,
-    '产品经理',
-  );
+  assert.equal((await store.getNewInterviewSeed()).standards.role, '产品经理');
 });
 
 void test('saving all preferences is atomic and does not rewrite interview snapshots', async () => {
@@ -414,18 +543,21 @@ void test('saving all preferences is atomic and does not rewrite interview snaps
     confirmed: false,
   };
   await store.saveInterview(snapshot);
-  await store.savePreferencesConfig(
-    {
-      id: 'global',
-      defaults: { ...defaults, focus: '新通用标准' },
-      defaultTemplateId: null,
-    },
-    [],
+  await assert.rejects(
+    store.savePreferencesConfig(
+      {
+        id: 'global',
+        defaults: { ...defaults, focus: '不应保存' },
+        defaultTemplateId: null,
+      },
+      [],
+    ),
+    /至少保留一个岗位模板|默认模板/,
   );
   assert.deepEqual(await store.getInterview('interview'), snapshot);
   assert.equal(
     (await store.getNewInterviewSeed()).standards.focus,
-    '新通用标准',
+    '说明决策过程',
   );
   await assert.rejects(
     store.savePreferencesConfig(
@@ -433,13 +565,17 @@ void test('saving all preferences is atomic and does not rewrite interview snaps
       [{ ...template, dimensionText: '' }],
     ),
   );
-  assert.equal((await store.getSettings())?.defaults.focus, '新通用标准');
-  assert.equal((await store.listPreferences()).length, 0);
+  assert.equal((await store.getSettings())?.defaults.focus, defaults.focus);
+  assert.equal((await store.listPreferences()).length, 1);
 });
 
 void test('template validation prevents duplicate names and more than eight dimensions', async () => {
   const store = createLocalStore(new IDBFactory());
-  const settings = { id: 'global' as const, defaults, defaultTemplateId: null };
+  const settings = {
+    id: 'global' as const,
+    defaults,
+    defaultTemplateId: template.id,
+  };
   await assert.rejects(
     store.savePreferencesConfig(settings, [
       template,

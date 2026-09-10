@@ -56,7 +56,6 @@ import { validateInput, exportMarkdown, type Report } from '@/lib/interview';
 import { useInterviewLibrary } from '@/hooks/use-interview-library';
 import type { NewInterviewSeed } from '@/lib/local/store';
 import {
-  COMMON_TEMPLATE_ID,
   applyWrittenTestSupplement,
   appliedTemplateState,
   canGenerateWrittenTestSupplement,
@@ -967,10 +966,9 @@ export default function Home({
     onStandardsChange: applyStandards,
     onApplyTemplate: (id: string) => {
       if (outlineLocked) return;
-      const selected =
-        id === COMMON_TEMPLATE_ID
-          ? library.globalSettings.defaults
-          : library.preferences.find((preference) => preference.id === id);
+      const selected = library.preferences.find(
+        (preference) => preference.id === id,
+      );
       if (selected) {
         invalidate();
         setStandards(normalizeStandards(selected));
