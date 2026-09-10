@@ -5,8 +5,11 @@ export const connectorPackageFiles = [
   'server/analysis.ts',
   'lib/interview.ts',
   'lib/interview-questions.ts',
+  'lib/work-sample.ts',
   'lib/resume-reading.ts',
   'lib/standards.ts',
   'lib/written-test-supplement.ts',
   'lib/assessment.ts',
+  'server/work-samples/inventory.ts',
+  'server/work-samples/archive.ts',
 ];
