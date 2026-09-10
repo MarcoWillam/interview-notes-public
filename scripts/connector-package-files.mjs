@@ -12,6 +12,7 @@ export const connectorPackageFiles = [
   'lib/assessment.ts',
   'server/work-samples/inventory.ts',
   'server/work-samples/archive.ts',
+  'server/work-samples/analyze.ts',
   'server/work-samples/mcp.ts',
   'server/work-samples/mcp-server.ts',
 ];

@@ -68,6 +68,16 @@ const writtenTestResult = {
     probes: ['如果假设不成立，你会如何调整？'],
   })),
 };
+const workQuestions = Array.from({ length: 3 }, (_, index) => ({
+  question: `请说明作品中第 ${index + 1} 个产品判断及其取舍。`,
+  questionSource: 'work-sample' as const,
+  dimensions: [index === 1 ? '沟通协作' : '需求分析'],
+  reason: '结合文件核实候选人的判断过程。',
+  resumeEvidence: null,
+  workSampleEvidence: { path: 'brief.md', excerpt: '目标用户是新手卖家' },
+  listenFor: ['判断依据'],
+  probes: ['如果假设不成立会如何调整？'],
+}));
 const input = {
   role: '产品经理',
   requirements: '用户调研',
@@ -779,6 +789,57 @@ void test('written-test supplements require a capable connector and reuse comple
     );
     assert.equal(repeated.id, job.id);
     assert.equal(repeated.state, 'completed');
+  } finally {
+    s.close();
+  }
+});
+void test('later work sample jobs stay device-bound and store a structurally validated result', () => {
+  const { s, a } = setup();
+  try {
+    const device = s.redeem(s.pairing(a).code, '作品电脑');
+    const reference = { ...workSample, deviceId: device.id };
+    s.syncArtifacts(device.token, [reference]);
+    const workInput = {
+      ...resumeInput,
+      role: 'AI 产品经理（校招）',
+      workSample: reference,
+      existingQuestions: reading.interviewQuestions,
+    };
+    const job = s.submit(
+      a,
+      'late-work-123',
+      '张三 · 笔试作品',
+      workInput,
+      'work-sample',
+      'interview-record-a',
+    );
+    assert.equal(s.claim(device.token, true, ['resume']), null);
+    const claimed = s.claim(device.token, true, ['work-sample'])!;
+    assert.equal(claimed.artifactId, reference.id);
+    const result = {
+      artifact: {
+        id: reference.id,
+        name: reference.name,
+        sha256: reference.sha256,
+        bytes: reference.bytes,
+        modifiedAt: reference.modifiedAt,
+      },
+      coverage: { analyzed: ['brief.md'], excluded: [], unsupported: [], truncated: false },
+      summary: '作品提出明确目标用户，完成过程仍待面试核实。',
+      dimensions: [
+        {
+          name: '需求分析',
+          score: 4,
+          assessment: '目标用户明确。',
+          evidence: [{ path: 'brief.md', excerpt: '目标用户是新手卖家' }],
+        },
+      ],
+      strengths: ['目标清楚'],
+      risks: ['验证范围待核实'],
+      questions: workQuestions,
+    };
+    s.finish(device.token, claimed.id, claimed.lease, result);
+    assert.deepEqual(s.get(a, job.id).report, result);
   } finally {
     s.close();
   }

@@ -17,6 +17,8 @@ import {
   validateWrittenTestSupplementInput,
 } from '../../lib/written-test-supplement.ts';
 import {
+  validateWorkSampleAssessment,
+  validateWorkSampleInput,
   validateWorkSampleReference,
   type WorkSampleReference,
 } from '../../lib/work-sample.ts';
@@ -409,14 +411,16 @@ export class QueueStore {
       throw new QueueError('任务标识无效。');
     if (scope && !/^[a-zA-Z0-9-]{8,100}$/.test(scope))
       throw new QueueError('任务范围无效。');
-    if (scope && kind !== 'resume')
+    if (scope && kind !== 'resume' && kind !== 'work-sample')
       throw new QueueError('该任务类型不支持任务范围。');
     const validatedInput =
         kind === 'resume'
           ? validateResumeInput(value)
           : kind === 'written-test'
             ? validateWrittenTestSupplementInput(value)
-            : kind === 'interview'
+            : kind === 'work-sample'
+              ? validateWorkSampleInput(value)
+              : kind === 'interview'
               ? validateInput(value)
               : (() => {
                   throw new QueueError('作品评估任务尚未包含有效输入。');
@@ -425,7 +429,8 @@ export class QueueStore {
       digest = hash(kind + (scope ? '\n' + scope + '\n' : '') + input),
       safeLabel = label.slice(0, 100) || '未命名面试';
     const workSample =
-      kind === 'resume' && 'workSample' in validatedInput
+      (kind === 'resume' || kind === 'work-sample') &&
+      'workSample' in validatedInput
         ? validatedInput.workSample
         : undefined;
     let targetDevice: string | null = null,
@@ -675,6 +680,7 @@ export class QueueStore {
     lease: string,
     result: unknown,
     failed = false,
+    failure?: unknown,
   ) {
     this.sweep();
     const device = this.device(secret);
@@ -694,8 +700,16 @@ export class QueueStore {
       throw new QueueError('任务不属于此连接器。', 403);
     let report: string | null = null,
       error: string | null = null;
-    if (failed)
-      error = '本地 Codex 未完成分析，请检查登录、网络或使用额度后重新提交。';
+    if (failed) {
+      const messages: Record<string, string> = {
+        'artifact-missing': '本地笔试作品未找到，请放回原 ZIP 后重新提交。',
+        'artifact-changed': '本地笔试作品已发生变化，请刷新作品清单后重新选择。',
+        'artifact-invalid': '笔试作品 ZIP 无法安全读取，请检查文件内容后重新提交。',
+        validation: '作品评估的引用或结构校验失败，请重新提交。',
+        codex: '本地 Codex 未完成分析，请检查登录、网络或使用额度后重新提交。',
+      };
+      error = messages[typeof failure === 'string' ? failure : ''] || messages.codex;
+    }
     else {
       try {
         const storedInput = JSON.parse(String(job.input)) as unknown;
@@ -707,6 +721,14 @@ export class QueueStore {
                   result,
                   validateWrittenTestSupplementInput(storedInput),
                 )
+              : job.kind === 'work-sample'
+                ? validateWorkSampleAssessment(result, {
+                    reference: validateWorkSampleInput(storedInput).workSample,
+                    dimensionText: validateWorkSampleInput(storedInput).dimensionText,
+                    questionCount: 3,
+                    existingQuestions:
+                      validateWorkSampleInput(storedInput).existingQuestions,
+                  })
               : validateReport(result, validateInput(storedInput)),
         );
       } catch {
