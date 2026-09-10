@@ -6,6 +6,10 @@ import {
   validateWorkSampleReference,
   type WorkSampleAssessment,
 } from '../lib/work-sample.ts';
+import {
+  AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
+  aiPmWorkSampleRubric,
+} from '../lib/work-sample-rubric.ts';
 
 const reference = {
   id: 'artifact-12345678',
@@ -64,6 +68,24 @@ const assessment: WorkSampleAssessment = {
   risks: ['尚未展示真实用户验证结果。'],
   questions,
 };
+
+void test('AI PM work sample rubric fixes the unified written-test purpose', () => {
+  assert.equal(
+    AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
+    'ai-pm-written-test-v1',
+  );
+  assert.deepEqual(
+    aiPmWorkSampleRubric.map(({ name, priority }) => [name, priority]),
+    [
+      ['用户问题与场景理解', 15],
+      ['产品方案与范围取舍', 20],
+      ['AI 理解与产品判断', 25],
+      ['验证与迭代设计', 15],
+      ['产品化与商业判断', 10],
+      ['Demo 与表达', 15],
+    ],
+  );
+});
 
 void test('work sample references accept only bounded public metadata', () => {
   assert.deepEqual(validateWorkSampleReference(reference), reference);
