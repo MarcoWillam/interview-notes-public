@@ -11,6 +11,10 @@ import {
   runConnector,
   validateServer,
 } from '../server/queue/connector-client.ts';
+import {
+  AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
+  aiPmWorkSampleRubric,
+} from '../lib/work-sample-rubric.ts';
 const resumeInput = {
   role: '产品经理',
   requirements: '用户研究与需求分析',
@@ -295,6 +299,7 @@ void test('connector routes a later work sample job through the local artifact r
       probes: ['如何验证？'],
     }));
     const result = {
+      rubricVersion: AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
       artifact: {
         id: artifact.id,
         name: artifact.name,
@@ -309,14 +314,12 @@ void test('connector routes a later work sample job through the local artifact r
         truncated: false,
       },
       summary: '作品目标清楚，个人完成过程待核实。',
-      dimensions: [
-        {
-          name: '需求分析',
-          score: 4,
-          assessment: '目标用户较明确。',
-          evidence: [{ path: 'brief.md', excerpt: '目标用户是新手卖家' }],
-        },
-      ],
+      dimensions: aiPmWorkSampleRubric.map(({ name }) => ({
+        name,
+        score: 4,
+        assessment: '按统一笔试目的形成作品判断。',
+        evidence: [{ path: 'brief.md', excerpt: '目标用户是新手卖家' }],
+      })),
       strengths: ['问题明确'],
       risks: ['验证待核实'],
       questions,

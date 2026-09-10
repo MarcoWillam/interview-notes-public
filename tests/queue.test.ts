@@ -7,6 +7,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
 import { scryptSync } from 'node:crypto';
+import {
+  AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
+  aiPmWorkSampleRubric,
+} from '../lib/work-sample-rubric.ts';
 const resumeInput = {
   role: '产品经理',
   requirements: '用户研究与需求分析',
@@ -848,6 +852,7 @@ void test('later work sample jobs stay device-bound and store a structurally val
     const claimed = s.claim(device.token, true, ['work-sample'])!;
     assert.equal(claimed.artifactId, reference.id);
     const result = {
+      rubricVersion: AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
       artifact: {
         id: reference.id,
         name: reference.name,
@@ -862,14 +867,12 @@ void test('later work sample jobs stay device-bound and store a structurally val
         truncated: false,
       },
       summary: '作品提出明确目标用户，完成过程仍待面试核实。',
-      dimensions: [
-        {
-          name: '需求分析',
-          score: 4,
-          assessment: '目标用户明确。',
-          evidence: [{ path: 'brief.md', excerpt: '目标用户是新手卖家' }],
-        },
-      ],
+      dimensions: aiPmWorkSampleRubric.map(({ name }) => ({
+        name,
+        score: 4,
+        assessment: '按统一笔试目的形成作品判断。',
+        evidence: [{ path: 'brief.md', excerpt: '目标用户是新手卖家' }],
+      })),
       strengths: ['目标清楚'],
       risks: ['验证范围待核实'],
       questions: workQuestions,

@@ -87,6 +87,7 @@ export function validateInput(value: unknown): InterviewInput {
       dimensionText: dimensions.join('、'),
       questionCount: 3,
       existingQuestions: [],
+      allowLegacy: true,
     });
   }
   return { role, requirements, transcript, dimensions, ...extras };

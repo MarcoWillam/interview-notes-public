@@ -11,6 +11,10 @@ import {
   validateStandards,
   type InterviewStandards,
 } from './standards.ts';
+import {
+  AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
+  aiPmWorkSampleRubricNames,
+} from './work-sample-rubric.ts';
 
 export type { WorkSampleEvidence } from './interview-questions.ts';
 
@@ -46,6 +50,7 @@ export type WorkSampleCoverage = {
 };
 
 export type WorkSampleAssessment = {
+  rubricVersion?: typeof AI_PM_WORK_SAMPLE_RUBRIC_VERSION;
   artifact: Omit<WorkSampleReference, 'deviceId'>;
   coverage: WorkSampleCoverage;
   summary: string;
@@ -195,6 +200,7 @@ export function validateWorkSampleAssessment(
     dimensionText: string;
     questionCount: number;
     existingQuestions: InterviewQuestion[];
+    allowLegacy?: boolean;
   },
 ): WorkSampleAssessment {
   if (!value || typeof value !== 'object')
@@ -203,25 +209,35 @@ export function validateWorkSampleAssessment(
   if (!item.coverage || typeof item.coverage !== 'object')
     throw new Error('作品读取范围格式不正确。');
   const coverage = item.coverage as Record<string, unknown>;
-  const allowedDimensions = new Set(
+  const legacyDimensions = new Set(
     options.dimensionText
       .split(/[、,，\n]/)
       .map((name) => name.trim())
       .filter(Boolean),
   );
+  const currentRubric = item.rubricVersion === AI_PM_WORK_SAMPLE_RUBRIC_VERSION;
+  const legacyRubric = item.rubricVersion === undefined && options.allowLegacy;
+  if (!currentRubric && !legacyRubric)
+    throw new Error('作品评估框架版本不正确。');
   if (
     !Array.isArray(item.dimensions) ||
     !item.dimensions.length ||
-    item.dimensions.length > 8
+    item.dimensions.length > 8 ||
+    (currentRubric && item.dimensions.length !== aiPmWorkSampleRubricNames.length)
   )
     throw new Error('作品评估维度不完整。');
   const seen = new Set<string>();
-  const dimensions = item.dimensions.map((value) => {
+  const dimensions = item.dimensions.map((value, index) => {
     if (!value || typeof value !== 'object')
       throw new Error('作品评估维度格式不正确。');
     const dimension = value as Record<string, unknown>;
     const name = boundedText(dimension.name, 60, '作品评估维度');
-    if (!allowedDimensions.has(name) || seen.has(name))
+    if (
+      (currentRubric
+        ? name !== aiPmWorkSampleRubricNames[index]
+        : !legacyDimensions.has(name)) ||
+      seen.has(name)
+    )
       throw new Error('作品评估包含未知或重复维度。');
     seen.add(name);
     const score = dimension.score;
@@ -241,7 +257,7 @@ export function validateWorkSampleAssessment(
   });
   const questions = validateQuestionItems(item.questions, {
     expectedCount: options.questionCount,
-    allowedDimensions,
+    allowedDimensions: legacyDimensions,
     allowedSources: new Set(['work-sample']),
     resumeText: '',
   });
@@ -251,6 +267,9 @@ export function validateWorkSampleAssessment(
   if (questions.some((question) => existing.has(question.question)))
     throw new Error('作品复盘题不能与已有提纲重复。');
   return {
+    ...(currentRubric
+      ? { rubricVersion: AI_PM_WORK_SAMPLE_RUBRIC_VERSION }
+      : {}),
     artifact: sameArtifact(item.artifact, options.reference),
     coverage: {
       analyzed: pathList(coverage.analyzed, 3000, '已分析文件'),
@@ -287,6 +306,7 @@ export const workSampleAssessmentSchema = {
   type: 'object',
   additionalProperties: false,
   required: [
+    'rubricVersion',
     'artifact',
     'coverage',
     'summary',
@@ -296,6 +316,10 @@ export const workSampleAssessmentSchema = {
     'questions',
   ],
   properties: {
+    rubricVersion: {
+      type: 'string',
+      const: AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
+    },
     artifact: {
       type: 'object',
       additionalProperties: false,
@@ -322,8 +346,8 @@ export const workSampleAssessmentSchema = {
     summary: { type: 'string' },
     dimensions: {
       type: 'array',
-      minItems: 1,
-      maxItems: 8,
+      minItems: 6,
+      maxItems: 6,
       items: {
         type: 'object',
         additionalProperties: false,

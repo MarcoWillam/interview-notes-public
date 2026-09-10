@@ -36,6 +36,7 @@ const questions = Array.from({ length: 3 }, (_, index) => ({
   probes: ['如果假设不成立，你会如何调整？'],
 }));
 const assessment: WorkSampleAssessment = {
+  rubricVersion: AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
   artifact: {
     id: reference.id,
     name: reference.name,
@@ -50,20 +51,15 @@ const assessment: WorkSampleAssessment = {
     truncated: false,
   },
   summary: '作品围绕运营人员的 AI 工作流展开。',
-  dimensions: [
-    {
-      name: '用户洞察与问题定义',
-      score: 4,
-      assessment: '目标用户和问题边界较清楚。',
-      evidence: [evidence],
-    },
-    {
-      name: '自驱力与结果闭环',
-      score: null,
-      assessment: '无法仅从作品判断，待面试核实。',
-      evidence: [],
-    },
-  ],
+  dimensions: aiPmWorkSampleRubric.map(({ name }) => ({
+    name,
+    score: name === 'Demo 与表达' ? null : 3,
+    assessment:
+      name === 'Demo 与表达'
+        ? '材料未覆盖可核实的演示，待核实。'
+        : '按统一笔试目的形成的作品判断。',
+    evidence: name === 'Demo 与表达' ? [] : [evidence],
+  })),
   strengths: ['问题陈述具体。'],
   risks: ['尚未展示真实用户验证结果。'],
   questions,
@@ -111,9 +107,15 @@ void test('work sample assessment validates dimensions, scores and three grounde
     assessment,
   );
   for (const invalid of [
+    { ...assessment, rubricVersion: undefined },
+    { ...assessment, rubricVersion: 'unknown-rubric' },
     {
       ...assessment,
       dimensions: [{ ...assessment.dimensions[0], name: '未知维度' }],
+    },
+    {
+      ...assessment,
+      dimensions: [assessment.dimensions[1], assessment.dimensions[0]],
     },
     {
       ...assessment,
@@ -143,6 +145,39 @@ void test('work sample assessment validates dimensions, scores and three grounde
         existingQuestions: [],
       }),
     );
+});
+
+void test('historical work sample results require the explicit compatibility path', () => {
+  const { rubricVersion: _rubricVersion, ...historicalBase } = assessment;
+  const historical: WorkSampleAssessment = {
+    ...historicalBase,
+    dimensions: [
+      {
+        name: '用户洞察与问题定义',
+        score: 4,
+        assessment: '历史结果按岗位维度整理。',
+        evidence: [evidence],
+      },
+    ],
+  };
+  assert.throws(() =>
+    validateWorkSampleAssessment(historical, {
+      reference,
+      dimensionText: dimensions,
+      questionCount: 3,
+      existingQuestions: [],
+    }),
+  );
+  assert.deepEqual(
+    validateWorkSampleAssessment(historical, {
+      reference,
+      dimensionText: dimensions,
+      questionCount: 3,
+      existingQuestions: [],
+      allowLegacy: true,
+    }),
+    historical,
+  );
 });
 
 void test('work sample evidence must exist verbatim in the referenced local file', async () => {
