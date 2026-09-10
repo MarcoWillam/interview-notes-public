@@ -2211,6 +2211,136 @@ fieldset label:last-of-type {
 .resume-body-details[open] summary {
   margin-bottom: 14px;
 }
+.work-sample-picker {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 4px 0;
+  padding: 12px;
+  border: 1px solid #d9e5e0;
+  border-radius: 10px;
+  background: #f9fcfb;
+}
+.work-sample-picker-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 2px;
+  color: #29463e;
+  font-size: 13px;
+}
+.work-sample-option {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid #dbe5e1;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.work-sample-option:has(input:checked) {
+  border-color: #559b87;
+  box-shadow: 0 0 0 1px #559b87;
+}
+.work-sample-option.unavailable {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+.work-sample-option input[type='radio'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: #24745f;
+}
+.work-sample-option span,
+.work-sample-option strong,
+.work-sample-option small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.work-sample-option strong,
+.work-sample-option small {
+  display: block;
+}
+.work-sample-option strong {
+  color: #29463e;
+  font-size: 13px;
+}
+.work-sample-option small,
+.work-sample-option em {
+  margin-top: 3px;
+  color: #6e7d77;
+  font-size: 11px;
+  font-style: normal;
+}
+.work-sample-view {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid #cfe2db;
+  border-radius: 10px;
+  background: #f2f9f6;
+}
+.work-sample-view-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.work-sample-view-heading h3 {
+  margin: 4px 0 0;
+  color: #28463e;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.work-sample-observations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+.work-sample-observations > div {
+  padding: 11px 12px;
+  border-radius: 8px;
+  background: #fff;
+}
+.work-sample-observations ul {
+  margin: 7px 0 0;
+  padding-left: 18px;
+}
+.work-sample-details {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #cfe2db;
+}
+.work-sample-details > summary {
+  color: #315c50;
+  font-weight: 600;
+}
+.work-sample-dimensions section {
+  padding: 10px 0;
+  border-bottom: 1px solid #dbe8e3;
+}
+.work-sample-dimensions h4 {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.work-sample-dimensions h4 span {
+  color: #32715f;
+  font-size: 12px;
+}
+.work-sample-dimensions blockquote strong,
+.work-sample-view .interview-question-card blockquote strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #49685f;
+  font-size: 11px;
+}
 @media (max-width: 600px) {
   .resume-reading {
     padding: 14px;
@@ -2231,6 +2361,18 @@ fieldset label:last-of-type {
   .resume-body-name {
     display: block;
     margin-left: 0;
+  }
+  .work-sample-observations {
+    grid-template-columns: 1fr;
+  }
+  .work-sample-view-heading {
+    flex-direction: column;
+  }
+  .work-sample-option {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+  .work-sample-option em {
+    grid-column: 2;
   }
 }
 @media (max-width: 480px) {

@@ -5,6 +5,7 @@ import {
   type QuestionSource,
   type ResumeReading,
 } from '../../lib/resume-reading';
+import { WorkSampleView } from './work-sample-view';
 
 const sourceLabels: Record<QuestionSource, string> = {
   resume: '简历经历',
@@ -94,11 +95,17 @@ export function ResumeReadingView({
   canSupplement = false,
   supplementBusy = false,
   onSupplement,
+  canSubmitWork = false,
+  workBusy = false,
+  onSubmitWork,
 }: {
   value: ResumeReading;
   canSupplement?: boolean;
   supplementBusy?: boolean;
   onSupplement?: () => void;
+  canSubmitWork?: boolean;
+  workBusy?: boolean;
+  onSubmitWork?: () => void;
 }) {
   function download() {
     const url = URL.createObjectURL(
@@ -114,8 +121,10 @@ export function ResumeReadingView({
   }
   const questions = value.interviewQuestions || [];
   const hasWrittenTest = questions.some(
-    (question) => question.questionSource === 'written-test',
-  );
+    (question) =>
+      question.questionSource === 'written-test' ||
+      question.questionSource === 'work-sample',
+  ) || !!value.workSample;
   const itemCount = value.sections.reduce(
     (total, section) => total + section.items.length,
     0,
@@ -163,6 +172,33 @@ export function ResumeReadingView({
               onClick={onSupplement}
             >
               {supplementBusy ? '正在生成…' : '一键补充笔试复盘题'}
+            </button>
+          </section>
+        )
+      )}
+      {value.workSample ? (
+        <WorkSampleView
+          value={value.workSample}
+          showQuestions={!value.workSample.questions.every((workQuestion) =>
+            questions.some(
+              (question) => question.question === workQuestion.question,
+            ),
+          )}
+        />
+      ) : (
+        canSubmitWork && (
+          <section className="written-test-supplement-action work-sample-action">
+            <div>
+              <strong>候选人补交了笔试作品？</strong>
+              <p>保留现有提纲，Codex 读取本地 ZIP 后追加 3 道作品复盘题。</p>
+            </div>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={workBusy}
+              onClick={onSubmitWork}
+            >
+              {workBusy ? '正在分析…' : '补交笔试作品'}
             </button>
           </section>
         )

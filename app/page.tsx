@@ -5,6 +5,7 @@ import {
   reconcileCandidateName,
 } from '@/lib/resume-workflow';
 import { ResumeReadingView } from '@/components/interview/resume-reading-view';
+import { WorkSamplePicker } from '@/components/interview/work-sample-picker';
 import {
   validateResumeInput,
   exportResumeReading,
@@ -13,8 +14,16 @@ import {
 import {
   submitRemoteResume,
   submitRemoteWrittenTest,
+  submitRemoteWorkSample,
+  listRemoteArtifacts,
+  type RemoteArtifact,
 } from '@/lib/remote-analysis';
 import type { WrittenTestSupplementResult } from '@/lib/written-test-supplement';
+import type {
+  WorkSampleAssessment,
+  WorkSampleReference,
+} from '@/lib/work-sample';
+import { validateWorkSampleAssessment } from '@/lib/work-sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FileText,
@@ -89,6 +98,10 @@ import {
   type RemoteJob,
 } from '@/lib/remote-analysis';
 import { interviewStatus } from '@/lib/interview-status';
+import {
+  applyLateWorkSample,
+  canSubmitWorkSample,
+} from '@/lib/work-sample-workflow';
 
 const defaultDimensions = defaultStandards.dimensionText;
 const MANUAL_TRANSCRIPT_SOURCE = '手动粘贴 / 输入';
@@ -134,6 +147,16 @@ export default function Home({
   const [resumeReading, setResumeReading] = useState<ResumeReading | null>(
     null,
   );
+  const [workSample, setWorkSample] = useState<WorkSampleAssessment | null>(
+    null,
+  );
+  const [workSampleJobId, setWorkSampleJobId] = useState<string | undefined>();
+  const [workSampleArtifacts, setWorkSampleArtifacts] = useState<RemoteArtifact[]>([]);
+  const [workSampleLoading, setWorkSampleLoading] = useState(false);
+  const [workSampleError, setWorkSampleError] = useState('');
+  const [lateWorkSampleOpen, setLateWorkSampleOpen] = useState(false);
+  const [lateWorkSampleArtifact, setLateWorkSampleArtifact] =
+    useState<RemoteArtifact | null>(null);
   const [resumeBodyOpen, setResumeBodyOpen] = useState(false);
   const candidateKeepButton = useRef<HTMLButtonElement>(null);
   const [pendingCandidateName, setPendingCandidateName] = useState<{
@@ -150,6 +173,7 @@ export default function Home({
     name: string;
     templateId: string;
     writtenTest: boolean | null;
+    artifact: RemoteArtifact | null;
   } | null>(null);
   const [pendingWrittenTestSupplement, setPendingWrittenTestSupplement] =
     useState(false);
@@ -169,7 +193,13 @@ export default function Home({
   const [conclusion, setConclusion] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState<
-    'import' | 'analyze' | 'resume-read' | 'written-test' | 'prepare' | null
+    | 'import'
+    | 'analyze'
+    | 'resume-read'
+    | 'written-test'
+    | 'work-sample'
+    | 'prepare'
+    | null
   >(null);
   const busyRef = useRef(false);
   const analysisController = useRef<AbortController | null>(null);
@@ -201,6 +231,13 @@ export default function Home({
     hasWrittenTest: effectiveHasWrittenTest,
     hasResumeReading: !!resumeReading?.interviewQuestions,
     hasSupplement: !!resumeReading?.writtenTestSupplement?.length,
+  });
+  const workSampleEligible = canSubmitWorkSample({
+    sourceTemplateId,
+    hasWrittenTest: effectiveHasWrittenTest,
+    resumeReading,
+    workSample,
+    workSampleJobId,
   });
   // Imports and queue responses may finish after the render that started them.
   const resumeContext = useRef({
@@ -296,6 +333,8 @@ export default function Home({
       templateModified,
       hasWrittenTest: effectiveHasWrittenTest,
       writtenTestConfirmed: effectiveWrittenTestConfirmed,
+      workSample,
+      workSampleJobId,
     },
     async (saved) => {
       analysisController.current?.abort();
@@ -304,6 +343,8 @@ export default function Home({
       setPendingResume(null);
       setPendingResumeOutline(null);
       setPendingWrittenTestSupplement(false);
+      setLateWorkSampleOpen(false);
+      setLateWorkSampleArtifact(null);
       setCandidate(saved.candidate);
       setRole(saved.role);
       setRequirements(saved.requirements);
@@ -318,6 +359,8 @@ export default function Home({
       setResumeText(saved.resumeText || '');
       setResumeName(saved.resumeName || '');
       setResumeReading(saved.resumeReading || null);
+      setWorkSample(saved.workSample || saved.resumeReading?.workSample || null);
+      setWorkSampleJobId(saved.workSampleJobId);
       setResumeBodyOpen(false);
       setTranscript(saved.transcript);
       setTranscriptName(
@@ -332,6 +375,85 @@ export default function Home({
     },
     reset,
   );
+  useEffect(() => {
+    if (
+      !library.ready ||
+      !workSampleJobId ||
+      workSample ||
+      busyRef.current
+    )
+      return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const recover = async () => {
+      try {
+        const job = await remoteRequest<RemoteJob<WorkSampleAssessment>>(
+          '/api/jobs/' + encodeURIComponent(workSampleJobId),
+        );
+        if (disposed) return;
+        if (job.state === 'completed' && job.report) {
+          const artifacts = await listRemoteArtifacts();
+          const reference = artifacts.find(
+            (artifact) => artifact.id === job.artifactId,
+          );
+          if (!reference)
+            throw new Error('已完成的作品文件信息已过期，请从任务中心查看结果。');
+          const result = validateWorkSampleAssessment(job.report, {
+            reference,
+            dimensionText,
+            questionCount: 3,
+            existingQuestions: [
+              ...(resumeReading?.interviewQuestions || []),
+              ...(resumeReading?.writtenTestSupplement || []),
+            ],
+          });
+          const next = applyLateWorkSample(
+            {
+              sourceTemplateId,
+              hasWrittenTest: effectiveHasWrittenTest,
+              resumeReading,
+              workSample,
+              workSampleJobId,
+            },
+            result,
+          );
+          setResumeReading(next.resumeReading);
+          setWorkSample(next.workSample);
+          setWorkSampleJobId(undefined);
+          setHasWrittenTest(true);
+          setWrittenTestConfirmed(true);
+          setNotice('已恢复完成的作品分析，并追加 3 道作品复盘题。');
+          return;
+        }
+        if (job.state === 'failed' || job.state === 'cancelled') {
+          setWorkSampleJobId(undefined);
+          setError(job.error || '作品分析未完成，可以重新提交。');
+          return;
+        }
+        setRemoteJob({ ...job, report: null });
+        timer = setTimeout(() => void recover(), 3000);
+      } catch (reason) {
+        if (!disposed)
+          setError(
+            reason instanceof Error ? reason.message : '作品任务恢复失败。',
+          );
+      }
+    };
+    void recover();
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [
+    busy,
+    dimensionText,
+    effectiveHasWrittenTest,
+    library.ready,
+    resumeReading,
+    sourceTemplateId,
+    workSample,
+    workSampleJobId,
+  ]);
   async function localAction(action: () => Promise<void>) {
     if (busyRef.current) return;
     busyRef.current = true;
@@ -376,6 +498,10 @@ export default function Home({
     setResumeText(text);
     setResumeName(name);
     setResumeReading(null);
+    setWorkSample(null);
+    setWorkSampleJobId(undefined);
+    setLateWorkSampleOpen(false);
+    setLateWorkSampleArtifact(null);
     setPendingCandidateName(null);
     setPendingResumeOutline(null);
     setResumeBodyOpen(true);
@@ -385,6 +511,19 @@ export default function Home({
     setPendingResume(null);
     setResumeBodyOpen(false);
     openResumeOutlinePreflight(text, name);
+  }
+  async function refreshWorkSampleArtifacts() {
+    setWorkSampleLoading(true);
+    setWorkSampleError('');
+    try {
+      setWorkSampleArtifacts(await listRemoteArtifacts());
+    } catch (reason) {
+      setWorkSampleError(
+        reason instanceof Error ? reason.message : '作品清单刷新失败。',
+      );
+    } finally {
+      setWorkSampleLoading(false);
+    }
   }
   function openResumeOutlinePreflight(text: string, name: string) {
     if (resumeOutlineLocked(resumeReading)) {
@@ -406,7 +545,9 @@ export default function Home({
         writtenTestConfirmed
           ? hasWrittenTest
           : null,
+      artifact: null,
     });
+    void refreshWorkSampleArtifacts();
   }
   async function resumeFile(file: File) {
     if (busyRef.current || outlineLocked) return;
@@ -442,6 +583,7 @@ export default function Home({
     resumeText: string,
     resumeName: string,
     confirmedChoice: boolean,
+    artifact: WorkSampleReference | null = null,
   ) {
     if (resumeOutlineLocked(resumeReading)) {
       setError('提纲已生成，本面试记录不能再次生成。');
@@ -471,6 +613,7 @@ export default function Home({
         scoringGuidance: context.scoringGuidance,
         reportRequirements: context.reportRequirements,
         hasWrittenTest: decision,
+        ...(artifact ? { workSample: artifact } : {}),
       });
       if (!context.queuedCodex)
         throw new Error('请使用当前队列版工作台连接 Codex 后阅读简历。');
@@ -490,6 +633,8 @@ export default function Home({
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
       setResumeReading(valueRead);
+      setWorkSample(valueRead.workSample || null);
+      setWorkSampleJobId(undefined);
       const resolution = reconcileCandidateName(
         resumeContext.current.candidate,
         valueRead.candidateName,
@@ -563,7 +708,17 @@ export default function Home({
         resolved.templateId === BUILTIN_TEMPLATE_IDS.aiProductManager,
     };
     setPendingResumeOutline(null);
-    void runResumeReading(pending.text, pending.name, resolved.hasWrittenTest);
+    const selectedArtifact =
+      resolved.templateId === BUILTIN_TEMPLATE_IDS.aiProductManager &&
+      resolved.hasWrittenTest
+        ? pending.artifact
+        : null;
+    void runResumeReading(
+      pending.text,
+      pending.name,
+      resolved.hasWrittenTest,
+      selectedArtifact,
+    );
   }
   async function runWrittenTestSupplement() {
     const reading = resumeReading;
@@ -644,6 +799,114 @@ export default function Home({
           : e instanceof Error
             ? e.message
             : '笔试复盘补充题生成失败。',
+      );
+    } finally {
+      if (analysisController.current === controller) {
+        analysisController.current = null;
+        busyRef.current = false;
+        setBusy(null);
+      }
+    }
+  }
+  function openLateWorkSample() {
+    if (!workSampleEligible || busyRef.current) return;
+    setLateWorkSampleArtifact(null);
+    setLateWorkSampleOpen(true);
+    void refreshWorkSampleArtifacts();
+  }
+  async function runLateWorkSample() {
+    const reading = resumeReading;
+    const artifact = lateWorkSampleArtifact;
+    if (
+      busyRef.current ||
+      !reading?.interviewQuestions ||
+      !workSampleEligible ||
+      !artifact?.available
+    ) {
+      setError('请选择当前在线电脑中的笔试作品。');
+      return;
+    }
+    setLateWorkSampleOpen(false);
+    analysisController.current?.abort();
+    const controller = new AbortController();
+    analysisController.current = controller;
+    busyRef.current = true;
+    setBusy('work-sample');
+    setError('');
+    setNotice('');
+    setRemoteJob(null);
+    setCancelling(false);
+    cancelledRemotely.current = false;
+    try {
+      const context = resumeContext.current;
+      if (!context.queuedCodex)
+        throw new Error('请使用当前队列版工作台连接 Codex 后分析作品。');
+      const result = await submitRemoteWorkSample(
+        {
+          resumeText: context.resumeText,
+          role: context.role,
+          requirements: context.requirements,
+          dimensionText: context.dimensionText,
+          focus: context.focus,
+          scoringGuidance: context.scoringGuidance,
+          reportRequirements: context.reportRequirements,
+          workSample: artifact,
+          existingQuestions: [
+            ...reading.interviewQuestions,
+            ...(reading.writtenTestSupplement || []),
+          ],
+        },
+        `${context.candidate || resumeName || '未命名候选人'} · 笔试作品`.slice(
+          0,
+          100,
+        ),
+        controller.signal,
+        (job) => {
+          if (
+            analysisController.current === controller &&
+            !controller.signal.aborted
+          ) {
+            setWorkSampleJobId(job.id);
+            setRemoteJob({ ...job, report: null });
+          }
+        },
+        { fetcher: fetch, pollMs: 2000, scope: library.id },
+      );
+      if (analysisController.current !== controller) return;
+      controller.signal.throwIfAborted();
+      const next = applyLateWorkSample(
+        {
+          sourceTemplateId,
+          hasWrittenTest: effectiveHasWrittenTest,
+          resumeReading: reading,
+          workSample,
+          workSampleJobId,
+        },
+        result,
+      );
+      setResumeReading(next.resumeReading);
+      setWorkSample(next.workSample);
+      setWorkSampleJobId(undefined);
+      setHasWrittenTest(true);
+      setWrittenTestConfirmed(true);
+      resumeContext.current = {
+        ...resumeContext.current,
+        hasWrittenTest: true,
+        writtenTestConfirmed: true,
+      };
+      setNotice('作品已分析，原提纲保留，并在下方追加 3 道作品复盘题。');
+      setTab('resume');
+    } catch (reason) {
+      if (analysisController.current !== controller) return;
+      setWorkSampleJobId(undefined);
+      setError(
+        controller.signal.aborted
+          ? cancelledRemotely.current
+            ? '作品分析任务已取消，原提纲保留。'
+            : '已停止等待，可在任务中心查看结果。'
+          : reason instanceof Error
+            ? reason.message
+            : '笔试作品分析失败。',
       );
     } finally {
       if (analysisController.current === controller) {
@@ -914,6 +1177,10 @@ export default function Home({
     setResumeText('');
     setResumeName('');
     setResumeReading(null);
+    setWorkSample(null);
+    setWorkSampleJobId(undefined);
+    setLateWorkSampleOpen(false);
+    setLateWorkSampleArtifact(null);
     setResumeBodyOpen(false);
     setPendingCandidateName(null);
     setPendingResume(null);
@@ -962,6 +1229,7 @@ export default function Home({
     writtenTestConfirmed: effectiveWrittenTestConfirmed,
     writtenTestSupported: supportsWrittenTest(sourceTemplateId),
     writtenTestSupplemented: !!resumeReading?.writtenTestSupplement?.length,
+    workSampleAnalyzed: !!workSample,
     onStandardsOpenChange: setStandardsOpen,
     onCandidateChange: (value: string) => {
       invalidate();
@@ -981,6 +1249,8 @@ export default function Home({
         setTemplateModified(next.templateModified);
         setHasWrittenTest(next.hasWrittenTest);
         setWrittenTestConfirmed(next.writtenTestConfirmed);
+        setWorkSample(null);
+        setWorkSampleJobId(undefined);
         setNotice('已将模板标准复制到本场面试；旧评估已清除，请重新确认结论。');
       }
     },
@@ -1215,6 +1485,7 @@ export default function Home({
               writtenTestSupplemented={
                 !!resumeReading?.writtenTestSupplement?.length
               }
+              workSampleAnalyzed={!!workSample}
               outlineLocked={outlineLocked}
               disabled={!!busy}
               open={preparationOpen}
@@ -1245,7 +1516,8 @@ export default function Home({
             )}
             {(busy === 'analyze' ||
               busy === 'resume-read' ||
-              busy === 'written-test') && (
+              busy === 'written-test' ||
+              busy === 'work-sample') && (
               <output className="message">
                 <LoaderCircle className="spin" size={18} />
                 <span>
@@ -1255,6 +1527,8 @@ export default function Home({
                         ? 'Codex 正在阅读简历。可以关闭网页，稍后从评估任务查看结果。'
                         : busy === 'written-test'
                           ? 'Codex 正在生成 3 道笔试复盘补充题。可以关闭网页，稍后从任务中心查看结果。'
+                          : busy === 'work-sample'
+                            ? 'Codex 正在只读分析笔试作品。可以关闭网页，稍后从任务中心查看结果。'
                           : '电脑正在分析。可以关闭网页，稍后从评估任务查看结果。'
                       : remoteJob
                         ? '任务已提交，等待已配对的电脑领取。电脑离线时也会保留任务。'
@@ -1424,6 +1698,9 @@ export default function Home({
                             onSupplement={() =>
                               setPendingWrittenTestSupplement(true)
                             }
+                            canSubmitWork={workSampleEligible}
+                            workBusy={busy === 'work-sample'}
+                            onSubmitWork={openLateWorkSample}
                           />
                         )}
                         <div className="action-footer">
@@ -1843,6 +2120,38 @@ export default function Home({
             </AlertDialogContent>
           </AlertDialog>
           <AlertDialog
+            open={lateWorkSampleOpen}
+            onOpenChange={(open) => {
+              setLateWorkSampleOpen(open);
+              if (!open) setLateWorkSampleArtifact(null);
+            }}
+          >
+            <AlertDialogContent className="work-sample-confirmation-dialog">
+              <AlertDialogTitle>补交笔试作品</AlertDialogTitle>
+              <AlertDialogDescription>
+                选择保存在已配对电脑 works/ 目录中的 ZIP。Codex
+                将从产品经理视角只读分析；原提纲保留，追加三题，成功后不能再次分析作品。
+              </AlertDialogDescription>
+              <WorkSamplePicker
+                artifacts={workSampleArtifacts}
+                selected={lateWorkSampleArtifact?.id || null}
+                loading={workSampleLoading}
+                error={workSampleError}
+                onRefresh={() => void refreshWorkSampleArtifacts()}
+                onSelect={setLateWorkSampleArtifact}
+              />
+              <AlertDialogFooter>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={!lateWorkSampleArtifact?.available}
+                  onClick={() => void runLateWorkSample()}
+                >
+                  确认并分析作品
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <AlertDialog
             open={!!pendingResumeOutline}
             onOpenChange={(open) => {
               if (!open) setPendingResumeOutline(null);
@@ -1874,6 +2183,7 @@ export default function Home({
                                 current.templateId === event.target.value
                                   ? current.writtenTest
                                   : null,
+                              artifact: null,
                             }
                           : null,
                       )
@@ -1898,7 +2208,9 @@ export default function Home({
                         checked={pendingResumeOutline.writtenTest === true}
                         onChange={() =>
                           setPendingResumeOutline((current) =>
-                            current ? { ...current, writtenTest: true } : null,
+                            current
+                              ? { ...current, writtenTest: true }
+                              : null,
                           )
                         }
                       />
@@ -1911,7 +2223,13 @@ export default function Home({
                         checked={pendingResumeOutline.writtenTest === false}
                         onChange={() =>
                           setPendingResumeOutline((current) =>
-                            current ? { ...current, writtenTest: false } : null,
+                            current
+                              ? {
+                                  ...current,
+                                  writtenTest: false,
+                                  artifact: null,
+                                }
+                              : null,
                           )
                         }
                       />
@@ -1919,6 +2237,22 @@ export default function Home({
                     </label>
                   </fieldset>
                 )}
+                {pendingResumeOutline?.templateId ===
+                  BUILTIN_TEMPLATE_IDS.aiProductManager &&
+                  pendingResumeOutline.writtenTest === true && (
+                    <WorkSamplePicker
+                      artifacts={workSampleArtifacts}
+                      selected={pendingResumeOutline.artifact?.id || null}
+                      loading={workSampleLoading}
+                      error={workSampleError}
+                      onRefresh={() => void refreshWorkSampleArtifacts()}
+                      onSelect={(artifact) =>
+                        setPendingResumeOutline((current) =>
+                          current ? { ...current, artifact } : null,
+                        )
+                      }
+                    />
+                  )}
                 <p>提纲成功生成后，本面试记录不能再次生成或替换简历。</p>
               </div>
               <AlertDialogFooter>
