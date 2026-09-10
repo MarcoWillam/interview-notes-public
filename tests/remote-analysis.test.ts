@@ -9,6 +9,10 @@ import {
   submitRemoteWrittenTest,
   type RemoteJob,
 } from '../lib/remote-analysis.ts';
+import {
+  AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
+  aiPmWorkSampleRubric,
+} from '../lib/work-sample-rubric.ts';
 const resumeInput = {
   role: '产品经理',
   requirements: '用户研究与需求分析',
@@ -91,6 +95,7 @@ const workSampleInput = {
   })),
 };
 const workSampleResult = {
+  rubricVersion: AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
   artifact: {
     id: artifact.id,
     name: artifact.name,
@@ -105,14 +110,12 @@ const workSampleResult = {
     truncated: false,
   },
   summary: '作品内容待面试核实。',
-  dimensions: [
-    {
-      name: '需求分析',
-      score: 4,
-      assessment: '目标用户明确。',
-      evidence: [{ path: 'brief.md', excerpt: '目标用户是新手卖家' }],
-    },
-  ],
+  dimensions: aiPmWorkSampleRubric.map(({ name }) => ({
+    name,
+    score: 4,
+    assessment: '按统一笔试目的形成作品判断。',
+    evidence: [{ path: 'brief.md', excerpt: '目标用户是新手卖家' }],
+  })),
   strengths: ['问题明确'],
   risks: ['验证待核实'],
   questions: Array.from({ length: 3 }, (_, index) => ({

@@ -6,6 +6,7 @@ export const connectorPackageFiles = [
   'lib/interview.ts',
   'lib/interview-questions.ts',
   'lib/work-sample.ts',
+  'lib/work-sample-rubric.ts',
   'lib/resume-reading.ts',
   'lib/standards.ts',
   'lib/written-test-supplement.ts',

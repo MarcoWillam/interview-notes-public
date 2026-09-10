@@ -9,6 +9,10 @@ import {
   analyzeWorkSampleWithCodex,
   readResumeAndWorkSampleWithCodex,
 } from '../server/work-samples/analyze.ts';
+import {
+  AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
+  aiPmWorkSampleRubric,
+} from '../lib/work-sample-rubric.ts';
 
 const standards = {
   role: 'AI 产品经理（校招）',
@@ -73,6 +77,7 @@ function assessment(
     question: `作品复盘第 ${index} 题：请说明文件中的具体判断和取舍。`,
   }));
   return {
+    rubricVersion: AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
     artifact: {
       id: reference.id,
       name: reference.name,
@@ -82,20 +87,18 @@ function assessment(
     },
     coverage: { analyzed: [], excluded: [], unsupported: [], truncated: false },
     summary: '作品定义了目标用户和验证方案，作者身份与完成过程待面试核实。',
-    dimensions: [
-      {
-        name: '问题定义',
-        score: 4,
-        assessment: '目标用户较明确。',
-        evidence: [{ path: 'docs/brief.md', excerpt: '目标用户是新手卖家' }],
-      },
-      {
-        name: '自驱力',
-        score: null,
-        assessment: '仅凭作品无法判断个人自驱力。',
-        evidence: [],
-      },
-    ],
+    dimensions: aiPmWorkSampleRubric.map(({ name }) => ({
+      name,
+      score: name === 'Demo 与表达' ? null : 4,
+      assessment:
+        name === 'Demo 与表达'
+          ? '材料没有覆盖可验证的演示。'
+          : '按统一笔试目的形成作品判断。',
+      evidence:
+        name === 'Demo 与表达'
+          ? []
+          : [{ path: 'docs/brief.md', excerpt: '目标用户是新手卖家' }],
+    })),
     strengths: ['问题定义具体'],
     risks: ['验证样本仍待核实'],
     questions,
@@ -180,12 +183,14 @@ void test('later analysis returns three grounded questions and rejects fabricate
       analyzeWorkSampleWithCodex(input, f.zip, new AbortController().signal, {
         runStructured: async () => ({
           ...valid,
-          dimensions: [
-            {
+          dimensions: valid.dimensions.map((dimension, index) =>
+            index === 0
+              ? {
               ...valid.dimensions[0],
               evidence: [{ path: 'docs/brief.md', excerpt: '不存在的原文' }],
-            },
-          ],
+                }
+              : dimension,
+          ),
         }),
       }),
       /引用无法在本地文件中找到/,
