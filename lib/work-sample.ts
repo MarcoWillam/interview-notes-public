@@ -224,7 +224,8 @@ export function validateWorkSampleAssessment(
     !Array.isArray(item.dimensions) ||
     !item.dimensions.length ||
     item.dimensions.length > 8 ||
-    (currentRubric && item.dimensions.length !== aiPmWorkSampleRubricNames.length)
+    (currentRubric &&
+      item.dimensions.length !== aiPmWorkSampleRubricNames.length)
   )
     throw new Error('作品评估维度不完整。');
   const seen = new Set<string>();
