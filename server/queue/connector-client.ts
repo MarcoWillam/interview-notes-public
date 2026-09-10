@@ -13,6 +13,7 @@ import {
   generateWrittenTestSupplementWithCodex,
   readResumeWithCodex,
 } from '../codex.ts';
+import type { WorkSampleReference } from '../../lib/work-sample.ts';
 export type Credentials = { server: string; token: string; id: string };
 export function validateServer(value: string) {
   const url = new URL(value);
@@ -112,6 +113,10 @@ export async function runConnector(
     status: typeof codexStatus;
     readResume?: typeof readResumeWithCodex;
     writeTest?: typeof generateWrittenTestSupplementWithCodex;
+    workSamples?: () => Promise<{
+      artifacts: WorkSampleReference[];
+      files: Map<string, string>;
+    }>;
   } = { analyze: analyzeWithCodex, status: codexStatus },
   timings = { pollMs: 3000, heartbeatMs: 5000 },
 ) {
@@ -125,10 +130,32 @@ export async function runConnector(
         ready = (await dependencies.status()).analysis;
         lastCheck = Date.now();
       }
+      let inventory:
+        | { artifacts: WorkSampleReference[]; files: Map<string, string> }
+        | undefined;
+      if (dependencies.workSamples) {
+        try {
+          inventory = await dependencies.workSamples();
+        } catch {
+          // Keep the prior server inventory when a local scan is interrupted.
+        }
+      }
       const response = await connectorRequest(
         server,
         '/api/worker/claim',
-        { ready, kinds: ['interview', 'resume', 'written-test'] },
+        {
+          ready,
+          kinds: [
+            'interview',
+            'resume',
+            'written-test',
+            ...(dependencies.workSamples ? ['work-sample'] : []),
+          ],
+          ...(dependencies.workSamples
+            ? { capabilities: ['work-sample'] }
+            : {}),
+          ...(inventory ? { artifacts: inventory.artifacts } : {}),
+        },
         credentials.token,
         signal,
       );

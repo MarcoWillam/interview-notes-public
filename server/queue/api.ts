@@ -128,7 +128,18 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
           throw new QueueError('缺少连接器凭据。', 401);
         const secret = auth.slice(7);
         store.device(secret);
-        if (path === '/api/worker/claim')
+        if (path === '/api/worker/claim') {
+          const capabilities = Array.isArray(body.capabilities)
+            ? body.capabilities.filter(
+                (capability): capability is string =>
+                  typeof capability === 'string' && capability.length <= 40,
+              )
+            : [];
+          if (body.artifacts !== undefined) {
+            if (!capabilities.includes('work-sample'))
+              throw new QueueError('当前连接器不支持作品清单。');
+            store.syncArtifacts(secret, body.artifacts);
+          }
           return json({
             job: store.claim(
               secret,
@@ -138,11 +149,14 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
                     (kind): kind is JobKind =>
                       kind === 'interview' ||
                       kind === 'resume' ||
-                      kind === 'written-test',
+                      kind === 'written-test' ||
+                      (kind === 'work-sample' &&
+                        capabilities.includes('work-sample')),
                   )
                 : ['interview'],
             ),
           });
+        }
         if (path === '/api/worker/heartbeat')
           return json(
             store.heartbeat(secret, str('id', 100), str('lease', 100)),
@@ -178,6 +192,8 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
         return json(store.pairing(user.id));
       if (path === '/api/devices' && method === 'GET')
         return json({ devices: store.devices(user.id) });
+      if (path === '/api/artifacts' && method === 'GET')
+        return json({ artifacts: store.artifacts(user.id) });
       if (path.startsWith('/api/devices/') && method === 'DELETE') {
         store.revoke(user.id, path.slice('/api/devices/'.length));
         return json({ ok: true });
