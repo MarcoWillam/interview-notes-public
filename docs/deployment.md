@@ -5,7 +5,7 @@
 ## 当前云服务器
 
 - 网站：`https://your-server-ip`，初始账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。其他面试官账号通过下述服务器命令创建。
-- 代码：当前版本为 `/opt/interview-notes/releases/20260910-5`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一稳定版本 `20260910-4` 保留用于回滚；`20260909-19` 为桌面工具显示修正前的中间版本，不作为回滚目标。
+- 代码：当前版本为 `/opt/interview-notes/releases/20260910-6`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一稳定版本 `20260910-5` 保留用于回滚；`20260909-19` 为桌面工具显示修正前的中间版本，不作为回滚目标。
 - 数据：`/var/lib/interview-notes/queue.sqlite`；环境配置：`/etc/interview-notes/server.env`；运行时：`/opt/node-v24.13.0-linux-x64/bin/node`。服务器只需已构建的 `dist/web` 和队列服务源码，无需安装模型或上传电脑上的 Codex 登录信息。
 - Nginx：`/etc/nginx/conf.d/interview-notes.conf`，对应仓库 `deploy/nginx-ip.conf`，HTTP 自动跳转 HTTPS，80 端口保留 ACME 验证路径。
 - 证书：Let's Encrypt IP 证书，由 acme.sh 3.1.2 的 `shortlived` profile 签发。使用 `--days 3`，`interview-cert-renew.timer` 每天两次检查续期；续期成功自动安装到 `/etc/nginx/ssl/interview/` 并检查、重载 Nginx。不要关闭公网 80 端口，否则续期验证会失败。
@@ -25,7 +25,7 @@ journalctl -u interview-notes -n 50 --no-pager
 
 发布包采用明确白名单：`dist/web`、`server/start.ts`、`server/accounts.ts`、`server/queue/{api,http,store}.ts`、`lib/interview.ts`、`lib/interview-questions.ts`、`lib/work-sample.ts`、`lib/resume-reading.ts`、`lib/standards.ts`、`lib/written-test-supplement.ts` 和 `package.json`。这些文件构成云端服务的 import 闭包；作品读取器与 Codex 运行逻辑只打入 `dist/web` 内的连接器下载包，不作为云端运行依赖。生产服务此外仅依赖 Node 内置模块，不需要 `node_modules`。包内不得包含 `.env*`、`.local`、简历或作品源文件、浏览器数据、Codex credentials、`node_modules` 或 `.git`；后续增加服务端依赖时重新核对闭包。PDF CMap 与字体资源随 `dist/web` 一起发布。
 
-本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。本次 `20260910-5` 发布包 SHA-256 为 `619c9577f5587d904d02e689ba6c45e9fdd604b14334d553d55b4135a09510b5`。macOS 打包时必须禁用 AppleDouble 和扩展属性，发布校验会拒绝 `._*` 条目。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。本机端口健康探针必须带 `Host: your-server-ip`，否则正式环境的来源校验会返回 403；服务重启后在有限重试窗口内探测，不能把首次连接拒绝误判为启动失败。
+本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。本次 `20260910-6` 发布包 SHA-256 为 `722389082741c32e520d03256792882e5763728486993d4a4430951227ce0093`。macOS 打包时必须禁用 AppleDouble 和扩展属性，发布校验会拒绝 `._*` 条目。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。本机端口健康探针必须带 `Host: your-server-ip`，否则正式环境的来源校验会返回 403；服务重启后在有限重试窗口内探测，不能把首次连接拒绝误判为启动失败。
 
 发布检查包括 `nginx -t`、`systemctl is-active interview-notes nginx interview-cert-renew.timer`、HTTPS `/api/session`，以及 HTTP 308 跳转、无需跳过校验的 TLS 证书、登录 Cookie 的 HttpOnly/Secure/SameSite=Strict、登录后工作台和实际构建清单中的 JS/CSS、PDF CMap/font 资源。账号和连接凭据仅由本机脚本读取，不打印值，不写入发布包；`.local/cloud-access.txt` 与 `.local/cloud-connector.json` 保持权限 600。
 
@@ -86,6 +86,8 @@ journalctl -u interview-notes -n 50 --no-pager
 `20260910-4` 为 AI 产品经理增加本地 ZIP 笔试作品分析。作品可在首次提纲生成时选取，也可在已锁定提纲后补交一次；首次选取会让第 2–4 题基于作品文件，后补会保留原题并追加三题，成功后状态同步为“有笔试 · 作品已分析”。ZIP 原件与正文始终留在作品所在电脑，服务器只保存公开元数据和结构化结果；本地读取采用只读 Codex 沙箱、目录受限 MCP、压缩包边界检查和临时目录清理。最终结论把作品观察与候选人对话评分分开，并只用面试逐字原文核实归属和实施过程。本地浏览器实测了提纲确认、作品空状态和笔记本尺寸布局；本地完整测试、类型检查、代码检查、格式检查和生产构建通过。发布包 SHA-256 为 `ed47434d58a29bac7805b3a994e8890e7af15e58461a80a7e62dc7c5534c695e`，线上连接器包 SHA-256 为 `4f52bae247c1d48800201907d5fe7dc5704af98636e7104642a0c38322da6843`；公网 HTTPS、HTTP 308、新资源 `index-DevL_bd3.js` / `index-BllLGaSH.css`、Nginx、应用服务和证书续期定时器均通过检查，未创建真实生产任务。
 
 `20260910-5` 修复笔试作品分析启动后立即显示通用 Codex 失败的问题。原因是连接器关闭了当前 Codex 版本承载 MCP 的工具宿主，同时无人值守批准策略拒绝了作品读取；现在继续禁用代码执行能力，但保留 MCP 工具宿主，并仅对根目录受限、只读的 `work_sample` 服务启用自动批准。最小真实 Codex 验证中 `work_sample/list_files` 已完成；本地 265 项测试、类型检查、代码检查、格式检查和生产构建通过。发布包 SHA-256 为 `619c9577f5587d904d02e689ba6c45e9fdd604b14334d553d55b4135a09510b5`，线上连接器包 SHA-256 为 `7a519b12e0bae457f7a4ff01fda9e72266195dfa9606ff16504e1065dc936234`；公网 HTTPS、HTTP 308、Nginx、应用服务和证书续期定时器均通过检查，本机新版连接器已复用原配对凭据上线并收到服务器心跳。
+
+`20260910-6` 修复 `20260910-5` 之后仍出现的 Codex 通用失败。真实 Codex 错误为 `invalid_json_schema`：共享问题结构声明了 `workSampleEvidence`，但没有把它加入严格输出所需的 `required`；简历和结论 Schema 也保留了仅部分流程使用的可选属性。现在四类 Codex 输出均满足对象属性全量必填规则：非作品题返回 `workSampleEvidence=null`，普通简历 Schema 不再声明作品结果，带作品的简历任务单独组合必填作品结构，无作品结论返回空 `workSampleReview`。新增递归 Schema 回归测试，并以完整作品 Schema 完成真实 Codex 校验，退出码为 0 且返回结构化 JSON。本地 266 项测试、类型检查、代码检查、格式检查和生产构建通过。发布包 SHA-256 为 `722389082741c32e520d03256792882e5763728486993d4a4430951227ce0093`，线上连接器包 SHA-256 为 `2de2a5c7960cee853ac1f553168a228609331a0e2ad49e5cb8bf5f1e98ae3ba0`；生产服务和公网入口正常，本机下载目录的连接器已更新、复用原配对凭据并收到服务器心跳。
 
 ## 服务器
 

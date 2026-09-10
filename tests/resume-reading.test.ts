@@ -314,6 +314,7 @@ void test('model schema requires identity and bounded structured questions', () 
     'dimensions',
     'reason',
     'resumeEvidence',
+    'workSampleEvidence',
     'listenFor',
     'probes',
   ]);

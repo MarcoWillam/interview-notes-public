@@ -161,8 +161,11 @@ export function validateReport(value: unknown, input: InterviewInput): Report {
         transcriptEvidence,
       };
     });
-  } else if (v.workSampleReview !== undefined) {
-    throw new Error('没有作品时不能生成作品核实结果');
+  } else if (
+    v.workSampleReview !== undefined &&
+    (!Array.isArray(v.workSampleReview) || v.workSampleReview.length > 0)
+  ) {
+    throw new Error('没有作品时作品核实结果必须为空');
   }
   return {
     summary,

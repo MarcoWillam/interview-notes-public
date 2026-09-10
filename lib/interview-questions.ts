@@ -126,6 +126,7 @@ export const interviewQuestionSchema = {
     'dimensions',
     'reason',
     'resumeEvidence',
+    'workSampleEvidence',
     'listenFor',
     'probes',
   ],
