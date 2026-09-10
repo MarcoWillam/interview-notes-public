@@ -17,6 +17,7 @@ import {
   validateWorkSampleAssessment,
   validateWorkSampleReference,
   workSampleAssessmentSchema,
+  exportWorkSampleAssessment,
   type WorkSampleAssessment,
   type WorkSampleReference,
 } from './work-sample.ts';
@@ -337,6 +338,19 @@ export function exportResumeReading(reading: ResumeReading): string {
       : []),
     ...(reading.writtenTestSupplement?.length
       ? ['', exportWrittenTestSupplement(reading.writtenTestSupplement)]
+      : []),
+    ...(reading.workSample
+      ? [
+          '',
+          exportWorkSampleAssessment(
+            reading.workSample,
+            !reading.workSample.questions.every((workQuestion) =>
+              (reading.interviewQuestions || []).some(
+                (question) => question.question === workQuestion.question,
+              ),
+            ),
+          ),
+        ]
       : []),
     '',
     reading.interviewQuestions?.length ? '## 其他建议追问' : '## 建议追问',

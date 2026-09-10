@@ -14,6 +14,7 @@ export type InterviewSessionSummaryProps = {
   writtenTestConfirmed: boolean;
   hasWrittenTest: boolean;
   writtenTestSupplemented: boolean;
+  workSampleAnalyzed?: boolean;
   outlineLocked: boolean;
   disabled: boolean;
   open: boolean;
@@ -28,6 +29,7 @@ export function InterviewSessionSummary({
   writtenTestConfirmed,
   hasWrittenTest,
   writtenTestSupplemented,
+  workSampleAnalyzed = false,
   outlineLocked,
   disabled,
   open,
@@ -36,9 +38,11 @@ export function InterviewSessionSummary({
   const writtenTestStatus = !writtenTestConfirmed
     ? '待确认'
     : hasWrittenTest
-      ? writtenTestSupplemented
-        ? '有笔试 · 已补充'
-        : '有笔试'
+      ? workSampleAnalyzed
+        ? '有笔试 · 作品已分析'
+        : writtenTestSupplemented
+          ? '有笔试 · 已补充'
+          : '有笔试'
       : '无笔试';
 
   return (

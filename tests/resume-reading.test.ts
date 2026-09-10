@@ -493,6 +493,10 @@ async function renderReading(
     .outputText.replace(
       /from (["'])([^"']+)\1/g,
       (_match, quote: string, specifier: string) => {
+        if (specifier === './work-sample-view') {
+          const stub = 'export function WorkSampleView(){return null}';
+          return `from ${quote}data:text/javascript;base64,${Buffer.from(stub).toString('base64')}${quote}`;
+        }
         const resolved = specifier.startsWith('.')
           ? new URL(specifier + '.ts', viewUrl).href
           : import.meta.resolve(specifier);

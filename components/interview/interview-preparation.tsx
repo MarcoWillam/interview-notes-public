@@ -21,6 +21,7 @@ export function InterviewPreparation({
   writtenTestConfirmed,
   writtenTestSupported,
   writtenTestSupplemented,
+  workSampleAnalyzed = false,
   serviceReady,
   serviceStatus,
   onCandidateChange,
@@ -40,6 +41,7 @@ export function InterviewPreparation({
   writtenTestConfirmed: boolean;
   writtenTestSupported: boolean;
   writtenTestSupplemented: boolean;
+  workSampleAnalyzed?: boolean;
   serviceReady: boolean;
   serviceStatus: string;
   onCandidateChange: (value: string) => void;
@@ -92,9 +94,11 @@ export function InterviewPreparation({
             <strong className={writtenTestConfirmed ? 'confirmed' : 'pending'}>
               {writtenTestConfirmed
                 ? hasWrittenTest
-                  ? writtenTestSupplemented
-                    ? '有笔试 · 已补充 3 道复盘题'
-                    : '有笔试'
+                  ? workSampleAnalyzed
+                    ? '有笔试 · 作品已分析'
+                    : writtenTestSupplemented
+                      ? '有笔试 · 已补充 3 道复盘题'
+                      : '有笔试'
                   : '无笔试'
                 : '待确认'}
             </strong>
