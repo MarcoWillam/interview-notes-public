@@ -1,3 +1,8 @@
+import {
+  validateWorkSampleAssessment,
+  type WorkSampleAssessment,
+} from './work-sample.ts';
+
 export type InterviewInput = {
   role: string;
   requirements: string;
@@ -7,6 +12,7 @@ export type InterviewInput = {
   focus?: string;
   scoringGuidance?: string;
   reportRequirements?: string;
+  workSample?: WorkSampleAssessment;
 };
 export type Assessment = {
   name: string;
@@ -18,6 +24,12 @@ export type Report = {
   summary: string;
   dimensions: Assessment[];
   followUps: string[];
+  workSampleReview?: WorkSampleVerification[];
+};
+export type WorkSampleVerification = {
+  observation: string;
+  status: 'supported' | 'conflicted' | 'unverified';
+  transcriptEvidence: string[];
 };
 function boundedString(value: unknown, max: number, label: string): string {
   if (typeof value !== 'string' || !value.trim() || value.length > max)
@@ -42,7 +54,11 @@ export function validateInput(value: unknown): InterviewInput {
     throw new Error('评估维度不能重复');
   const extras: Pick<
     InterviewInput,
-    'resumeText' | 'focus' | 'scoringGuidance' | 'reportRequirements'
+    | 'resumeText'
+    | 'focus'
+    | 'scoringGuidance'
+    | 'reportRequirements'
+    | 'workSample'
   > = {};
   for (const [key, max] of [
     ['resumeText', 30000],
@@ -55,6 +71,23 @@ export function validateInput(value: unknown): InterviewInput {
         throw new Error('简历或面试偏好超过长度限制');
       extras[key] = v[key].trim();
     }
+  }
+  if (v.workSample !== undefined) {
+    const value = v.workSample as Record<string, unknown>;
+    const artifact = value?.artifact as Record<string, unknown>;
+    extras.workSample = validateWorkSampleAssessment(value, {
+      reference: {
+        id: artifact?.id as string,
+        deviceId: 'assessment-input',
+        name: artifact?.name as string,
+        sha256: artifact?.sha256 as string,
+        bytes: artifact?.bytes as number,
+        modifiedAt: artifact?.modifiedAt as number,
+      },
+      dimensionText: dimensions.join('、'),
+      questionCount: 3,
+      existingQuestions: [],
+    });
   }
   return { role, requirements, transcript, dimensions, ...extras };
 }
@@ -92,11 +125,69 @@ export function validateReport(value: unknown, input: InterviewInput): Report {
   });
   if (!Array.isArray(v.followUps) || v.followUps.length > 12)
     throw new Error('待核实事项格式错误');
+  let workSampleReview: WorkSampleVerification[] | undefined;
+  if (input.workSample) {
+    if (
+      !Array.isArray(v.workSampleReview) ||
+      v.workSampleReview.length < 1 ||
+      v.workSampleReview.length > 12
+    )
+      throw new Error('作品核实结果格式错误');
+    workSampleReview = v.workSampleReview.map((value) => {
+      if (!value || typeof value !== 'object')
+        throw new Error('作品核实项格式错误');
+      const item = value as Record<string, unknown>;
+      if (!['supported', 'conflicted', 'unverified'].includes(item.status as string))
+        throw new Error('作品核实状态格式错误');
+      if (!Array.isArray(item.transcriptEvidence) || item.transcriptEvidence.length > 6)
+        throw new Error('作品核实引用格式错误');
+      const transcriptEvidence = item.transcriptEvidence.map((quote) =>
+        boundedString(quote, 2000, '作品核实引用'),
+      );
+      if (transcriptEvidence.some((quote) => !input.transcript.includes(quote)))
+        throw new Error('作品核实引用无法在对话中找到，请重试');
+      if (item.status !== 'unverified' && transcriptEvidence.length === 0)
+        throw new Error('已验证或有冲突的作品观察必须包含对话依据');
+      return {
+        observation: boundedString(item.observation, 2000, '作品观察'),
+        status: item.status as WorkSampleVerification['status'],
+        transcriptEvidence,
+      };
+    });
+  } else if (v.workSampleReview !== undefined) {
+    throw new Error('没有作品时不能生成作品核实结果');
+  }
   return {
     summary,
     dimensions,
     followUps: v.followUps.map((q) => boundedString(q, 1000, '待核实事项')),
+    ...(workSampleReview ? { workSampleReview } : {}),
   };
+}
+
+export const workSampleVerificationLabels: Record<
+  WorkSampleVerification['status'],
+  string
+> = {
+  supported: '面试中已验证',
+  conflicted: '面试信息有冲突',
+  unverified: '面试中未验证',
+};
+
+export function workSampleReviewMarkdownLines(report: Report): string[] {
+  if (!report.workSampleReview?.length) return [];
+  return [
+    '',
+    '## 作品表现（归属与过程待核实）',
+    ...report.workSampleReview.flatMap((item) => [
+      '',
+      `### ${workSampleVerificationLabels[item.status]}`,
+      item.observation,
+      ...item.transcriptEvidence.map(
+        (quote) => '> ' + quote.replaceAll('\n', '\n> '),
+      ),
+    ]),
+  ];
 }
 
 export function exportMarkdown(
@@ -128,6 +219,7 @@ export function exportMarkdown(
     lines.push('', '## 候选人简历（自述背景，待面试核实）', input.resumeText);
   if (report) {
     lines.push('', '## AI 辅助评估（需人工核实）', report.summary);
+    lines.push(...workSampleReviewMarkdownLines(report));
     for (const d of report.dimensions)
       lines.push(
         '',

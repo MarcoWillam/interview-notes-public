@@ -187,3 +187,13 @@ void test('interview preparation shows the supplemented written-test status', as
   assert.match(source, /writtenTestSupplemented/);
   assert.match(source, /已补充 3 道复盘题/);
 });
+
+void test('completed interview tasks separate work-sample verification in results and exports', async () => {
+  const source = await readFile(
+    new URL('../components/interview/task-center.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /作品表现（归属与过程待核实）/);
+  assert.match(source, /workSampleReview/);
+  assert.match(source, /transcriptEvidence/);
+});

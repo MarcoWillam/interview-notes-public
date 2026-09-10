@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, ListChecks, RefreshCw, X } from 'lucide-react';
-import type { Report } from '../../lib/interview';
+import {
+  workSampleReviewMarkdownLines,
+  workSampleVerificationLabels,
+  type Report,
+} from '../../lib/interview';
 import type { ResumeReading } from '../../lib/resume-reading';
 import type { WrittenTestSupplementResult } from '../../lib/written-test-supplement';
 import type { WorkSampleAssessment } from '../../lib/work-sample';
@@ -46,6 +50,7 @@ function downloadReport(job: Job) {
     'AI 辅助评估 · 待人工核实',
     '',
     report.summary,
+    ...workSampleReviewMarkdownLines(report),
     ...report.dimensions.flatMap((dimension) => [
       '',
       `## ${dimension.name} · ${dimension.score === null ? '证据不足' : dimension.score + '/5'}`,
@@ -270,6 +275,20 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
         'followUps' in job.report && (
         <>
           <p>{job.report.summary}</p>
+          {job.report.workSampleReview?.length ? (
+            <section>
+              <h4>作品表现（归属与过程待核实）</h4>
+              {job.report.workSampleReview.map((item, index) => (
+                <div key={`${item.status}-${index}`}>
+                  <strong>{workSampleVerificationLabels[item.status]}</strong>
+                  <p>{item.observation}</p>
+                  {item.transcriptEvidence.map((quote, quoteIndex) => (
+                    <blockquote key={quoteIndex}>{quote}</blockquote>
+                  ))}
+                </div>
+              ))}
+            </section>
+          ) : null}
           {job.report.dimensions.map((dimension) => (
             <section key={dimension.name}>
               <h4>

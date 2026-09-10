@@ -85,6 +85,72 @@ void test('provider failure and invented quotations never leak raw output', asyn
   }));
   assert.equal((await fabricated(request())).status, 502);
 });
+void test('local analysis validates work-sample verification against the transcript', async () => {
+  const workInput = {
+    ...input,
+    workSample: {
+      artifact: {
+        id: 'artifact-12345678',
+        name: 'ai-pm-work.zip',
+        sha256: 'a'.repeat(64),
+        bytes: 2048,
+        modifiedAt: 1,
+      },
+      coverage: {
+        analyzed: ['README.md'],
+        excluded: [],
+        unsupported: [],
+        truncated: false,
+      },
+      summary: '作品包含用户访谈方案。',
+      dimensions: [
+        {
+          name: '需求分析',
+          score: 3,
+          assessment: '包含基本验证路径。',
+          evidence: [{ path: 'README.md', excerpt: '访谈五位用户' }],
+        },
+      ],
+      strengths: ['验证路径清晰'],
+      risks: ['结果数据不足'],
+      questions: Array.from({ length: 3 }, (_, index) => ({
+        question: `请说明作品步骤 ${index + 1} 的实施过程。`,
+        questionSource: 'work-sample' as const,
+        dimensions: ['需求分析'],
+        reason: '核实作品归属。',
+        resumeEvidence: null,
+        workSampleEvidence: { path: 'README.md', excerpt: '访谈五位用户' },
+        listenFor: ['本人行动'],
+        probes: ['如何验证？'],
+      })),
+    },
+  };
+  const grounded = {
+    ...report,
+    workSampleReview: [
+      {
+        observation: '候选人说明访谈由自己完成。',
+        status: 'supported',
+        transcriptEvidence: ['我访谈了五位用户，整理出三个核心问题。'],
+      },
+    ],
+  };
+  const handle = createAnalysisHandler(async (received) => {
+    assert.deepEqual(received, workInput);
+    return grounded;
+  });
+  assert.equal((await handle(request(workInput))).status, 200);
+  const fabricated = createAnalysisHandler(async () => ({
+    ...grounded,
+    workSampleReview: [
+      {
+        ...grounded.workSampleReview[0],
+        transcriptEvidence: ['候选人完成了全部研发'],
+      },
+    ],
+  }));
+  assert.equal((await fabricated(request(workInput))).status, 502);
+});
 void test('cancellation reaches the runner and releases the single run slot', async () => {
   const controller = new AbortController();
   let started!: () => void;

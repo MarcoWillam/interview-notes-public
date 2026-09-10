@@ -429,10 +429,10 @@ export class QueueStore {
       input = JSON.stringify(validatedInput),
       digest = hash(kind + (scope ? '\n' + scope + '\n' : '') + input),
       safeLabel = label.slice(0, 100) || '未命名面试';
-    const workSample =
+    const workSample: WorkSampleReference | undefined =
       (kind === 'resume' || kind === 'work-sample') &&
       'workSample' in validatedInput
-        ? validatedInput.workSample
+        ? validateWorkSampleReference(validatedInput.workSample)
         : undefined;
     let targetDevice: string | null = null,
       artifactId: string | null = null;
