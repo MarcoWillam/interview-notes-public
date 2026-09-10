@@ -224,7 +224,6 @@ export function codexArgs(directory: string) {
     'workspace_dependencies',
     'skill_search',
     'code_mode',
-    'code_mode_host',
     'view_image',
     'goals',
     'sleep_tool',
@@ -271,6 +270,8 @@ export function codexWorkSampleArgs(directory: string, mcpConfig: string) {
       server,
       mcpConfig,
     ])}`,
+    '-c',
+    'mcp_servers.work_sample.default_tools_approval_mode="approve"',
     promptMarker!,
   ];
 }

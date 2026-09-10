@@ -35,6 +35,19 @@ void test('work sample Codex uses only the root-confined MCP alongside the read-
     args.some((arg) => arg.startsWith('mcp_servers.work_sample.command=')),
   );
   assert.ok(args.some((arg) => arg.includes('work-sample-mcp.json')));
+  assert.ok(
+    !args.some(
+      (arg, index) =>
+        arg === '--disable' && args[index + 1] === 'code_mode_host',
+    ),
+    'the MCP tool host must remain enabled',
+  );
+  assert.ok(
+    args.includes(
+      'mcp_servers.work_sample.default_tools_approval_mode="approve"',
+    ),
+    'the confined read-only MCP must be callable without an interactive prompt',
+  );
   assert.ok(args.includes('view_image'));
   assert.ok(
     args.findIndex((arg) =>
