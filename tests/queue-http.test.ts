@@ -279,6 +279,88 @@ void test('worker syncs metadata-only artifacts and web submissions keep device 
     await f.close();
   }
 });
+void test('connector routes a later work sample job through the local artifact runner', async () => {
+  const f = await fixture();
+  const controller = new AbortController();
+  let worker: Promise<void> | undefined;
+  try {
+    const device = f.store.redeem(f.store.pairing(f.user).code, '作品电脑');
+    const artifact = workSampleFor(device.id);
+    const questions = Array.from({ length: 3 }, (_, index) => ({
+      question: `请说明作品中的第 ${index + 1} 个产品判断。`,
+      questionSource: 'work-sample' as const,
+      dimensions: [index === 1 ? '沟通协作' : '需求分析'],
+      reason: '核实作品中的具体取舍。',
+      resumeEvidence: null,
+      workSampleEvidence: { path: 'brief.md', excerpt: '目标用户是新手卖家' },
+      listenFor: ['判断依据'],
+      probes: ['如何验证？'],
+    }));
+    const result = {
+      artifact: {
+        id: artifact.id,
+        name: artifact.name,
+        sha256: artifact.sha256,
+        bytes: artifact.bytes,
+        modifiedAt: artifact.modifiedAt,
+      },
+      coverage: { analyzed: ['brief.md'], excluded: [], unsupported: [], truncated: false },
+      summary: '作品目标清楚，个人完成过程待核实。',
+      dimensions: [
+        {
+          name: '需求分析',
+          score: 4,
+          assessment: '目标用户较明确。',
+          evidence: [{ path: 'brief.md', excerpt: '目标用户是新手卖家' }],
+        },
+      ],
+      strengths: ['问题明确'],
+      risks: ['验证待核实'],
+      questions,
+    };
+    let localPath = '';
+    worker = runConnector(
+      { server: f.origin, ...device },
+      controller.signal,
+      {
+        status,
+        analyze: async () => report,
+        workSamples: async () => ({
+          artifacts: [artifact],
+          files: new Map([[artifact.id, '/local/works/candidate.zip']]),
+        }),
+        analyzeWorkSample: async (actual, path) => {
+          assert.equal(actual.workSample.id, artifact.id);
+          localPath = path;
+          return result;
+        },
+      },
+      { pollMs: 10, heartbeatMs: 20 },
+    );
+    await until(() => f.store.artifacts(f.user).length === 1);
+    const response = await f.api('/api/jobs', 'POST', {
+      client: 'work-http-123',
+      kind: 'work-sample',
+      scope: 'interview-record-a',
+      label: '张三 · 笔试作品',
+      input: {
+        ...resumeInput,
+        role: 'AI 产品经理（校招）',
+        workSample: artifact,
+        existingQuestions: reading.interviewQuestions,
+      },
+    });
+    assert.equal(response.status, 202);
+    const job = (await response.json()) as { id: string };
+    await until(() => f.store.get(f.user, job.id).state === 'completed');
+    assert.equal(localPath, '/local/works/candidate.zip');
+    assert.deepEqual(f.store.get(f.user, job.id).report, result);
+  } finally {
+    controller.abort();
+    await worker;
+    await f.close();
+  }
+});
 void test('pausing a running task aborts the connector and preserves resumable work', async () => {
   const f = await fixture();
   const controller = new AbortController();

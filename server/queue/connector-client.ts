@@ -14,6 +14,11 @@ import {
   readResumeWithCodex,
 } from '../codex.ts';
 import type { WorkSampleReference } from '../../lib/work-sample.ts';
+import { validateWorkSampleInput } from '../../lib/work-sample.ts';
+import {
+  analyzeWorkSampleWithCodex,
+  readResumeAndWorkSampleWithCodex,
+} from '../work-samples/analyze.ts';
 export type Credentials = { server: string; token: string; id: string };
 export function validateServer(value: string) {
   const url = new URL(value);
@@ -105,6 +110,15 @@ const delay = (ms: number, signal: AbortSignal) =>
     signal.addEventListener('abort', done, { once: true });
     if (signal.aborted) done();
   });
+function workFailure(error: unknown) {
+  const message = error instanceof Error ? error.message : '';
+  if (/发生变化|哈希/.test(message)) return 'artifact-changed';
+  if (/不存在|未找到|已移除/.test(message)) return 'artifact-missing';
+  if (/ZIP|压缩|加密|链接|路径|文件数量|读取范围/.test(message))
+    return 'artifact-invalid';
+  if (/引用|结构|格式|问题|维度/.test(message)) return 'validation';
+  return 'codex';
+}
 export async function runConnector(
   credentials: Credentials,
   signal: AbortSignal,
@@ -113,6 +127,8 @@ export async function runConnector(
     status: typeof codexStatus;
     readResume?: typeof readResumeWithCodex;
     writeTest?: typeof generateWrittenTestSupplementWithCodex;
+    readResumeWork?: typeof readResumeAndWorkSampleWithCodex;
+    analyzeWorkSample?: typeof analyzeWorkSampleWithCodex;
     workSamples?: () => Promise<{
       artifacts: WorkSampleReference[];
       files: Map<string, string>;
@@ -123,16 +139,16 @@ export async function runConnector(
   const server = validateServer(credentials.server);
   let ready = false,
     lastCheck = 0,
-    reportedOffline = false;
+    reportedOffline = false,
+    inventory:
+      | { artifacts: WorkSampleReference[]; files: Map<string, string> }
+      | undefined;
   while (!signal.aborted) {
     try {
       if (Date.now() - lastCheck > 30000) {
         ready = (await dependencies.status()).analysis;
         lastCheck = Date.now();
       }
-      let inventory:
-        | { artifacts: WorkSampleReference[]; files: Map<string, string> }
-        | undefined;
       if (dependencies.workSamples) {
         try {
           inventory = await dependencies.workSamples();
@@ -167,6 +183,7 @@ export async function runConnector(
         id: string;
         lease: string;
         kind?: string;
+        artifactId?: string | null;
         input: unknown;
       } | null;
       if (job) {
@@ -199,13 +216,24 @@ export async function runConnector(
         }, timings.heartbeatMs);
         try {
           let report: unknown,
-            failed = false;
+            failed = false,
+            failure: string | undefined;
           try {
             if (job.kind === 'resume') {
               const input = validateResumeInput(job.input);
-              const reading = await (
-                dependencies.readResume || readResumeWithCodex
-              )(input, taskSignal);
+              const artifactPath = input.workSample
+                ? inventory?.files.get(input.workSample.id)
+                : undefined;
+              if (input.workSample && !artifactPath)
+                throw new Error('本地作品不存在。');
+              const reading = input.workSample
+                ? await (
+                    dependencies.readResumeWork ||
+                    readResumeAndWorkSampleWithCodex
+                  )(input, artifactPath!, taskSignal)
+                : await (
+                    dependencies.readResume || readResumeWithCodex
+                  )(input, taskSignal);
               report = validateResumeReading(reading, input);
             } else if (job.kind === 'written-test') {
               const input = validateWrittenTestSupplementInput(job.input);
@@ -214,14 +242,28 @@ export async function runConnector(
                 generateWrittenTestSupplementWithCodex
               )(input, taskSignal);
               report = validateWrittenTestSupplement(supplement, input);
+            } else if (job.kind === 'work-sample') {
+              const input = validateWorkSampleInput(job.input);
+              const artifactPath = inventory?.files.get(input.workSample.id);
+              if (!artifactPath) throw new Error('本地作品不存在。');
+              report = await (
+                dependencies.analyzeWorkSample || analyzeWorkSampleWithCodex
+              )(input, artifactPath, taskSignal);
             } else {
               report = await dependencies.analyze(
                 validateInput(job.input),
                 taskSignal,
               );
             }
-          } catch {
+          } catch (error) {
             failed = true;
+            const usesWorkSample =
+              job.kind === 'work-sample' ||
+              (job.kind === 'resume' &&
+                !!job.input &&
+                typeof job.input === 'object' &&
+                'workSample' in job.input);
+            failure = usesWorkSample ? workFailure(error) : 'codex';
           }
           if (!taskSignal.aborted) {
             for (
@@ -233,7 +275,7 @@ export async function runConnector(
                 await connectorRequest(
                   server,
                   '/api/worker/finish',
-                  { id: job.id, lease: job.lease, report, failed },
+                  { id: job.id, lease: job.lease, report, failed, failure },
                   credentials.token,
                   taskSignal,
                 );

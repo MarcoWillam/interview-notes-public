@@ -169,6 +169,7 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
               str('lease', 100),
               body.report,
               body.failed === true,
+              body.failure,
             ),
           );
         throw new QueueError('接口不存在。', 404);
@@ -205,7 +206,9 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
           const kind =
             body.kind === undefined
               ? 'interview'
-              : body.kind === 'resume' || body.kind === 'written-test'
+              : body.kind === 'resume' ||
+                  body.kind === 'written-test' ||
+                  body.kind === 'work-sample'
                 ? body.kind
                 : null;
           if (!kind) throw new QueueError('任务类型无效。');
