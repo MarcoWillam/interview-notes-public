@@ -109,6 +109,8 @@ void test('template source and written-test state survive reopening', async () =
     templateModified: true,
     hasWrittenTest: true,
     writtenTestConfirmed: true,
+    workSample: null,
+    workSampleJobId: 'work-job-12345678',
   };
   await store.saveInterview(enriched);
   assert.deepEqual(
@@ -125,6 +127,8 @@ void test('legacy records remain readable without template metadata', async () =
   assert.equal(restored.templateModified, undefined);
   assert.equal(restored.hasWrittenTest, undefined);
   assert.equal(restored.writtenTestConfirmed, undefined);
+  assert.equal(restored.workSample, undefined);
+  assert.equal(restored.workSampleJobId, undefined);
 });
 void test('new and updated resume records do not acquire a verification gate', async () => {
   const factory = new IDBFactory();

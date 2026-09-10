@@ -37,6 +37,8 @@ export type SavedInterview = {
   templateModified?: boolean;
   hasWrittenTest?: boolean;
   writtenTestConfirmed?: boolean;
+  workSample?: import('../work-sample.ts').WorkSampleAssessment | null;
+  workSampleJobId?: string;
 };
 export type InterviewGroup = {
   id: string;
