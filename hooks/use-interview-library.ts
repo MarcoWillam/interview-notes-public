@@ -15,6 +15,7 @@ import {
   type GlobalSettings,
 } from '@/lib/standards';
 import { normalizeInterviewTemplateState } from '@/lib/interview-template-state';
+import { BUILTIN_TEMPLATE_IDS } from '@/lib/default-role-templates';
 import { updateInterviewSummary } from '@/lib/interview-sidebar';
 export type Draft = Omit<SavedInterview, 'id' | 'createdAt' | 'updatedAt'>;
 export function useInterviewLibrary(
@@ -34,7 +35,7 @@ export function useInterviewLibrary(
   const [preferences, setPreferences] = useState<Preference[]>([]);
   const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
     id: 'global',
-    defaultTemplateId: null,
+    defaultTemplateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
     defaults: { ...defaultStandards },
   });
   const [storage, setStorage] = useState({
@@ -85,7 +86,7 @@ export function useInterviewLibrary(
     setGlobalSettings(
       settings || {
         id: 'global',
-        defaultTemplateId: null,
+        defaultTemplateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
         defaults: { ...defaultStandards },
       },
     );

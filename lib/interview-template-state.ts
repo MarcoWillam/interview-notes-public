@@ -1,8 +1,5 @@
 import { BUILTIN_TEMPLATE_IDS } from './default-role-templates.ts';
-import {
-  normalizeStandards,
-  type InterviewStandards,
-} from './standards.ts';
+import { normalizeStandards, type InterviewStandards } from './standards.ts';
 import type { ResumeReading } from './resume-reading.ts';
 import type { WrittenTestSupplementResult } from './written-test-supplement.ts';
 
@@ -61,7 +58,7 @@ export function resolveTemplateSelection(
   sourceTemplateId: string | null,
   templateModified: boolean,
   templates: TemplateLike[],
-  common: InterviewStandards,
+  _common: InterviewStandards,
 ): TemplateSelection {
   if (!sourceTemplateId)
     return {
@@ -72,10 +69,16 @@ export function resolveTemplateSelection(
       label: '已自定义本场标准',
     };
 
-  const source =
-    sourceTemplateId === COMMON_TEMPLATE_ID
-      ? { ...common, id: COMMON_TEMPLATE_ID, name: '通用默认标准' }
-      : templates.find((template) => template.id === sourceTemplateId);
+  if (sourceTemplateId === COMMON_TEMPLATE_ID)
+    return {
+      sourceTemplateId,
+      templateModified: false,
+      kind: 'custom',
+      selectValue: TEMPLATE_STATUS_VALUE,
+      label: '历史通用标准 · 本场保留',
+    };
+
+  const source = templates.find((template) => template.id === sourceTemplateId);
 
   if (!source)
     return {
@@ -133,7 +136,10 @@ export function resolveResumeOutlinePreflight(
     return writtenTest === null
       ? null
       : { templateId, hasWrittenTest: writtenTest };
-  if (templateId === BUILTIN_TEMPLATE_IDS.productOperations)
+  if (
+    templateId === BUILTIN_TEMPLATE_IDS.productOperations ||
+    templateId === BUILTIN_TEMPLATE_IDS.aiEngineering
+  )
     return { templateId, hasWrittenTest: false };
   return null;
 }
@@ -181,9 +187,7 @@ export function markTemplateModified(sourceTemplateId: string | null) {
   return { sourceTemplateId, templateModified: true };
 }
 
-export function appliedTemplateState(
-  sourceTemplateId: string,
-) {
+export function appliedTemplateState(sourceTemplateId: string) {
   return {
     sourceTemplateId,
     templateModified: false,

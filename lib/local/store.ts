@@ -5,8 +5,8 @@ import {
   type GlobalSettings,
   type InterviewStandards,
 } from '../standards.ts';
-import { COMMON_TEMPLATE_ID } from '../interview-template-state.ts';
 import {
+  BUILTIN_TEMPLATE_IDS,
   builtInRoleTemplates,
   replacementForLegacyBuiltInRoleTemplate,
 } from '../default-role-templates.ts';
@@ -66,12 +66,26 @@ export type Preference = {
   scoringGuidance?: string;
   reportRequirements?: string;
 };
+const builtInTemplateOrder = new Map<string, number>(
+  builtInRoleTemplates.map(({ id }, index) => [id, index]),
+);
+function sortPreferences(templates: Preference[]) {
+  return templates.sort((a, b) => {
+    const left = builtInTemplateOrder.get(a.id);
+    const right = builtInTemplateOrder.get(b.id);
+    if (left !== undefined || right !== undefined)
+      return (
+        (left ?? Number.MAX_SAFE_INTEGER) - (right ?? Number.MAX_SAFE_INTEGER)
+      );
+    return a.id.localeCompare(b.id);
+  });
+}
 export function createLocalStore(
   factory: IDBFactory,
   name = 'interview-notes-local',
 ) {
   const connection = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = factory.open(name, 5);
+    const request = factory.open(name, 6);
     request.onupgradeneeded = (event) => {
       const db = request.result;
       if (event.oldVersion < 1) {
@@ -105,6 +119,52 @@ export function createLocalStore(
       if (event.oldVersion < 3) migrateBuiltInTemplates(true);
       else if (event.oldVersion < 4) {
         migrateBuiltInTemplates(false);
+      }
+      if (event.oldVersion < 6) {
+        const transaction = request.transaction!;
+        const preferences = transaction.objectStore('preferences');
+        const settings = transaction.objectStore('settings');
+        if (event.oldVersion >= 3) {
+          const engineering = builtInRoleTemplates.find(
+            ({ id }) => id === BUILTIN_TEMPLATE_IDS.aiEngineering,
+          )!;
+          const existing = preferences.get(engineering.id);
+          existing.onsuccess = () => {
+            if (existing.result === undefined) preferences.add(engineering);
+          };
+        }
+        const savedSettings = settings.get('global');
+        savedSettings.onsuccess = () => {
+          const current = savedSettings.result as GlobalSettings | undefined;
+          const saveAiProductManagerDefault = () => {
+            const template = preferences.get(
+              BUILTIN_TEMPLATE_IDS.aiProductManager,
+            );
+            template.onsuccess = () => {
+              if (template.result === undefined) {
+                const approved = builtInRoleTemplates.find(
+                  ({ id }) => id === BUILTIN_TEMPLATE_IDS.aiProductManager,
+                )!;
+                preferences.add(approved);
+              }
+              settings.put({
+                id: 'global',
+                defaultTemplateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
+                defaults: normalizeStandards(
+                  current?.defaults || defaultStandards,
+                ),
+              } satisfies GlobalSettings);
+            };
+          };
+          if (!current?.defaultTemplateId) {
+            saveAiProductManagerDefault();
+            return;
+          }
+          const selected = preferences.get(current.defaultTemplateId);
+          selected.onsuccess = () => {
+            if (selected.result === undefined) saveAiProductManagerDefault();
+          };
+        };
       }
     };
     request.onsuccess = () => {
@@ -156,6 +216,7 @@ export function createLocalStore(
       templates: Preference[],
     ) => {
       validateStandards(settings.defaults, false);
+      if (!templates.length) throw new Error('至少保留一个岗位模板');
       const ids = new Set<string>(),
         names = new Set<string>();
       for (const template of templates) {
@@ -170,7 +231,7 @@ export function createLocalStore(
         ids.add(template.id);
         names.add(template.name.trim());
       }
-      if (settings.defaultTemplateId && !ids.has(settings.defaultTemplateId))
+      if (!settings.defaultTemplateId || !ids.has(settings.defaultTemplateId))
         throw new Error('默认模板已不存在，请重新选择');
       const savedSettings: GlobalSettings = {
         ...settings,
@@ -198,6 +259,8 @@ export function createLocalStore(
     getSettings: () => read<GlobalSettings>('settings', 'global'),
     saveSettings: async (value: GlobalSettings) => {
       validateStandards(value.defaults, false);
+      if (!value.defaultTemplateId) throw new Error('请选择默认模板');
+      const defaultTemplateId = value.defaultTemplateId;
       return run<void>(['settings', 'preferences'], 'readwrite', (tx) => {
         const save = () =>
           tx.objectStore('settings').put({
@@ -209,11 +272,7 @@ export function createLocalStore(
               requirements: '',
             },
           });
-        if (!value.defaultTemplateId) {
-          save();
-          return;
-        }
-        const r = tx.objectStore('preferences').get(value.defaultTemplateId);
+        const r = tx.objectStore('preferences').get(defaultTemplateId);
         r.onsuccess = () => {
           if (r.result) save();
           else tx.abort();
@@ -221,15 +280,20 @@ export function createLocalStore(
       });
     },
     getNewInterviewSeed: async (): Promise<NewInterviewSeed> => {
-      const settings = await read<GlobalSettings>('settings', 'global');
-      const template = settings?.defaultTemplateId
-        ? await read<Preference>('preferences', settings.defaultTemplateId)
-        : undefined;
+      const [settings, templates] = await Promise.all([
+        read<GlobalSettings>('settings', 'global'),
+        all<Preference>('preferences'),
+      ]);
+      const template =
+        templates.find(({ id }) => id === settings?.defaultTemplateId) ||
+        templates.find(
+          ({ id }) => id === BUILTIN_TEMPLATE_IDS.aiProductManager,
+        ) ||
+        templates[0];
+      if (!template) throw new Error('至少保留一个岗位模板');
       return {
-        standards: normalizeStandards(
-          template || settings?.defaults || defaultStandards,
-        ),
-        sourceTemplateId: template?.id || COMMON_TEMPLATE_ID,
+        standards: normalizeStandards(template),
+        sourceTemplateId: template.id,
       };
     },
     saveInterview: (value: SavedInterview) => put('interviews', value),
@@ -391,19 +455,33 @@ export function createLocalStore(
         };
       }),
     savePreference: (value: Preference) => put('preferences', value),
-    listPreferences: () => all<Preference>('preferences'),
-    deletePreference: (id: string) =>
-      run<void>(['preferences', 'settings'], 'readwrite', (tx) => {
+    listPreferences: async () => {
+      return sortPreferences(await all<Preference>('preferences'));
+    },
+    deletePreference: async (id: string) => {
+      const [templates, settings] = await Promise.all([
+        all<Preference>('preferences'),
+        read<GlobalSettings>('settings', 'global'),
+      ]);
+      if (!templates.some((template) => template.id === id)) return;
+      const remaining = sortPreferences(
+        templates.filter((template) => template.id !== id),
+      );
+      if (!remaining.length) throw new Error('至少保留一个岗位模板');
+      const fallback =
+        remaining.find(
+          ({ id: templateId }) =>
+            templateId === BUILTIN_TEMPLATE_IDS.aiProductManager,
+        ) || remaining[0];
+      return run<void>(['preferences', 'settings'], 'readwrite', (tx) => {
         tx.objectStore('preferences').delete(id);
-        const r = tx.objectStore('settings').get('global');
-        r.onsuccess = () => {
-          if (r.result?.defaultTemplateId === id)
-            tx.objectStore('settings').put({
-              ...r.result,
-              defaultTemplateId: null,
-            });
-        };
-      }),
+        if (settings?.defaultTemplateId === id)
+          tx.objectStore('settings').put({
+            ...settings,
+            defaultTemplateId: fallback.id,
+          });
+      });
+    },
   };
 }
 export type LocalStore = ReturnType<typeof createLocalStore>;

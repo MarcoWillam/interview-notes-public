@@ -16,8 +16,13 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
-import { normalizeStandards, type GlobalSettings } from '@/lib/standards';
+import {
+  defaultStandards,
+  normalizeStandards,
+  type GlobalSettings,
+} from '@/lib/standards';
 import type { Preference } from '@/lib/local/store';
+import { BUILTIN_TEMPLATE_IDS } from '@/lib/default-role-templates';
 import { StandardsFields } from './standards-fields';
 import { NativeSelect } from '@/components/ui/native-select';
 
@@ -38,7 +43,9 @@ export function GlobalPreferences({
   const [templates, setTemplates] = useState(() =>
     structuredClone(initialTemplates),
   );
-  const [selected, setSelected] = useState('');
+  const [selected, setSelected] = useState(
+    () => initialSettings.defaultTemplateId || initialTemplates[0]?.id || '',
+  );
   const [baseline, setBaseline] = useState(() =>
     JSON.stringify([initialSettings, initialTemplates]),
   );
@@ -107,7 +114,7 @@ export function GlobalPreferences({
             </button>
           </div>
           <DialogDescription>
-            统一管理岗位模板与通用标准，仅保存在当前浏览器。每场面试使用独立快照，修改全局设置不会改动历史结论。
+            统一管理岗位模板和新面试默认岗位，仅保存在当前浏览器。每场面试使用独立快照，修改全局设置不会改动历史结论。
           </DialogDescription>
           <fieldset disabled={pending} className="global-settings-body">
             <label
@@ -118,16 +125,15 @@ export function GlobalPreferences({
               <NativeSelect
                 id="default-template-select"
                 className="workbench-native-select default-template-select"
-                value={settings.defaultTemplateId || ''}
+                value={settings.defaultTemplateId || templates[0]?.id || ''}
                 onChange={(e) => {
                   setSettings({
                     ...settings,
-                    defaultTemplateId: e.target.value || null,
+                    defaultTemplateId: e.target.value,
                   });
                   setNotice('');
                 }}
               >
-                <option value="">通用默认标准（岗位留空）</option>
                 {templates.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name || '未命名模板'}
@@ -136,16 +142,10 @@ export function GlobalPreferences({
               </NativeSelect>
             </label>
             <p className="small-note">
-              选中岗位模板后，新面试使用该模板的完整标准；不选模板则使用下面的通用标准。
+              新建面试时会复制所选模板的完整标准，之后修改模板不会覆盖已有面试。
             </p>
             <div className="global-editor-grid">
               <nav className="template-navigation" aria-label="全局偏好分类">
-                <button
-                  className={!selected ? 'selected' : ''}
-                  onClick={() => setSelected('')}
-                >
-                  通用默认标准
-                </button>
                 <p>岗位模板</p>
                 {templates.map((p) => (
                   <button
@@ -165,7 +165,7 @@ export function GlobalPreferences({
                     setTemplates([
                       ...templates,
                       {
-                        ...normalizeStandards(settings.defaults),
+                        ...normalizeStandards(defaultStandards),
                         id,
                         name: '',
                         role: '',
@@ -181,8 +181,8 @@ export function GlobalPreferences({
               </nav>
               <section className="global-editor-fields">
                 <div className="dialog-heading">
-                  <h3>{template ? '编辑岗位模板' : '通用默认标准'}</h3>
-                  {template && (
+                  <h3>{template ? '编辑岗位模板' : '请选择岗位模板'}</h3>
+                  {template && templates.length > 1 && (
                     <button
                       className="icon-button"
                       aria-label="删除当前模板"
@@ -215,16 +215,12 @@ export function GlobalPreferences({
                         })
                       }
                     />
+                    {templates.length === 1 && (
+                      <p className="small-note">至少保留一个岗位模板</p>
+                    )}
                   </>
                 ) : (
-                  <StandardsFields
-                    includeRole={false}
-                    value={settings.defaults}
-                    onChange={(defaults) => {
-                      setSettings({ ...settings, defaults });
-                      setNotice('');
-                    }}
-                  />
+                  <p className="small-note">请从左侧选择或新建岗位模板。</p>
                 )}
               </section>
             </div>
@@ -272,16 +268,32 @@ export function GlobalPreferences({
         <AlertDialogContent>
           <AlertDialogTitle>移除这个岗位模板？</AlertDialogTitle>
           <AlertDialogDescription>
-            保存全局设置后生效，历史面试不受影响。若它是默认模板，新面试将回退到通用标准。
+            保存全局设置后生效，历史面试不受影响。若它是默认模板，系统会自动选择另一个有效模板。
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                setTemplates(templates.filter((p) => p.id !== deleting));
+                const remaining = templates.filter((p) => p.id !== deleting);
+                const fallback =
+                  remaining.find(
+                    ({ id }) => id === BUILTIN_TEMPLATE_IDS.aiProductManager,
+                  ) || remaining[0];
+                if (!fallback) return;
+                setTemplates(remaining);
                 if (settings.defaultTemplateId === deleting)
-                  setSettings({ ...settings, defaultTemplateId: null });
-                setSelected('');
+                  setSettings({
+                    ...settings,
+                    defaultTemplateId: fallback.id,
+                  });
+                setSelected(
+                  settings.defaultTemplateId !== deleting &&
+                    remaining.some(
+                      ({ id }) => id === settings.defaultTemplateId,
+                    )
+                    ? settings.defaultTemplateId!
+                    : fallback.id,
+                );
                 setDeleting(null);
                 setNotice('');
               }}
