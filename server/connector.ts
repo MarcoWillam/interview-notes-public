@@ -2,6 +2,8 @@ import { parseArgs } from 'node:util';
 import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { hostname } from 'node:os';
+import { ensureWorkSampleInbox } from './work-samples/inventory.ts';
+import { cleanupStaleWorkSampleDirectories } from './work-samples/archive.ts';
 import {
   connectorRequest,
   runConnector,
@@ -51,6 +53,9 @@ try {
   const controller = new AbortController();
   process.on('SIGINT', () => controller.abort());
   process.on('SIGTERM', () => controller.abort());
+  const workSampleInbox = await ensureWorkSampleInbox();
+  await cleanupStaleWorkSampleDirectories();
+  console.log(`本地作品箱：${workSampleInbox}`);
   console.log('连接器已启动，等待属于此账号的面试评估任务。');
   await runConnector(credentials, controller.signal);
 } catch (e) {

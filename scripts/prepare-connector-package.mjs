@@ -8,6 +8,13 @@ const archive = {};
 for (const file of connectorPackageFiles)
   archive[`interview-connector/${file}`] = await readFile(join(root, file));
 
+for (const file of [
+  'node_modules/fflate/package.json',
+  'node_modules/fflate/esm/index.mjs',
+  'node_modules/fflate/LICENSE',
+])
+  archive[`interview-connector/${file}`] = await readFile(join(root, file));
+
 archive['interview-connector/package.json'] = strToU8(
   JSON.stringify(
     {
