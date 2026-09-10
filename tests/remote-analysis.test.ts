@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
   controlRemoteJob,
+  listRemoteArtifacts,
   submitRemoteAnalysis,
+  submitRemoteWorkSample,
   submitRemoteWrittenTest,
   type RemoteJob,
 } from '../lib/remote-analysis.ts';
@@ -69,6 +71,54 @@ const writtenTestResult = {
     resumeEvidence: null,
     listenFor: ['判断依据'],
     probes: ['如果假设不成立，你会如何调整？'],
+  })),
+};
+const artifact = {
+  id: 'artifact-12345678',
+  deviceId: 'device-12345678',
+  name: 'candidate.zip',
+  sha256: 'c'.repeat(64),
+  bytes: 1024,
+  modifiedAt: 123,
+};
+const workSampleInput = {
+  ...resumeInput,
+  role: 'AI 产品经理（校招）',
+  workSample: artifact,
+  existingQuestions: reading.interviewQuestions.map((question) => ({
+    ...question,
+    questionSource: question.questionSource as 'resume' | 'role',
+  })),
+};
+const workSampleResult = {
+  artifact: {
+    id: artifact.id,
+    name: artifact.name,
+    sha256: artifact.sha256,
+    bytes: artifact.bytes,
+    modifiedAt: artifact.modifiedAt,
+  },
+  coverage: { analyzed: ['brief.md'], excluded: [], unsupported: [], truncated: false },
+  summary: '作品内容待面试核实。',
+  dimensions: [
+    {
+      name: '需求分析',
+      score: 4,
+      assessment: '目标用户明确。',
+      evidence: [{ path: 'brief.md', excerpt: '目标用户是新手卖家' }],
+    },
+  ],
+  strengths: ['问题明确'],
+  risks: ['验证待核实'],
+  questions: Array.from({ length: 3 }, (_, index) => ({
+    question: `请说明作品中的第 ${index + 1} 个判断。`,
+    questionSource: 'work-sample' as const,
+    dimensions: [index === 1 ? '沟通协作' : '需求分析'],
+    reason: '核实判断过程。',
+    resumeEvidence: null,
+    workSampleEvidence: { path: 'brief.md', excerpt: '目标用户是新手卖家' },
+    listenFor: ['判断依据'],
+    probes: ['如何验证？'],
   })),
 };
 const input = {
@@ -264,6 +314,60 @@ void test('written-test supplement uses its own kind and validates the completed
       { fetcher, pollMs: 0 },
     ),
     writtenTestResult,
+  );
+});
+
+void test('artifact listing accepts only public metadata', async () => {
+  const result = await listRemoteArtifacts(async (url) => {
+    assert.equal(
+      typeof url === 'string'
+        ? url
+        : url instanceof URL
+          ? url.href
+          : url.url,
+      '/api/artifacts',
+    );
+    return Response.json({
+      artifacts: [{ ...artifact, deviceName: '作品电脑', available: true, syncedAt: 456 }],
+    });
+  });
+  assert.deepEqual(result, [
+    { ...artifact, deviceName: '作品电脑', available: true, syncedAt: 456 },
+  ]);
+  await assert.rejects(
+    listRemoteArtifacts(async () =>
+      Response.json({ artifacts: [{ ...artifact, deviceName: '电脑', available: true, syncedAt: 456, path: '/private/work.zip' }] }),
+    ),
+    /清单格式无效/,
+  );
+});
+
+void test('later work sample submission carries its hash and validates three questions', async () => {
+  const fetcher: typeof fetch = async (_url, options) => {
+    const body = JSON.parse(options?.body as string) as {
+      kind: string;
+      scope: string;
+      input: typeof workSampleInput;
+    };
+    assert.equal(body.kind, 'work-sample');
+    assert.equal(body.scope, 'interview-record-a');
+    assert.equal(body.input.workSample.sha256, artifact.sha256);
+    return Response.json({
+      id: 'work-sample-job',
+      kind: 'work-sample',
+      state: 'completed',
+      report: workSampleResult,
+    });
+  };
+  assert.deepEqual(
+    await submitRemoteWorkSample(
+      workSampleInput,
+      '张三 · 笔试作品',
+      new AbortController().signal,
+      () => {},
+      { fetcher, pollMs: 0, scope: 'interview-record-a' },
+    ),
+    workSampleResult,
   );
 });
 

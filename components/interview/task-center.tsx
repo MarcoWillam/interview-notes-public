@@ -5,6 +5,7 @@ import { Download, ListChecks, RefreshCw, X } from 'lucide-react';
 import type { Report } from '../../lib/interview';
 import type { ResumeReading } from '../../lib/resume-reading';
 import type { WrittenTestSupplementResult } from '../../lib/written-test-supplement';
+import type { WorkSampleAssessment } from '../../lib/work-sample';
 import {
   controlRemoteJob,
   remoteRequest,
@@ -27,11 +28,18 @@ import {
   type TaskCenterJob,
 } from './task-center-view';
 
-type Job = RemoteJob<Report | ResumeReading | WrittenTestSupplementResult>;
+type Job = RemoteJob<
+  Report | ResumeReading | WrittenTestSupplementResult | WorkSampleAssessment
+>;
 
 function downloadReport(job: Job) {
-  if (!job.report || !('dimensions' in job.report)) return;
-  const report = job.report;
+  if (
+    !job.report ||
+    (job.kind !== undefined && job.kind !== 'interview') ||
+    !('followUps' in job.report)
+  )
+    return;
+  const report = job.report as Report;
   const markdown = [
     `# ${job.label}`,
     '',
@@ -250,10 +258,16 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
       {job.report && 'sections' in job.report && (
         <ResumeReadingView value={job.report} />
       )}
-      {job.report && 'questions' in job.report && (
+      {job.report && job.kind === 'written-test' && 'questions' in job.report && (
         <WrittenTestSupplementView questions={job.report.questions} />
       )}
-      {job.report && 'dimensions' in job.report && (
+      {job.report && job.kind === 'work-sample' && 'dimensions' in job.report && (
+        <WorkSampleTaskResult value={job.report as WorkSampleAssessment} />
+      )}
+      {job.report &&
+        job.kind !== 'work-sample' &&
+        'dimensions' in job.report &&
+        'followUps' in job.report && (
         <>
           <p>{job.report.summary}</p>
           {job.report.dimensions.map((dimension) => (
@@ -292,5 +306,45 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
         </>
       )}
     </div>
+  );
+}
+
+function WorkSampleTaskResult({ value }: { value: WorkSampleAssessment }) {
+  return (
+    <>
+      <p>{value.summary}</p>
+      <section>
+        <h4>作品观察</h4>
+        <ul>
+          {value.strengths.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+          {value.risks.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </section>
+      <WrittenTestSupplementView questions={value.questions} />
+      <details>
+        <summary>查看维度依据与读取范围</summary>
+        {value.dimensions.map((dimension) => (
+          <section key={dimension.name}>
+            <h4>
+              {dimension.name}
+              <span>
+                {dimension.score === null ? '待面试核实' : `${dimension.score}/5`}
+              </span>
+            </h4>
+            <p>{dimension.assessment}</p>
+            {dimension.evidence.map((evidence, index) => (
+              <blockquote key={`${evidence.path}-${index}`}>
+                {evidence.path}：{evidence.excerpt}
+              </blockquote>
+            ))}
+          </section>
+        ))}
+        <p>已读取 {value.coverage.analyzed.length} 个文件。</p>
+      </details>
+    </>
   );
 }

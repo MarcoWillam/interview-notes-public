@@ -354,6 +354,7 @@ export class QueueStore {
       sha256: String(row.sha256),
       bytes: Number(row.bytes),
       modifiedAt: Number(row.modifiedAt),
+      syncedAt: Number(row.seen),
       deviceName: String(row.deviceName),
       available:
         !row.revoked &&
