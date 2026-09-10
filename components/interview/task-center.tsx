@@ -263,67 +263,71 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
       {job.report && 'sections' in job.report && (
         <ResumeReadingView value={job.report} />
       )}
-      {job.report && job.kind === 'written-test' && 'questions' in job.report && (
-        <WrittenTestSupplementView questions={job.report.questions} />
-      )}
-      {job.report && job.kind === 'work-sample' && 'dimensions' in job.report && (
-        <WorkSampleTaskResult value={job.report as WorkSampleAssessment} />
-      )}
+      {job.report &&
+        job.kind === 'written-test' &&
+        'questions' in job.report && (
+          <WrittenTestSupplementView questions={job.report.questions} />
+        )}
+      {job.report &&
+        job.kind === 'work-sample' &&
+        'dimensions' in job.report && (
+          <WorkSampleTaskResult value={job.report as WorkSampleAssessment} />
+        )}
       {job.report &&
         job.kind !== 'work-sample' &&
         'dimensions' in job.report &&
         'followUps' in job.report && (
-        <>
-          <p>{job.report.summary}</p>
-          {job.report.workSampleReview?.length ? (
-            <section>
-              <h4>作品表现（归属与过程待核实）</h4>
-              {job.report.workSampleReview.map((item, index) => (
-                <div key={`${item.status}-${index}`}>
-                  <strong>{workSampleVerificationLabels[item.status]}</strong>
-                  <p>{item.observation}</p>
-                  {item.transcriptEvidence.map((quote, quoteIndex) => (
-                    <blockquote key={quoteIndex}>{quote}</blockquote>
-                  ))}
-                </div>
-              ))}
-            </section>
-          ) : null}
-          {job.report.dimensions.map((dimension) => (
-            <section key={dimension.name}>
-              <h4>
-                {dimension.name}
-                <span>
-                  {dimension.score === null
-                    ? '证据不足'
-                    : `${dimension.score}/5`}
-                </span>
-              </h4>
-              <p>{dimension.assessment}</p>
-              {dimension.evidence.map((quote, index) => (
-                <blockquote key={index}>{quote}</blockquote>
-              ))}
-            </section>
-          ))}
-          {job.report.followUps.length > 0 && (
-            <section>
-              <h4>待核实事项</h4>
-              <ul>
-                {job.report.followUps.map((question, index) => (
-                  <li key={index}>{question}</li>
+          <>
+            <p>{job.report.summary}</p>
+            {job.report.workSampleReview?.length ? (
+              <section>
+                <h4>作品表现（归属与过程待核实）</h4>
+                {job.report.workSampleReview.map((item, index) => (
+                  <div key={`${item.status}-${index}`}>
+                    <strong>{workSampleVerificationLabels[item.status]}</strong>
+                    <p>{item.observation}</p>
+                    {item.transcriptEvidence.map((quote, quoteIndex) => (
+                      <blockquote key={quoteIndex}>{quote}</blockquote>
+                    ))}
+                  </div>
                 ))}
-              </ul>
-            </section>
-          )}
-          <button
-            className="primary-button"
-            onClick={() => downloadReport(job)}
-          >
-            <Download size={16} />
-            下载评估 Markdown
-          </button>
-        </>
-      )}
+              </section>
+            ) : null}
+            {job.report.dimensions.map((dimension) => (
+              <section key={dimension.name}>
+                <h4>
+                  {dimension.name}
+                  <span>
+                    {dimension.score === null
+                      ? '证据不足'
+                      : `${dimension.score}/5`}
+                  </span>
+                </h4>
+                <p>{dimension.assessment}</p>
+                {dimension.evidence.map((quote, index) => (
+                  <blockquote key={index}>{quote}</blockquote>
+                ))}
+              </section>
+            ))}
+            {job.report.followUps.length > 0 && (
+              <section>
+                <h4>待核实事项</h4>
+                <ul>
+                  {job.report.followUps.map((question, index) => (
+                    <li key={index}>{question}</li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            <button
+              className="primary-button"
+              onClick={() => downloadReport(job)}
+            >
+              <Download size={16} />
+              下载评估 Markdown
+            </button>
+          </>
+        )}
     </div>
   );
 }
@@ -351,7 +355,9 @@ function WorkSampleTaskResult({ value }: { value: WorkSampleAssessment }) {
             <h4>
               {dimension.name}
               <span>
-                {dimension.score === null ? '待面试核实' : `${dimension.score}/5`}
+                {dimension.score === null
+                  ? '待面试核实'
+                  : `${dimension.score}/5`}
               </span>
             </h4>
             <p>{dimension.assessment}</p>

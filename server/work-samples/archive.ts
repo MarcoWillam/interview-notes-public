@@ -27,7 +27,11 @@ type ZipEntry = {
 function inspectZip(bytes: Uint8Array): ZipEntry[] {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let eocd = -1;
-  for (let offset = bytes.length - 22; offset >= Math.max(0, bytes.length - 65557); offset--) {
+  for (
+    let offset = bytes.length - 22;
+    offset >= Math.max(0, bytes.length - 65557);
+    offset--
+  ) {
     if (view.getUint32(offset, true) === 0x06054b50) {
       eocd = offset;
       break;
@@ -40,7 +44,10 @@ function inspectZip(bytes: Uint8Array): ZipEntry[] {
   const decoder = new TextDecoder('utf-8', { fatal: true });
   const entries: ZipEntry[] = [];
   for (let index = 0; index < count; index++) {
-    if (offset + 46 > bytes.length || view.getUint32(offset, true) !== 0x02014b50)
+    if (
+      offset + 46 > bytes.length ||
+      view.getUint32(offset, true) !== 0x02014b50
+    )
       throw new Error('ZIP 目录结构无效。');
     const nameLength = view.getUint16(offset + 28, true);
     const extraLength = view.getUint16(offset + 30, true);
@@ -86,7 +93,15 @@ function excludedPath(path: string) {
   const base = parts.at(-1)!;
   return (
     parts.some((part) =>
-      ['.git', 'node_modules', 'dist', 'build', 'coverage', '.next', '.cache'].includes(part),
+      [
+        '.git',
+        'node_modules',
+        'dist',
+        'build',
+        'coverage',
+        '.next',
+        '.cache',
+      ].includes(part),
     ) ||
     base === '.env' ||
     base.startsWith('.env.') ||
@@ -132,7 +147,8 @@ export async function extractWorkSample(
     if (entry.flags & 1) throw new Error('不支持加密 ZIP。');
     const unixType = (entry.external >>> 16) & 0o170000;
     if (unixType === 0o120000) throw new Error('ZIP 不能包含链接。');
-    if (![0, 8].includes(entry.method)) throw new Error('ZIP 使用了不支持的压缩方式。');
+    if (![0, 8].includes(entry.method))
+      throw new Error('ZIP 使用了不支持的压缩方式。');
     expanded += entry.original;
     if (expanded > MAX_EXPANDED_BYTES)
       throw new Error('ZIP 解压后不能超过 300 MB。');
@@ -179,10 +195,16 @@ export async function cleanupStaleWorkSampleDirectories(
   olderThan = Date.now() - 24 * 60 * 60 * 1000,
 ) {
   for (const entry of await readdir(root, { withFileTypes: true })) {
-    if (!entry.isDirectory() || !entry.name.startsWith('interview-work-sample-'))
+    if (
+      !entry.isDirectory() ||
+      !entry.name.startsWith('interview-work-sample-')
+    )
       continue;
     const path = join(root, entry.name);
-    const info = await import('node:fs/promises').then(({ stat }) => stat(path));
-    if (info.mtimeMs < olderThan) await rm(path, { recursive: true, force: true });
+    const info = await import('node:fs/promises').then(({ stat }) =>
+      stat(path),
+    );
+    if (info.mtimeMs < olderThan)
+      await rm(path, { recursive: true, force: true });
   }
 }

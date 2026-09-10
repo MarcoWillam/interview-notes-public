@@ -156,7 +156,9 @@ export default function Home({
     null,
   );
   const [workSampleJobId, setWorkSampleJobId] = useState<string | undefined>();
-  const [workSampleArtifacts, setWorkSampleArtifacts] = useState<RemoteArtifact[]>([]);
+  const [workSampleArtifacts, setWorkSampleArtifacts] = useState<
+    RemoteArtifact[]
+  >([]);
   const [workSampleLoading, setWorkSampleLoading] = useState(false);
   const [workSampleError, setWorkSampleError] = useState('');
   const [lateWorkSampleOpen, setLateWorkSampleOpen] = useState(false);
@@ -365,7 +367,9 @@ export default function Home({
       setResumeText(saved.resumeText || '');
       setResumeName(saved.resumeName || '');
       setResumeReading(saved.resumeReading || null);
-      setWorkSample(saved.workSample || saved.resumeReading?.workSample || null);
+      setWorkSample(
+        saved.workSample || saved.resumeReading?.workSample || null,
+      );
       setWorkSampleJobId(saved.workSampleJobId);
       setResumeBodyOpen(false);
       setTranscript(saved.transcript);
@@ -382,12 +386,7 @@ export default function Home({
     reset,
   );
   useEffect(() => {
-    if (
-      !library.ready ||
-      !workSampleJobId ||
-      workSample ||
-      busyRef.current
-    )
+    if (!library.ready || !workSampleJobId || workSample || busyRef.current)
       return;
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -403,7 +402,9 @@ export default function Home({
             (artifact) => artifact.id === job.artifactId,
           );
           if (!reference)
-            throw new Error('已完成的作品文件信息已过期，请从任务中心查看结果。');
+            throw new Error(
+              '已完成的作品文件信息已过期，请从任务中心查看结果。',
+            );
           const result = validateWorkSampleAssessment(job.report, {
             reference,
             dimensionText,
@@ -1539,7 +1540,7 @@ export default function Home({
                           ? 'Codex 正在生成 3 道笔试复盘补充题。可以关闭网页，稍后从任务中心查看结果。'
                           : busy === 'work-sample'
                             ? 'Codex 正在只读分析笔试作品。可以关闭网页，稍后从任务中心查看结果。'
-                          : '电脑正在分析。可以关闭网页，稍后从评估任务查看结果。'
+                            : '电脑正在分析。可以关闭网页，稍后从评估任务查看结果。'
                       : remoteJob
                         ? '任务已提交，等待已配对的电脑领取。电脑离线时也会保留任务。'
                         : '正在提交评估任务…'
@@ -1888,16 +1889,20 @@ export default function Home({
                               </div>
                               {report.workSampleReview.map((item, index) => (
                                 <article key={`${item.status}-${index}`}>
-                                  <span className={`work-verification-status ${item.status}`}>
+                                  <span
+                                    className={`work-verification-status ${item.status}`}
+                                  >
                                     {workSampleVerificationLabels[item.status]}
                                   </span>
                                   <p>{item.observation}</p>
-                                  {item.transcriptEvidence.map((quote, quoteIndex) => (
-                                    <blockquote key={quoteIndex}>
-                                      <span>对话依据</span>
-                                      {quote}
-                                    </blockquote>
-                                  ))}
+                                  {item.transcriptEvidence.map(
+                                    (quote, quoteIndex) => (
+                                      <blockquote key={quoteIndex}>
+                                        <span>对话依据</span>
+                                        {quote}
+                                      </blockquote>
+                                    ),
+                                  )}
                                 </article>
                               ))}
                             </section>
@@ -2243,9 +2248,7 @@ export default function Home({
                         checked={pendingResumeOutline.writtenTest === true}
                         onChange={() =>
                           setPendingResumeOutline((current) =>
-                            current
-                              ? { ...current, writtenTest: true }
-                              : null,
+                            current ? { ...current, writtenTest: true } : null,
                           )
                         }
                       />

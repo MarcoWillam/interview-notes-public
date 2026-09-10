@@ -5,7 +5,13 @@ import { readFile } from 'node:fs/promises';
 void test('AI PM outline preflight offers a local ZIP or no-artifact fallback', async () => {
   const [page, picker] = await Promise.all([
     readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
-    readFile(new URL('../components/interview/work-sample-picker.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL(
+        '../components/interview/work-sample-picker.tsx',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
   ]);
   assert.match(page, /listRemoteArtifacts/);
   assert.match(page, /<WorkSamplePicker/);
@@ -20,8 +26,17 @@ void test('AI PM outline preflight offers a local ZIP or no-artifact fallback', 
 void test('locked AI PM outline offers one later submission and renders a collapsed evidence view', async () => {
   const [page, reading, view] = await Promise.all([
     readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
-    readFile(new URL('../components/interview/resume-reading-view.tsx', import.meta.url), 'utf8'),
-    readFile(new URL('../components/interview/work-sample-view.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL(
+        '../components/interview/resume-reading-view.tsx',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+    readFile(
+      new URL('../components/interview/work-sample-view.tsx', import.meta.url),
+      'utf8',
+    ),
   ]);
   assert.match(page, /canSubmitWorkSample/);
   assert.match(page, /submitRemoteWorkSample/);
@@ -35,8 +50,20 @@ void test('locked AI PM outline offers one later submission and renders a collap
 
 void test('work sample success synchronizes the compact interview status', async () => {
   const [summary, preparation] = await Promise.all([
-    readFile(new URL('../components/interview/interview-session-summary.tsx', import.meta.url), 'utf8'),
-    readFile(new URL('../components/interview/interview-preparation.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL(
+        '../components/interview/interview-session-summary.tsx',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+    readFile(
+      new URL(
+        '../components/interview/interview-preparation.tsx',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
   ]);
   assert.match(summary, /作品已分析/);
   assert.match(preparation, /作品已分析/);

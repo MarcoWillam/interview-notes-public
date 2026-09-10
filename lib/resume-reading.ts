@@ -22,7 +22,10 @@ import {
   type WorkSampleReference,
 } from './work-sample.ts';
 
-export type { InterviewQuestion, QuestionSource } from './interview-questions.ts';
+export type {
+  InterviewQuestion,
+  QuestionSource,
+} from './interview-questions.ts';
 
 export type ResumeInput = InterviewStandards & {
   resumeText: string;

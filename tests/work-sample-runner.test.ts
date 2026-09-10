@@ -26,14 +26,23 @@ const artifactBase = {
   bytes: 1,
   modifiedAt: 123,
 };
-const question = (index: number, source: 'resume' | 'role' | 'work-sample') => ({
+const question = (
+  index: number,
+  source: 'resume' | 'role' | 'work-sample',
+) => ({
   question: `第 ${index + 1} 题：请说明你的具体判断、行动和复盘。`,
   questionSource: source,
   dimensions: [index === 1 ? '方案取舍' : '问题定义'],
-  reason: index === 0 ? '核实主动发现问题和推动行动的自驱力。' : '核实方案判断。',
+  reason:
+    index === 0 ? '核实主动发现问题和推动行动的自驱力。' : '核实方案判断。',
   resumeEvidence: source === 'resume' ? '我主动访谈了五位用户。' : null,
   ...(source === 'work-sample'
-    ? { workSampleEvidence: { path: 'docs/brief.md', excerpt: '目标用户是新手卖家' } }
+    ? {
+        workSampleEvidence: {
+          path: 'docs/brief.md',
+          excerpt: '目标用户是新手卖家',
+        },
+      }
     : {}),
   listenFor: ['判断依据'],
   probes: ['如果假设不成立会如何调整？'],
@@ -56,7 +65,9 @@ async function fixture() {
   };
 }
 
-function assessment(reference: Awaited<ReturnType<typeof fixture>>['reference']) {
+function assessment(
+  reference: Awaited<ReturnType<typeof fixture>>['reference'],
+) {
   const questions = [1, 2, 3].map((index) => ({
     ...question(index, 'work-sample'),
     question: `作品复盘第 ${index} 题：请说明文件中的具体判断和取舍。`,
@@ -114,7 +125,12 @@ void test('initial analysis combines resume reading with three file-backed quest
       workSample: work,
     };
     const result = await readResumeAndWorkSampleWithCodex(
-      { ...standards, resumeText, hasWrittenTest: true, workSample: f.reference },
+      {
+        ...standards,
+        resumeText,
+        hasWrittenTest: true,
+        workSample: f.reference,
+      },
       f.zip,
       new AbortController().signal,
       {
@@ -130,7 +146,10 @@ void test('initial analysis combines resume reading with three file-backed quest
       result.interviewQuestions?.slice(1, 4).map((item) => item.questionSource),
       ['work-sample', 'work-sample', 'work-sample'],
     );
-    assert.equal(result.workSample?.coverage.analyzed.includes('docs/brief.md'), true);
+    assert.equal(
+      result.workSample?.coverage.analyzed.includes('docs/brief.md'),
+      true,
+    );
     await assert.rejects(() => readdir(extraction));
   } finally {
     await f.cleanup();
@@ -144,7 +163,10 @@ void test('later analysis returns three grounded questions and rejects fabricate
       ...standards,
       resumeText,
       workSample: f.reference,
-      existingQuestions: [question(0, 'resume'), ...[1, 2, 3, 4, 5].map((i) => question(i, 'role'))],
+      existingQuestions: [
+        question(0, 'resume'),
+        ...[1, 2, 3, 4, 5].map((i) => question(i, 'role')),
+      ],
     };
     const valid = assessment(f.reference);
     const result = await analyzeWorkSampleWithCodex(
@@ -159,7 +181,10 @@ void test('later analysis returns three grounded questions and rejects fabricate
         runStructured: async () => ({
           ...valid,
           dimensions: [
-            { ...valid.dimensions[0], evidence: [{ path: 'docs/brief.md', excerpt: '不存在的原文' }] },
+            {
+              ...valid.dimensions[0],
+              evidence: [{ path: 'docs/brief.md', excerpt: '不存在的原文' }],
+            },
           ],
         }),
       }),
@@ -180,11 +205,19 @@ void test('changed work sample fails before Codex is called', async () => {
           ...standards,
           resumeText,
           workSample: { ...f.reference, sha256: 'f'.repeat(64) },
-          existingQuestions: [question(0, 'resume'), ...[1, 2, 3, 4, 5].map((i) => question(i, 'role'))],
+          existingQuestions: [
+            question(0, 'resume'),
+            ...[1, 2, 3, 4, 5].map((i) => question(i, 'role')),
+          ],
         },
         f.zip,
         new AbortController().signal,
-        { runStructured: async () => { called = true; return {}; } },
+        {
+          runStructured: async () => {
+            called = true;
+            return {};
+          },
+        },
       ),
       /发生变化/,
     );
@@ -204,7 +237,10 @@ void test('aborting work analysis removes the extracted directory', async () => 
         ...standards,
         resumeText,
         workSample: f.reference,
-        existingQuestions: [question(0, 'resume'), ...[1, 2, 3, 4, 5].map((i) => question(i, 'role'))],
+        existingQuestions: [
+          question(0, 'resume'),
+          ...[1, 2, 3, 4, 5].map((i) => question(i, 'role')),
+        ],
       },
       f.zip,
       controller.signal,
@@ -212,7 +248,9 @@ void test('aborting work analysis removes the extracted directory', async () => 
         createDirectory: async () => extraction,
         runStructured: async (_input, signal) =>
           new Promise((_resolve, reject) => {
-            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+            signal.addEventListener('abort', () => reject(signal.reason), {
+              once: true,
+            });
           }),
       },
     );

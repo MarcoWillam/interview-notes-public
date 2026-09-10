@@ -208,9 +208,7 @@ export class QueueStore {
   }
   newSession(user: string) {
     if (
-      !this.db
-        .prepare('SELECT 1 FROM users WHERE id=? AND active=1')
-        .get(user)
+      !this.db.prepare('SELECT 1 FROM users WHERE id=? AND active=1').get(user)
     )
       throw new QueueError('账号或密码错误。', 401);
     const value = token();
@@ -233,9 +231,7 @@ export class QueueStore {
   }
   pairing(user: string) {
     if (
-      !this.db
-        .prepare('SELECT 1 FROM users WHERE id=? AND active=1')
-        .get(user)
+      !this.db.prepare('SELECT 1 FROM users WHERE id=? AND active=1').get(user)
     )
       throw new QueueError('账号已停用。', 403);
     this.db
@@ -329,7 +325,9 @@ export class QueueStore {
           artifact.modifiedAt,
           now,
         );
-      this.db.prepare('UPDATE devices SET seen=? WHERE id=?').run(now, device.id);
+      this.db
+        .prepare('UPDATE devices SET seen=? WHERE id=?')
+        .run(now, device.id);
       this.db.exec('COMMIT');
       return artifacts;
     } catch (error) {
@@ -376,7 +374,9 @@ export class QueueStore {
         "UPDATE jobs SET state='failed',input=NULL,error='保存作品的电脑已解除配对，请重新选择作品。',device=NULL,lease=NULL,until=NULL,updated=? WHERE targetDevice=? AND user=? AND state IN ('queued','running','paused')",
       )
       .run(this.now(), id, user);
-    this.db.prepare('DELETE FROM artifacts WHERE device=? AND user=?').run(id, user);
+    this.db
+      .prepare('DELETE FROM artifacts WHERE device=? AND user=?')
+      .run(id, user);
   }
   sweep() {
     const now = this.now();
@@ -422,10 +422,10 @@ export class QueueStore {
             : kind === 'work-sample'
               ? validateWorkSampleInput(value)
               : kind === 'interview'
-              ? validateInput(value)
-              : (() => {
-                  throw new QueueError('作品评估任务尚未包含有效输入。');
-                })(),
+                ? validateInput(value)
+                : (() => {
+                    throw new QueueError('作品评估任务尚未包含有效输入。');
+                  })(),
       input = JSON.stringify(validatedInput),
       digest = hash(kind + (scope ? '\n' + scope + '\n' : '') + input),
       safeLabel = label.slice(0, 100) || '未命名面试';
@@ -451,7 +451,10 @@ export class QueueStore {
           workSample.modifiedAt,
         ) as Row | undefined;
       if (!artifact || Number(artifact.seen) <= this.now() - 45000)
-        throw new QueueError('所选笔试作品已离线或发生变化，请刷新作品清单。', 409);
+        throw new QueueError(
+          '所选笔试作品已离线或发生变化，请刷新作品清单。',
+          409,
+        );
       targetDevice = String(artifact.device);
       artifactId = String(artifact.id);
     }
@@ -512,7 +515,9 @@ export class QueueStore {
     if (!row) throw new QueueError('任务不存在。', 404);
     const target = row.targetDevice
       ? (this.db
-          .prepare('SELECT name,seen,ready,revoked FROM devices WHERE id=? AND user=?')
+          .prepare(
+            'SELECT name,seen,ready,revoked FROM devices WHERE id=? AND user=?',
+          )
           .get(row.targetDevice, user) as Row | undefined)
       : undefined;
     return {
@@ -525,7 +530,9 @@ export class QueueStore {
       queuedAt: Number(row.queued),
       startedAt: row.started === null ? null : Number(row.started),
       position:
-        row.state === 'queued' ? this.queuePosition(user, String(row.id)) : null,
+        row.state === 'queued'
+          ? this.queuePosition(user, String(row.id))
+          : null,
       error: row.error,
       report: row.report ? (JSON.parse(String(row.report)) as unknown) : null,
       artifactId: row.artifactId ? String(row.artifactId) : null,
@@ -558,24 +565,39 @@ export class QueueStore {
         .all(user) as Row[]
     ).map((row) => {
       const target = row.targetDevice
-        ? (this.db.prepare('SELECT name,seen,ready,revoked FROM devices WHERE id=? AND user=?').get(row.targetDevice, user) as Row | undefined)
+        ? (this.db
+            .prepare(
+              'SELECT name,seen,ready,revoked FROM devices WHERE id=? AND user=?',
+            )
+            .get(row.targetDevice, user) as Row | undefined)
         : undefined;
       return {
-        id: String(row.id), label: String(row.label), kind: String(row.kind),
-        state: String(row.state), created: Number(row.created), updated: Number(row.updated),
-        queuedAt: Number(row.queued), startedAt: row.started === null ? null : Number(row.started),
-        position: row.state === 'queued' ? this.queuePosition(user, String(row.id)) : null,
-        error: row.error, artifactId: row.artifactId ? String(row.artifactId) : null,
+        id: String(row.id),
+        label: String(row.label),
+        kind: String(row.kind),
+        state: String(row.state),
+        created: Number(row.created),
+        updated: Number(row.updated),
+        queuedAt: Number(row.queued),
+        startedAt: row.started === null ? null : Number(row.started),
+        position:
+          row.state === 'queued'
+            ? this.queuePosition(user, String(row.id))
+            : null,
+        error: row.error,
+        artifactId: row.artifactId ? String(row.artifactId) : null,
         targetDeviceName: target ? String(target.name) : null,
-        waitingForDevice: row.state === 'queued' && !!row.targetDevice && (!target || !!target.revoked || !target.ready || Number(target.seen) <= this.now() - 45000),
+        waitingForDevice:
+          row.state === 'queued' &&
+          !!row.targetDevice &&
+          (!target ||
+            !!target.revoked ||
+            !target.ready ||
+            Number(target.seen) <= this.now() - 45000),
       };
     });
   }
-  action(
-    user: string,
-    id: string,
-    action: 'pause' | 'resume' | 'stop',
-  ) {
+  action(user: string, id: string, action: 'pause' | 'resume' | 'stop') {
     this.sweep();
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -623,11 +645,7 @@ export class QueueStore {
   cancel(user: string, id: string) {
     return this.action(user, id, 'stop');
   }
-  claim(
-    secret: string,
-    ready: boolean,
-    kinds: JobKind[] = ['interview'],
-  ) {
+  claim(secret: string, ready: boolean, kinds: JobKind[] = ['interview']) {
     this.sweep();
     const device = this.device(secret);
     this.db
@@ -686,9 +704,7 @@ export class QueueStore {
     this.sweep();
     const device = this.device(secret);
     const job = this.db
-      .prepare(
-        'SELECT * FROM jobs WHERE id=? AND user=?',
-      )
+      .prepare('SELECT * FROM jobs WHERE id=? AND user=?')
       .get(id, device.user) as Row | undefined;
     if (!job) throw new QueueError('任务不属于此连接器。', 403);
     if (job.state === 'completed' || job.state === 'failed') {
@@ -704,14 +720,16 @@ export class QueueStore {
     if (failed) {
       const messages: Record<string, string> = {
         'artifact-missing': '本地笔试作品未找到，请放回原 ZIP 后重新提交。',
-        'artifact-changed': '本地笔试作品已发生变化，请刷新作品清单后重新选择。',
-        'artifact-invalid': '笔试作品 ZIP 无法安全读取，请检查文件内容后重新提交。',
+        'artifact-changed':
+          '本地笔试作品已发生变化，请刷新作品清单后重新选择。',
+        'artifact-invalid':
+          '笔试作品 ZIP 无法安全读取，请检查文件内容后重新提交。',
         validation: '作品评估的引用或结构校验失败，请重新提交。',
         codex: '本地 Codex 未完成分析，请检查登录、网络或使用额度后重新提交。',
       };
-      error = messages[typeof failure === 'string' ? failure : ''] || messages.codex;
-    }
-    else {
+      error =
+        messages[typeof failure === 'string' ? failure : ''] || messages.codex;
+    } else {
       try {
         const storedInput = JSON.parse(String(job.input)) as unknown;
         report = JSON.stringify(
@@ -725,12 +743,13 @@ export class QueueStore {
               : job.kind === 'work-sample'
                 ? validateWorkSampleAssessment(result, {
                     reference: validateWorkSampleInput(storedInput).workSample,
-                    dimensionText: validateWorkSampleInput(storedInput).dimensionText,
+                    dimensionText:
+                      validateWorkSampleInput(storedInput).dimensionText,
                     questionCount: 3,
                     existingQuestions:
                       validateWorkSampleInput(storedInput).existingQuestions,
                   })
-              : validateReport(result, validateInput(storedInput)),
+                : validateReport(result, validateInput(storedInput)),
         );
       } catch {
         error = '评估引用或结构校验失败，请核实后重新提交。';

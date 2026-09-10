@@ -140,7 +140,9 @@ void test('legacy user tables gain active status without changing existing login
         'legacy-id',
         'legacy-user',
         salt,
-        Buffer.from(scryptSync('legacy-password-123', salt, 32)).toString('hex'),
+        Buffer.from(scryptSync('legacy-password-123', salt, 32)).toString(
+          'hex',
+        ),
       );
     legacy.close();
 
@@ -171,7 +173,9 @@ void test('disabling an account revokes every session, connector and unfinished 
     assert.equal(s.get(a, running.id).state, 'failed');
     assert.equal(s.get(a, queued.id).state, 'failed');
     assert.equal(
-      s.db.prepare('SELECT input FROM jobs WHERE user=? AND input IS NOT NULL').get(a),
+      s.db
+        .prepare('SELECT input FROM jobs WHERE user=? AND input IS NOT NULL')
+        .get(a),
       undefined,
     );
     assert.deepEqual(s.listUsers()[0], { username: 'alice', active: false });
@@ -267,7 +271,12 @@ void test('work sample inventory is account isolated and binds resume work to it
     const reference = { ...workSample, deviceId: target.id };
     s.syncArtifacts(target.token, [reference]);
     assert.deepEqual(s.artifacts(a), [
-      { ...reference, syncedAt: 1000000, deviceName: '作品电脑', available: true },
+      {
+        ...reference,
+        syncedAt: 1000000,
+        deviceName: '作品电脑',
+        available: true,
+      },
     ]);
     assert.deepEqual(s.artifacts(b), []);
     assert.throws(() =>
@@ -303,18 +312,32 @@ void test('work sample inventory is account isolated and binds resume work to it
 });
 
 void test('legacy job databases gain artifact binding columns without losing work', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'interview-artifact-migration-'));
+  const directory = await mkdtemp(
+    join(tmpdir(), 'interview-artifact-migration-'),
+  );
   const file = join(directory, 'queue.sqlite');
   try {
     const legacy = new DatabaseSync(file);
-    legacy.exec(`CREATE TABLE jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,kind TEXT NOT NULL DEFAULT 'interview',queued INTEGER,started INTEGER,UNIQUE(user,client));`);
-    legacy.prepare("INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued) VALUES('job','user','client','hash','历史任务','queued','{}',100,200,'interview',100)").run();
+    legacy.exec(
+      `CREATE TABLE jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,kind TEXT NOT NULL DEFAULT 'interview',queued INTEGER,started INTEGER,UNIQUE(user,client));`,
+    );
+    legacy
+      .prepare(
+        "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued) VALUES('job','user','client','hash','历史任务','queued','{}',100,200,'interview',100)",
+      )
+      .run();
     legacy.close();
     const migrated = new QueueStore(file);
-    const columns = migrated.db.prepare('PRAGMA table_info(jobs)').all() as { name: string }[];
+    const columns = migrated.db.prepare('PRAGMA table_info(jobs)').all() as {
+      name: string;
+    }[];
     assert.ok(columns.some((column) => column.name === 'targetDevice'));
     assert.ok(columns.some((column) => column.name === 'artifactId'));
-    assert.equal(migrated.db.prepare('SELECT label FROM jobs WHERE id=?').get('job')?.label, '历史任务');
+    assert.equal(
+      migrated.db.prepare('SELECT label FROM jobs WHERE id=?').get('job')
+        ?.label,
+      '历史任务',
+    );
     migrated.close();
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -418,7 +441,10 @@ void test('running work can pause, reject its old lease, and resume from the que
     assert.equal(paused.state, 'paused');
     assert.equal(paused.startedAt, 1000000);
     assert.equal(s.heartbeat(d.token, job.id, claim.lease).active, false);
-    assert.equal(s.finish(d.token, job.id, claim.lease, report).accepted, false);
+    assert.equal(
+      s.finish(d.token, job.id, claim.lease, report).accepted,
+      false,
+    );
 
     tick(5000);
     const resumed = s.action(a, job.id, 'resume');
@@ -442,15 +468,18 @@ void test('stop clears queued material and task ownership irreversibly', () => {
         'SELECT input,report,error,device,lease,until,started FROM jobs WHERE id=?',
       )
       .get(job.id) as Record<string, unknown>;
-    assert.deepEqual({ ...row }, {
-      input: null,
-      report: null,
-      error: null,
-      device: null,
-      lease: null,
-      until: null,
-      started: null,
-    });
+    assert.deepEqual(
+      { ...row },
+      {
+        input: null,
+        report: null,
+        error: null,
+        device: null,
+        lease: null,
+        until: null,
+        started: null,
+      },
+    );
     assert.throws(() => s.action(a, job.id, 'resume'), /不能恢复/);
   } finally {
     s.close();
@@ -482,7 +511,9 @@ void test('legacy jobs gain queue timing without losing their state', async () =
   const file = join(directory, 'queue.sqlite');
   try {
     const legacy = new DatabaseSync(file);
-    legacy.exec(`CREATE TABLE jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,kind TEXT NOT NULL DEFAULT 'interview',UNIQUE(user,client));`);
+    legacy.exec(
+      `CREATE TABLE jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,kind TEXT NOT NULL DEFAULT 'interview',UNIQUE(user,client));`,
+    );
     legacy
       .prepare(
         "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind) VALUES('job','user','client','hash','历史任务','queued','{}',100,200,'interview')",
@@ -824,7 +855,12 @@ void test('later work sample jobs stay device-bound and store a structurally val
         bytes: reference.bytes,
         modifiedAt: reference.modifiedAt,
       },
-      coverage: { analyzed: ['brief.md'], excluded: [], unsupported: [], truncated: false },
+      coverage: {
+        analyzed: ['brief.md'],
+        excluded: [],
+        unsupported: [],
+        truncated: false,
+      },
       summary: '作品提出明确目标用户，完成过程仍待面试核实。',
       dimensions: [
         {

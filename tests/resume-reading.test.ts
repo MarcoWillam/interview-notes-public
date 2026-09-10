@@ -71,8 +71,7 @@ const structuredResult = {
     ][index],
     reason: index === 3 ? '核实自驱力与具体行为' : '核实岗位相关行动和结果',
     resumeEvidence: index === 0 ? '曾负责用户访谈，访谈了五位用户。' : null,
-    questionSource:
-      index === 0 ? ('resume' as const) : ('role' as const),
+    questionSource: index === 0 ? ('resume' as const) : ('role' as const),
     listenFor: ['个人行动', '可核实的结果'],
     probes:
       index === 0
@@ -156,8 +155,7 @@ void test('an attached work sample grounds questions two through four', () => {
             : question.questionSource,
         resumeEvidence:
           index >= 1 && index <= 3 ? null : question.resumeEvidence,
-        workSampleEvidence:
-          index >= 1 && index <= 3 ? workEvidence : undefined,
+        workSampleEvidence: index >= 1 && index <= 3 ? workEvidence : undefined,
       }),
     ),
   };
@@ -430,7 +428,9 @@ void test('markdown appends three written-test questions after the original outl
     ...structuredResult,
     writtenTestSupplement: supplementQuestions,
   });
-  assert.ok(markdown.indexOf('## 面试提纲') < markdown.indexOf('## 笔试复盘补充'));
+  assert.ok(
+    markdown.indexOf('## 面试提纲') < markdown.indexOf('## 笔试复盘补充'),
+  );
   assert.deepEqual(
     [...markdown.matchAll(/^### (\d+)\. /gm)].map((match) => match[1]),
     ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
@@ -536,9 +536,13 @@ void test('reading view shows six core questions with evidence and native collap
     assert.ok(visible.includes(`${index + 1}. ${q.question}`));
     for (const dimension of q.dimensions)
       assert.ok(visible.includes(dimension));
-    assert.ok(visible.includes(q.questionSource === 'resume' ? '简历经历' : '岗位通用'));
+    assert.ok(
+      visible.includes(q.questionSource === 'resume' ? '简历经历' : '岗位通用'),
+    );
     if (q.resumeEvidence !== null)
-      assert.ok(visible.includes(`<blockquote>${q.resumeEvidence}</blockquote>`));
+      assert.ok(
+        visible.includes(`<blockquote>${q.resumeEvidence}</blockquote>`),
+      );
     for (const item of [q.reason, ...q.listenFor, ...q.probes])
       assert.ok(details.includes(item));
   });

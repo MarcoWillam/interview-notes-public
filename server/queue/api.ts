@@ -239,11 +239,7 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
           if (!['pause', 'resume', 'stop'].includes(action))
             throw new QueueError('任务操作无效。');
           return json(
-            store.action(
-              user.id,
-              id,
-              action as 'pause' | 'resume' | 'stop',
-            ),
+            store.action(user.id, id, action as 'pause' | 'resume' | 'stop'),
           );
         }
         if (method === 'GET') return json(store.get(user.id, id));

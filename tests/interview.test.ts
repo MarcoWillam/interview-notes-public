@@ -242,7 +242,10 @@ void test('work-sample observations are verified only against interview transcri
       },
     ],
   } as const;
-  assert.deepEqual(validateReport(reviewed, withWork).workSampleReview, reviewed.workSampleReview);
+  assert.deepEqual(
+    validateReport(reviewed, withWork).workSampleReview,
+    reviewed.workSampleReview,
+  );
   assert.throws(() =>
     validateReport(
       {
@@ -305,5 +308,8 @@ void test('Markdown separates work observations from candidate dimension ratings
   const markdown = exportMarkdown('张三', withWork, reviewed, '', false);
   assert.ok(markdown.includes('## 作品表现（归属与过程待核实）'));
   assert.ok(markdown.includes('面试中已验证'));
-  assert.ok(markdown.indexOf('作品表现（归属与过程待核实）') < markdown.indexOf('### 专业能力'));
+  assert.ok(
+    markdown.indexOf('作品表现（归属与过程待核实）') <
+      markdown.indexOf('### 专业能力'),
+  );
 });

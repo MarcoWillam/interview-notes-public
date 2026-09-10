@@ -40,13 +40,7 @@ export type RemoteJob<T = Report> = {
   kind?: 'interview' | 'resume' | 'written-test' | 'work-sample';
   id: string;
   label: string;
-  state:
-    | 'queued'
-    | 'running'
-    | 'paused'
-    | 'completed'
-    | 'failed'
-    | 'cancelled';
+  state: 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
   created: number;
   updated: number;
   queuedAt?: number;
@@ -102,7 +96,11 @@ export function controlRemoteJob(
   );
 }
 async function submitRemoteTask<T>(
-  input: InterviewInput | ResumeInput | WrittenTestSupplementInput | WorkSampleInput,
+  input:
+    | InterviewInput
+    | ResumeInput
+    | WrittenTestSupplementInput
+    | WorkSampleInput,
   kind: 'interview' | 'resume' | 'written-test' | 'work-sample',
   validateResult: (value: unknown) => T,
   label: string,
@@ -215,7 +213,8 @@ export async function listRemoteArtifacts(
   if (!Array.isArray(result.artifacts) || result.artifacts.length > 100)
     throw new Error('作品清单格式无效。');
   return result.artifacts.map((value) => {
-    if (!value || typeof value !== 'object') throw new Error('作品清单格式无效。');
+    if (!value || typeof value !== 'object')
+      throw new Error('作品清单格式无效。');
     const item = value as Record<string, unknown>;
     const allowed = new Set([
       'id',
@@ -235,9 +234,9 @@ export async function listRemoteArtifacts(
       typeof item.deviceName !== 'string' ||
       !item.deviceName.trim() ||
       item.deviceName.length > 80 ||
-      typeof item.available !== 'boolean'
-      || !Number.isSafeInteger(item.syncedAt)
-      || Number(item.syncedAt) < 0
+      typeof item.available !== 'boolean' ||
+      !Number.isSafeInteger(item.syncedAt) ||
+      Number(item.syncedAt) < 0
     )
       throw new Error('作品清单格式无效。');
     return {

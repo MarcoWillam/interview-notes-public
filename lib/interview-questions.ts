@@ -1,8 +1,4 @@
-export type QuestionSource =
-  | 'resume'
-  | 'written-test'
-  | 'work-sample'
-  | 'role';
+export type QuestionSource = 'resume' | 'written-test' | 'work-sample' | 'role';
 
 export type WorkSampleEvidence = {
   path: string;
@@ -48,9 +44,7 @@ export function safeWorkSamplePath(value: unknown): string {
   return path;
 }
 
-export function validateWorkSampleEvidence(
-  value: unknown,
-): WorkSampleEvidence {
+export function validateWorkSampleEvidence(value: unknown): WorkSampleEvidence {
   if (!value || typeof value !== 'object')
     throw new Error('作品证据格式不正确。');
   const evidence = value as Record<string, unknown>;
@@ -82,9 +76,7 @@ export function validateQuestionItems(
       throw new Error('面试问题来源不正确。');
     const dimensions = stringList(question.dimensions, 1, 2, 60);
     if (
-      dimensions.some((dimension) =>
-        !options.allowedDimensions.has(dimension),
-      )
+      dimensions.some((dimension) => !options.allowedDimensions.has(dimension))
     )
       throw new Error('面试问题包含未知评估维度。');
     const resumeEvidence = question.resumeEvidence;

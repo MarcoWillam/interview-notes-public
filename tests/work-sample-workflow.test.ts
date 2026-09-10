@@ -23,7 +23,10 @@ const question = (index: number, source: 'role' | 'work-sample' = 'role') => ({
 });
 const reading: ResumeReading = {
   summary: '待核实',
-  sections: ['教育背景', '工作经历', '项目经验', '技能'].map((name) => ({ name, items: [] })),
+  sections: ['教育背景', '工作经历', '项目经验', '技能'].map((name) => ({
+    name,
+    items: [],
+  })),
   followUps: [],
   interviewQuestions: Array.from({ length: 6 }, (_, index) => question(index)),
 };
@@ -35,7 +38,12 @@ const workSample: WorkSampleAssessment = {
     bytes: 1024,
     modifiedAt: 123,
   },
-  coverage: { analyzed: ['brief.md'], excluded: [], unsupported: [], truncated: false },
+  coverage: {
+    analyzed: ['brief.md'],
+    excluded: [],
+    unsupported: [],
+    truncated: false,
+  },
   summary: '作品观察待面试核实。',
   dimensions: [
     {
@@ -47,7 +55,9 @@ const workSample: WorkSampleAssessment = {
   ],
   strengths: ['目标明确'],
   risks: ['验证待核实'],
-  questions: Array.from({ length: 3 }, (_, index) => question(index, 'work-sample')),
+  questions: Array.from({ length: 3 }, (_, index) =>
+    question(index, 'work-sample'),
+  ),
 };
 
 const state = {
@@ -60,10 +70,19 @@ const state = {
 
 void test('only a locked AI PM outline without successful or active work can submit', () => {
   assert.equal(canSubmitWorkSample(state), true);
-  assert.equal(canSubmitWorkSample({ ...state, sourceTemplateId: 'builtin-campus-ai-engineering' }), false);
+  assert.equal(
+    canSubmitWorkSample({
+      ...state,
+      sourceTemplateId: 'builtin-campus-ai-engineering',
+    }),
+    false,
+  );
   assert.equal(canSubmitWorkSample({ ...state, resumeReading: null }), false);
   assert.equal(canSubmitWorkSample({ ...state, workSample }), false);
-  assert.equal(canSubmitWorkSample({ ...state, workSampleJobId: 'job-12345678' }), false);
+  assert.equal(
+    canSubmitWorkSample({ ...state, workSampleJobId: 'job-12345678' }),
+    false,
+  );
 });
 
 void test('late success preserves the locked outline, sets written-test state, and applies only once', () => {
@@ -71,10 +90,16 @@ void test('late success preserves the locked outline, sets written-test state, a
   const next = applyLateWorkSample(state, workSample);
   assert.equal(next.hasWrittenTest, true);
   assert.deepEqual(next.resumeReading?.interviewQuestions, original);
-  assert.deepEqual(next.resumeReading?.workSample?.questions, workSample.questions);
+  assert.deepEqual(
+    next.resumeReading?.workSample?.questions,
+    workSample.questions,
+  );
   assert.equal(next.workSampleJobId, undefined);
   assert.equal(workSampleStatusLabel(next), '有笔试 · 作品已分析');
-  assert.throws(() => applyLateWorkSample(next, workSample), /只能成功分析一次/);
+  assert.throws(
+    () => applyLateWorkSample(next, workSample),
+    /只能成功分析一次/,
+  );
 });
 
 void test('initial success takes the combined reading result and clears its active job', () => {
