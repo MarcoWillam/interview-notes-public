@@ -168,7 +168,10 @@ void test('task center labels work samples and names the offline target computer
 
 void test('task center drawer clears dialog translation and keeps the list in a flexible viewport', async () => {
   const [source, css] = await Promise.all([
-    readFile(new URL('../components/interview/task-center.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../components/interview/task-center.tsx', import.meta.url),
+      'utf8',
+    ),
     readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
   ]);
   const drawer = css.match(/\.task-center-drawer\s*\{([\s\S]*?)\}/)?.[1] || '';
@@ -181,7 +184,10 @@ void test('task center drawer clears dialog translation and keeps the list in a 
 
 void test('interview preparation shows the supplemented written-test status', async () => {
   const source = await readFile(
-    new URL('../components/interview/interview-preparation.tsx', import.meta.url),
+    new URL(
+      '../components/interview/interview-preparation.tsx',
+      import.meta.url,
+    ),
     'utf8',
   );
   assert.match(source, /writtenTestSupplemented/);

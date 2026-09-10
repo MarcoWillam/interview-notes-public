@@ -12,10 +12,7 @@ void test('connector package contains every local TypeScript dependency', async 
   for (const file of connectorPackageFiles) {
     const source = await readFile(resolve(root, file), 'utf8');
     for (const match of source.matchAll(/from\s+['"](\.[^'"]+\.ts)['"]/g)) {
-      const dependency = relative(
-        root,
-        resolve(root, dirname(file), match[1]),
-      );
+      const dependency = relative(root, resolve(root, dirname(file), match[1]));
       assert.ok(
         packaged.has(dependency),
         `${file} requires missing connector file ${dependency}`,
@@ -30,4 +27,10 @@ void test('connector package carries the ZIP reader and its license without inst
   assert.ok(files['interview-connector/node_modules/fflate/package.json']);
   assert.ok(files['interview-connector/node_modules/fflate/esm/index.mjs']);
   assert.ok(files['interview-connector/node_modules/fflate/LICENSE']);
+  const instructions = new TextDecoder().decode(
+    files['interview-connector/使用说明.txt'],
+  );
+  assert.match(instructions, /works/);
+  assert.match(instructions, /50 MB/);
+  assert.match(instructions, /作品原件.*不会上传服务器/);
 });

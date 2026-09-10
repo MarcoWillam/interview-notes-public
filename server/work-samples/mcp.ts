@@ -137,7 +137,11 @@ export function createWorkSampleMcp(options: {
     {
       name: 'list_files',
       description: '列出本次笔试作品中允许读取的相对文件路径。',
-      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
     },
     {
       name: 'search_files',
@@ -166,7 +170,10 @@ export function createWorkSampleMcp(options: {
     })),
   ];
 
-  async function call(name: string, args: Record<string, unknown>): Promise<McpToolResult> {
+  async function call(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<McpToolResult> {
     if (name === 'list_files') {
       const files = await Promise.all(
         [...readable].sort().map(async (path) => {
@@ -180,7 +187,10 @@ export function createWorkSampleMcp(options: {
       const query = text(args.query, 200);
       const matches: { path: string; line: number; text: string }[] = [];
       for (const path of [...readable].sort()) {
-        if (matches.length >= 50 || !TEXT_EXTENSIONS.has(extname(path).toLowerCase()))
+        if (
+          matches.length >= 50 ||
+          !TEXT_EXTENSIONS.has(extname(path).toLowerCase())
+        )
           continue;
         let file: { path: string; source: string };
         try {
@@ -199,7 +209,9 @@ export function createWorkSampleMcp(options: {
     if (name === 'read_text') {
       const file = await readText(args.path);
       return {
-        content: [{ type: 'text', text: `文件：${file.path}\n\n${file.source}` }],
+        content: [
+          { type: 'text', text: `文件：${file.path}\n\n${file.source}` },
+        ],
       };
     }
     if (name === 'read_document') {

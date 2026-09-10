@@ -213,9 +213,7 @@ void test('HTTP queue holds offline jobs, pairs a connector, and returns a valid
         },
         workSamples: async () => ({
           artifacts: [workSampleFor(String(d.id))],
-          files: new Map([
-            ['artifact-12345678', '/local-only/ai-pm-work.zip'],
-          ]),
+          files: new Map([['artifact-12345678', '/local-only/ai-pm-work.zip']]),
         }),
       },
       { pollMs: 10, heartbeatMs: 20 },
@@ -304,7 +302,12 @@ void test('connector routes a later work sample job through the local artifact r
         bytes: artifact.bytes,
         modifiedAt: artifact.modifiedAt,
       },
-      coverage: { analyzed: ['brief.md'], excluded: [], unsupported: [], truncated: false },
+      coverage: {
+        analyzed: ['brief.md'],
+        excluded: [],
+        unsupported: [],
+        truncated: false,
+      },
       summary: '作品目标清楚，个人完成过程待核实。',
       dimensions: [
         {
@@ -427,16 +430,19 @@ void test('task action API pauses, resumes and stops only the signed-in account 
     assert.equal(((await resume.json()) as { state: string }).state, 'queued');
 
     const other = f.store.createUser('other-user', 'other-password-123').id;
-    const forbidden = await fetch(f.origin + '/api/jobs/' + job.id + '/action', {
-      method: 'POST',
-      headers: {
-        Origin: f.origin,
-        Cookie: 'interview_session=' + f.store.newSession(other),
-        'X-Interview-Account': other,
-        'Content-Type': 'application/json',
+    const forbidden = await fetch(
+      f.origin + '/api/jobs/' + job.id + '/action',
+      {
+        method: 'POST',
+        headers: {
+          Origin: f.origin,
+          Cookie: 'interview_session=' + f.store.newSession(other),
+          'X-Interview-Account': other,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'stop' }),
       },
-      body: JSON.stringify({ action: 'stop' }),
-    });
+    );
     assert.equal(forbidden.status, 404);
     assert.equal(f.store.get(f.user, job.id).state, 'queued');
 
@@ -594,10 +600,7 @@ void test('connector routes written-test work to the dedicated runner', async ()
   const controller = new AbortController();
   let worker: Promise<void> | undefined;
   try {
-    const device = f.store.redeem(
-      f.store.pairing(f.user).code,
-      '笔试复盘电脑',
-    );
+    const device = f.store.redeem(f.store.pairing(f.user).code, '笔试复盘电脑');
     const response = await f.api('/api/jobs', 'POST', {
       client: 'written-test-http-123',
       kind: 'written-test',

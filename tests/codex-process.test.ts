@@ -31,12 +31,15 @@ void test('work sample Codex uses only the root-confined MCP alongside the read-
   assert.ok(args.includes('--disable'));
   assert.ok(args.includes('shell_tool'));
   assert.ok(args.includes('unified_exec'));
-  assert.ok(args.some((arg) => arg.startsWith('mcp_servers.work_sample.command=')));
+  assert.ok(
+    args.some((arg) => arg.startsWith('mcp_servers.work_sample.command=')),
+  );
   assert.ok(args.some((arg) => arg.includes('work-sample-mcp.json')));
   assert.ok(args.includes('view_image'));
   assert.ok(
-    args.findIndex((arg) => arg.startsWith('mcp_servers.work_sample.command=')) <
-      args.lastIndexOf('-'),
+    args.findIndex((arg) =>
+      arg.startsWith('mcp_servers.work_sample.command='),
+    ) < args.lastIndexOf('-'),
     'MCP configuration must appear before the stdin prompt marker',
   );
 });
@@ -85,19 +88,15 @@ void test('macOS connector falls back to an app-bundled Codex CLI', async () => 
     '/Applications/Codex.app/Contents/Resources/codex',
   ]);
   const attempts: string[] = [];
-  const result = await findReadyCodexCommand(
-    {},
-    'darwin',
-    async (command) => {
-      attempts.push(command);
-      if (command === 'codex') throw new Error('missing from PATH');
-      return {
-        stdout: 'Logged in using ChatGPT\n',
-        stderr: '',
-        code: 0,
-      };
-    },
-  );
+  const result = await findReadyCodexCommand({}, 'darwin', async (command) => {
+    attempts.push(command);
+    if (command === 'codex') throw new Error('missing from PATH');
+    return {
+      stdout: 'Logged in using ChatGPT\n',
+      stderr: '',
+      code: 0,
+    };
+  });
   assert.equal(
     result.command,
     '/Applications/ChatGPT.app/Contents/Resources/codex',

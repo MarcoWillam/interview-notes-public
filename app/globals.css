@@ -2271,14 +2271,21 @@ fieldset label:last-of-type {
   margin-bottom: 14px;
 }
 .work-sample-picker {
-  display: grid;
-  gap: 8px;
   min-width: 0;
   margin: 4px 0;
   padding: 12px;
   border: 1px solid #d9e5e0;
   border-radius: 10px;
   background: #f9fcfb;
+}
+.resume-outline-confirmation-form fieldset.work-sample-picker {
+  display: block;
+}
+.work-sample-picker-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
 }
 .work-sample-picker-heading {
   display: flex;
@@ -2300,6 +2307,7 @@ fieldset label:last-of-type {
   border-radius: 8px;
   background: #fff;
   cursor: pointer;
+  width: 100%;
 }
 .work-sample-option:has(input:checked) {
   border-color: #559b87;

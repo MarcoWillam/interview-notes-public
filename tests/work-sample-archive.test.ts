@@ -32,7 +32,10 @@ void test('local inbox exposes bounded metadata without leaking paths', async ()
     assert.equal(index.artifacts[0].deviceId, 'device-12345678');
     assert.match(index.artifacts[0].sha256, /^[a-f0-9]{64}$/);
     assert.equal('path' in index.artifacts[0], false);
-    assert.equal(index.files.get(index.artifacts[0].id), join(inbox, 'candidate.zip'));
+    assert.equal(
+      index.files.get(index.artifacts[0].id),
+      join(inbox, 'candidate.zip'),
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -57,7 +60,10 @@ void test('safe extraction keeps source and document files while excluding secre
     assert.ok(manifest.excluded.includes('.env'));
     assert.ok(manifest.excluded.includes('node_modules/pkg/index.js'));
     assert.ok(manifest.unsupported.includes('assets/raw.bin'));
-    assert.equal(await readFile(join(item.output, 'README.md'), 'utf8'), '目标用户是运营人员');
+    assert.equal(
+      await readFile(join(item.output, 'README.md'), 'utf8'),
+      '目标用户是运营人员',
+    );
     await assert.rejects(() => readFile(join(item.output, '.env')));
   } finally {
     await rm(item.root, { recursive: true, force: true });

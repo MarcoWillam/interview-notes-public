@@ -137,9 +137,16 @@ export function validateReport(value: unknown, input: InterviewInput): Report {
       if (!value || typeof value !== 'object')
         throw new Error('作品核实项格式错误');
       const item = value as Record<string, unknown>;
-      if (!['supported', 'conflicted', 'unverified'].includes(item.status as string))
+      if (
+        !['supported', 'conflicted', 'unverified'].includes(
+          item.status as string,
+        )
+      )
         throw new Error('作品核实状态格式错误');
-      if (!Array.isArray(item.transcriptEvidence) || item.transcriptEvidence.length > 6)
+      if (
+        !Array.isArray(item.transcriptEvidence) ||
+        item.transcriptEvidence.length > 6
+      )
         throw new Error('作品核实引用格式错误');
       const transcriptEvidence = item.transcriptEvidence.map((quote) =>
         boundedString(quote, 2000, '作品核实引用'),

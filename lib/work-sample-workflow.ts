@@ -23,7 +23,10 @@ export function canSubmitWorkSample(value: WorkSampleWorkflowState) {
 export function applyInitialWorkSample<T extends WorkSampleWorkflowState>(
   value: T,
   reading: ResumeReading,
-): Omit<T, 'hasWrittenTest' | 'resumeReading' | 'workSample' | 'workSampleJobId'> & {
+): Omit<
+  T,
+  'hasWrittenTest' | 'resumeReading' | 'workSample' | 'workSampleJobId'
+> & {
   hasWrittenTest: true;
   resumeReading: ResumeReading;
   workSample: WorkSampleAssessment;
@@ -44,7 +47,10 @@ export function applyInitialWorkSample<T extends WorkSampleWorkflowState>(
 export function applyLateWorkSample<T extends WorkSampleWorkflowState>(
   value: T,
   result: WorkSampleAssessment,
-): Omit<T, 'hasWrittenTest' | 'resumeReading' | 'workSample' | 'workSampleJobId'> & {
+): Omit<
+  T,
+  'hasWrittenTest' | 'resumeReading' | 'workSample' | 'workSampleJobId'
+> & {
   hasWrittenTest: true;
   resumeReading: ResumeReading;
   workSample: WorkSampleAssessment;

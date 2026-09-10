@@ -98,7 +98,12 @@ const workSampleResult = {
     bytes: artifact.bytes,
     modifiedAt: artifact.modifiedAt,
   },
-  coverage: { analyzed: ['brief.md'], excluded: [], unsupported: [], truncated: false },
+  coverage: {
+    analyzed: ['brief.md'],
+    excluded: [],
+    unsupported: [],
+    truncated: false,
+  },
   summary: '作品内容待面试核实。',
   dimensions: [
     {
@@ -320,15 +325,13 @@ void test('written-test supplement uses its own kind and validates the completed
 void test('artifact listing accepts only public metadata', async () => {
   const result = await listRemoteArtifacts(async (url) => {
     assert.equal(
-      typeof url === 'string'
-        ? url
-        : url instanceof URL
-          ? url.href
-          : url.url,
+      typeof url === 'string' ? url : url instanceof URL ? url.href : url.url,
       '/api/artifacts',
     );
     return Response.json({
-      artifacts: [{ ...artifact, deviceName: '作品电脑', available: true, syncedAt: 456 }],
+      artifacts: [
+        { ...artifact, deviceName: '作品电脑', available: true, syncedAt: 456 },
+      ],
     });
   });
   assert.deepEqual(result, [
@@ -336,7 +339,17 @@ void test('artifact listing accepts only public metadata', async () => {
   ]);
   await assert.rejects(
     listRemoteArtifacts(async () =>
-      Response.json({ artifacts: [{ ...artifact, deviceName: '电脑', available: true, syncedAt: 456, path: '/private/work.zip' }] }),
+      Response.json({
+        artifacts: [
+          {
+            ...artifact,
+            deviceName: '电脑',
+            available: true,
+            syncedAt: 456,
+            path: '/private/work.zip',
+          },
+        ],
+      }),
     ),
     /清单格式无效/,
   );
@@ -387,15 +400,9 @@ void test('task controls post a typed action and preserve queue timing', async (
   const fetcher: typeof fetch = async (url, options) => {
     calls.push({
       url:
-        typeof url === 'string'
-          ? url
-          : url instanceof URL
-            ? url.href
-            : url.url,
+        typeof url === 'string' ? url : url instanceof URL ? url.href : url.url,
       method: options?.method || 'GET',
-      body: JSON.parse(
-        typeof options?.body === 'string' ? options.body : '{}',
-      ),
+      body: JSON.parse(typeof options?.body === 'string' ? options.body : '{}'),
     });
     return Response.json(returned);
   };

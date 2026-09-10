@@ -8,7 +8,10 @@ import { createWorkSampleMcp } from '../server/work-samples/mcp.ts';
 async function workspace() {
   const root = await mkdtemp(join(tmpdir(), 'work-sample-mcp-test-'));
   await mkdir(join(root, 'docs'));
-  await writeFile(join(root, 'docs', 'brief.md'), '目标用户是运营人员\n验证核心假设');
+  await writeFile(
+    join(root, 'docs', 'brief.md'),
+    '目标用户是运营人员\n验证核心假设',
+  );
   await writeFile(join(root, 'screen.png'), new Uint8Array([137, 80, 78, 71]));
   return root;
 }
@@ -49,7 +52,12 @@ void test('work sample MCP rejects escapes, links and files outside its manifest
       root,
       readable: ['docs/brief.md', 'linked.txt'],
     });
-    for (const path of ['../work-sample-secret.txt', outside, 'missing.txt', 'linked.txt'])
+    for (const path of [
+      '../work-sample-secret.txt',
+      outside,
+      'missing.txt',
+      'linked.txt',
+    ])
       await assert.rejects(() => mcp.call('read_text', { path }), /无法读取/);
   } finally {
     await rm(root, { recursive: true, force: true });

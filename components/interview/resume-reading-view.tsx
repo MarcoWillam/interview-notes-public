@@ -120,11 +120,12 @@ export function ResumeReadingView({
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   const questions = value.interviewQuestions || [];
-  const hasWrittenTest = questions.some(
-    (question) =>
-      question.questionSource === 'written-test' ||
-      question.questionSource === 'work-sample',
-  ) || !!value.workSample;
+  const hasWrittenTest =
+    questions.some(
+      (question) =>
+        question.questionSource === 'written-test' ||
+        question.questionSource === 'work-sample',
+    ) || !!value.workSample;
   const itemCount = value.sections.reduce(
     (total, section) => total + section.items.length,
     0,
@@ -179,11 +180,13 @@ export function ResumeReadingView({
       {value.workSample ? (
         <WorkSampleView
           value={value.workSample}
-          showQuestions={!value.workSample.questions.every((workQuestion) =>
-            questions.some(
-              (question) => question.question === workQuestion.question,
-            ),
-          )}
+          showQuestions={
+            !value.workSample.questions.every((workQuestion) =>
+              questions.some(
+                (question) => question.question === workQuestion.question,
+              ),
+            )
+          }
         />
       ) : (
         canSubmitWork && (

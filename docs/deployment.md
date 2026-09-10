@@ -5,7 +5,7 @@
 ## 当前云服务器
 
 - 网站：`https://your-server-ip`，初始账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。其他面试官账号通过下述服务器命令创建。
-- 代码：当前版本为 `/opt/interview-notes/releases/20260910-3`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一稳定版本 `20260910-2` 保留用于回滚；`20260909-19` 为桌面工具显示修正前的中间版本，不作为回滚目标。
+- 代码：当前版本为 `/opt/interview-notes/releases/20260910-4`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一稳定版本 `20260910-3` 保留用于回滚；`20260909-19` 为桌面工具显示修正前的中间版本，不作为回滚目标。
 - 数据：`/var/lib/interview-notes/queue.sqlite`；环境配置：`/etc/interview-notes/server.env`；运行时：`/opt/node-v24.13.0-linux-x64/bin/node`。服务器只需已构建的 `dist/web` 和队列服务源码，无需安装模型或上传电脑上的 Codex 登录信息。
 - Nginx：`/etc/nginx/conf.d/interview-notes.conf`，对应仓库 `deploy/nginx-ip.conf`，HTTP 自动跳转 HTTPS，80 端口保留 ACME 验证路径。
 - 证书：Let's Encrypt IP 证书，由 acme.sh 3.1.2 的 `shortlived` profile 签发。使用 `--days 3`，`interview-cert-renew.timer` 每天两次检查续期；续期成功自动安装到 `/etc/nginx/ssl/interview/` 并检查、重载 Nginx。不要关闭公网 80 端口，否则续期验证会失败。
@@ -23,9 +23,9 @@ journalctl -u interview-notes -n 50 --no-pager
 
 发布更新前在本机运行 `npm test`、`npm run typecheck`、`npm run lint`、`npm run build` 和 `git diff --check`，均须退出 0。HTTP 测试需要本机 loopback 监听权限。生产采用 `dist/web` 静态入口，完整构建生成的 `dist/client`、`dist/server` 不上传。
 
-发布包采用明确白名单：`dist/web`、`server/start.ts`、`server/accounts.ts`、`server/queue/{api,http,store}.ts`、`lib/interview.ts`、`lib/interview-questions.ts`、`lib/resume-reading.ts`、`lib/standards.ts`、`lib/written-test-supplement.ts` 和 `package.json`。这些文件构成服务端 import 闭包，此外仅依赖 Node 内置模块，生产不需要 `node_modules`。包内不得包含 `.env*`、`.local`、简历源文件、浏览器数据、Codex credentials、`node_modules` 或 `.git`；后续增加服务端依赖时重新核对闭包。PDF CMap 与字体资源随 `dist/web` 一起发布。
+发布包采用明确白名单：`dist/web`、`server/start.ts`、`server/accounts.ts`、`server/queue/{api,http,store}.ts`、`lib/interview.ts`、`lib/interview-questions.ts`、`lib/work-sample.ts`、`lib/resume-reading.ts`、`lib/standards.ts`、`lib/written-test-supplement.ts` 和 `package.json`。这些文件构成云端服务的 import 闭包；作品读取器与 Codex 运行逻辑只打入 `dist/web` 内的连接器下载包，不作为云端运行依赖。生产服务此外仅依赖 Node 内置模块，不需要 `node_modules`。包内不得包含 `.env*`、`.local`、简历或作品源文件、浏览器数据、Codex credentials、`node_modules` 或 `.git`；后续增加服务端依赖时重新核对闭包。PDF CMap 与字体资源随 `dist/web` 一起发布。
 
-本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。本次 `20260910-3` 发布包 SHA-256 为 `3e92ca87561caa6b8382993250edef3b2bad8aa1d603064975d88d037485b794`。macOS 打包时必须禁用 AppleDouble 和扩展属性，发布校验会拒绝 `._*` 条目。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。本机端口健康探针必须带 `Host: your-server-ip`，否则正式环境的来源校验会返回 403；服务重启后在有限重试窗口内探测，不能把首次连接拒绝误判为启动失败。
+本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。本次 `20260910-4` 发布包 SHA-256 为 `ed47434d58a29bac7805b3a994e8890e7af15e58461a80a7e62dc7c5534c695e`。macOS 打包时必须禁用 AppleDouble 和扩展属性，发布校验会拒绝 `._*` 条目。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。本机端口健康探针必须带 `Host: your-server-ip`，否则正式环境的来源校验会返回 403；服务重启后在有限重试窗口内探测，不能把首次连接拒绝误判为启动失败。
 
 发布检查包括 `nginx -t`、`systemctl is-active interview-notes nginx interview-cert-renew.timer`、HTTPS `/api/session`，以及 HTTP 308 跳转、无需跳过校验的 TLS 证书、登录 Cookie 的 HttpOnly/Secure/SameSite=Strict、登录后工作台和实际构建清单中的 JS/CSS、PDF CMap/font 资源。账号和连接凭据仅由本机脚本读取，不打印值，不写入发布包；`.local/cloud-access.txt` 与 `.local/cloud-connector.json` 保持权限 600。
 
@@ -83,6 +83,8 @@ journalctl -u interview-notes -n 50 --no-pager
 
 `20260910-3` 增加当前账号、当前浏览器范围内的候选人看板，并把它设为登录后的默认页面。看板提供全部、待评估、待确认、已完成统计，以及候选人/岗位搜索、岗位、状态、分组和时间筛选；打开记录或新建面试后进入工作台。状态不单独写入数据库，而是根据已有记录实时推导为准备中、待校对、待评估、待确认和已完成，其中只有面试官确认结论后才进入已完成；同一状态同时显示在看板、当前面试摘要和左侧记录列表，侧栏状态筛选按账号保存在浏览器。候选人资料的存储位置和账号隔离方式保持不变。本地 226 项测试、类型检查、代码检查、生产构建、桌面布局和导航交互检查通过；发布包 SHA-256 为 `3e92ca87561caa6b8382993250edef3b2bad8aa1d603064975d88d037485b794`，线上连接器包 SHA-256 为 `5a1ac44ab9101a7b5fcc806ed696ba9600e4d50e0fff405280fff8544f656f20`。生产浏览器确认统计卡片、筛选和工作台切换正常且无横向溢出；公网 HTTPS、HTTP 308、新资源 `index-h6PucVNA.js` / `index-BYVCduzE.css`、Nginx、应用服务和证书续期定时器均通过检查。
 
+`20260910-4` 为 AI 产品经理增加本地 ZIP 笔试作品分析。作品可在首次提纲生成时选取，也可在已锁定提纲后补交一次；首次选取会让第 2–4 题基于作品文件，后补会保留原题并追加三题，成功后状态同步为“有笔试 · 作品已分析”。ZIP 原件与正文始终留在作品所在电脑，服务器只保存公开元数据和结构化结果；本地读取采用只读 Codex 沙箱、目录受限 MCP、压缩包边界检查和临时目录清理。最终结论把作品观察与候选人对话评分分开，并只用面试逐字原文核实归属和实施过程。本地浏览器实测了提纲确认、作品空状态和笔记本尺寸布局；本地完整测试、类型检查、代码检查、格式检查和生产构建通过。发布包 SHA-256 为 `ed47434d58a29bac7805b3a994e8890e7af15e58461a80a7e62dc7c5534c695e`，线上连接器包 SHA-256 为 `4f52bae247c1d48800201907d5fe7dc5704af98636e7104642a0c38322da6843`；公网 HTTPS、HTTP 308、新资源 `index-DevL_bd3.js` / `index-BllLGaSH.css`、Nginx、应用服务和证书续期定时器均通过检查，未创建真实生产任务。
+
 ## 服务器
 
 1. 准备 Node.js 24+、项目代码和可持久保存 SQLite 的本地磁盘。运行 `npm ci`、`npm run build:server`。
@@ -132,6 +134,7 @@ location / {
 3. 在“电脑连接”下载并解压不含凭据的专用连接器包，进入解压后的 `interview-connector` 目录，确认其中包含 `package.json` 后运行网页给出的 `npm run connector -- --server https://实际域名 --pair 配对码`。若 npm 报错在 `/Users/用户名/package.json` 找不到文件，说明仍停留在用户主目录；进入连接器目录后重新运行，超过 10 分钟则先生成新配对码。
 4. 保持连接器进程运行；下次启动仅需 `npm run connector`。可通过 `--config /绝对路径/connector.json` 指定独立凭据文件，通过 `INTERVIEW_CODEX_BIN` 指定 Codex 路径。
 5. 电脑主动访问服务器，不向网络监听端口。电脑休眠或连接器退出时任务等待；恢复连接自动领取未执行的任务。已经开始但租约超时的任务不会自动重跑，需在网页核实后重新生成。
+6. 首次启动新版连接器后，其当前目录会自动创建权限受限的 `works/` 作品箱。AI 产品经理的 ZIP 作品放入该目录后，在网页刷新作品清单即可选择；单个 ZIP 最大 50 MB。作品任务绑定到持有该文件的电脑，电脑离线时会显示“等待作品所在电脑”。
 
 配对码仅一次有效、10 分钟到期，重新生成会替换旧码。设备令牌只允许领取该网页账号的任务，不能代替网页登录。解除配对会使设备令牌失效并终止其正在处理的任务。连接器凭据文件不包含 Codex 登录信息，也不要上传此文件。
 
@@ -144,6 +147,14 @@ location / {
 顶部任务中心只显示当前登录账号的任务。相同账号、任务类型、名称和输入的等待、运行或暂停任务会复用原任务；简历阅读和笔试复盘补充在领取顺序中优先于尚未开始的结论评估。暂停保留输入并撤销当前租约，运行中的本地 Codex 通常在下一次 5 秒心跳时中断；恢复会重新排队并从头执行，已有模型用量不会退回。停止会清除服务器上的简历、岗位要求和面试记录且不能恢复。旧连接器不认识笔试复盘补充任务，升级后面试官需重新下载并启动当前连接器包。
 
 当前只支持单实例 SQLite 服务。后续多人使用、负载均衡或企业账号接入需要单独扩展，不要让多个应用副本各自维护一份任务数据库。
+
+## AI 产品经理笔试作品
+
+笔试作品是可选材料，仅应用于内置 AI 产品经理模板。首次生成提纲时，面试官先确认岗位和笔试状态；选择“有笔试”后可从在线电脑的作品箱选择一个 ZIP，也可暂不提供。选择作品时，同一个简历任务返回简历阅读、作品观察和六道面试题，其中第 2–4 题由作品文件依据生成。已有提纲且尚未成功分析作品时，可从提纲下方补交 ZIP；成功后保留原题并追加三道作品复盘题，同时把笔试状态同步为“有笔试 · 作品已分析”。每份面试记录只接受一次成功的作品分析，失败、暂停或停止仍可重试。
+
+服务器仅保存作品编号、文件名、大小、修改时间、SHA-256、所属设备和结构化结果，不接收 ZIP、源码、文件正文或电脑绝对路径。连接器在本机临时目录解压，拒绝路径穿越、符号链接、嵌套压缩包、超限文件和依赖/密钥目录；Codex 使用只读沙箱及仅限该次解压目录的 MCP 工具静态阅读，不执行代码、不运行脚本、不安装依赖。分析结束、失败或取消都会清理临时解压目录；`works/` 中的原 ZIP 由面试官自行保留或删除。
+
+作品观察的评分只描述提交材料，不直接计入候选人的对话评分，也不能证明作者归属或真实实施过程。最终结论评估会把作品观察单独标记为“面试中已验证”“面试信息有冲突”或“面试中未验证”，所有验证引用都必须逐字来自已校对的面试记录；候选人各维度 1–5 分仍只能依据面试对话。Markdown 导出和任务中心沿用同样的分区。
 
 ## 2026-09-09 校招面试准备工作流
 

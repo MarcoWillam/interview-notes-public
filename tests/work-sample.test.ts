@@ -24,9 +24,7 @@ const evidence = {
 const questions = Array.from({ length: 3 }, (_, index) => ({
   question: `请解释作品中的第 ${index + 1} 个关键判断。`,
   questionSource: 'work-sample' as const,
-  dimensions: [
-    index === 0 ? '用户洞察与问题定义' : '产品方案与范围取舍',
-  ],
+  dimensions: [index === 0 ? '用户洞察与问题定义' : '产品方案与范围取舍'],
   reason: '核实候选人自己的判断与取舍。',
   resumeEvidence: null,
   workSampleEvidence: evidence,
@@ -109,7 +107,10 @@ void test('work sample assessment validates dimensions, scores and three grounde
     },
     {
       ...assessment,
-      questions: [{ ...questions[0], workSampleEvidence: undefined }, ...questions.slice(1)],
+      questions: [
+        { ...questions[0], workSampleEvidence: undefined },
+        ...questions.slice(1),
+      ],
     },
   ])
     assert.throws(() =>

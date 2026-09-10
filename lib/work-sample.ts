@@ -69,7 +69,11 @@ function identifier(value: unknown, label: string) {
 }
 
 function positiveInteger(value: unknown, maximum: number, label: string) {
-  if (!Number.isSafeInteger(value) || Number(value) <= 0 || Number(value) > maximum)
+  if (
+    !Number.isSafeInteger(value) ||
+    Number(value) <= 0 ||
+    Number(value) > maximum
+  )
     throw new Error(`${label}超出限制。`);
   return Number(value);
 }
@@ -89,8 +93,7 @@ export function validateWorkSampleReference(
   )
     throw new Error('作品文件名格式不正确。');
   const sha256 = boundedText(item.sha256, 64, '作品哈希').toLowerCase();
-  if (!/^[a-f0-9]{64}$/.test(sha256))
-    throw new Error('作品哈希格式不正确。');
+  if (!/^[a-f0-9]{64}$/.test(sha256)) throw new Error('作品哈希格式不正确。');
   if (!Number.isSafeInteger(item.modifiedAt) || Number(item.modifiedAt) < 0)
     throw new Error('作品修改时间格式不正确。');
   return {
@@ -169,11 +172,7 @@ function sameArtifact(
     id: identifier(artifact.id, '作品编号'),
     name: boundedText(artifact.name, 200, '作品文件名'),
     sha256: boundedText(artifact.sha256, 64, '作品哈希').toLowerCase(),
-    bytes: positiveInteger(
-      artifact.bytes,
-      MAX_WORK_SAMPLE_BYTES,
-      '作品大小',
-    ),
+    bytes: positiveInteger(artifact.bytes, MAX_WORK_SAMPLE_BYTES, '作品大小'),
     modifiedAt: Number(artifact.modifiedAt),
   };
   if (

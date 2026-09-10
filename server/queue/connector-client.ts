@@ -231,15 +231,15 @@ export async function runConnector(
                     dependencies.readResumeWork ||
                     readResumeAndWorkSampleWithCodex
                   )(input, artifactPath!, taskSignal)
-                : await (
-                    dependencies.readResume || readResumeWithCodex
-                  )(input, taskSignal);
+                : await (dependencies.readResume || readResumeWithCodex)(
+                    input,
+                    taskSignal,
+                  );
               report = validateResumeReading(reading, input);
             } else if (job.kind === 'written-test') {
               const input = validateWrittenTestSupplementInput(job.input);
               const supplement = await (
-                dependencies.writeTest ||
-                generateWrittenTestSupplementWithCodex
+                dependencies.writeTest || generateWrittenTestSupplementWithCodex
               )(input, taskSignal);
               report = validateWrittenTestSupplement(supplement, input);
             } else if (job.kind === 'work-sample') {

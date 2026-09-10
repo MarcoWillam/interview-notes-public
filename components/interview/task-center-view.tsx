@@ -2,13 +2,7 @@ export type TaskCenterJob = {
   id: string;
   kind?: 'interview' | 'resume' | 'written-test' | 'work-sample';
   label: string;
-  state:
-    | 'queued'
-    | 'running'
-    | 'paused'
-    | 'completed'
-    | 'failed'
-    | 'cancelled';
+  state: 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
   created: number;
   updated: number;
   queuedAt?: number;
@@ -42,7 +36,8 @@ export function taskActionPrompt(
 ) {
   if (action === 'pause' && state === 'running')
     return '暂停正在运行的任务？恢复后将从头重新执行，已消耗的 Codex 用量不会退回。';
-  if (action === 'pause') return '暂停这个等待中的任务？稍后可以从任务中心恢复。';
+  if (action === 'pause')
+    return '暂停这个等待中的任务？稍后可以从任务中心恢复。';
   if (action === 'resume')
     return '恢复这个任务？任务会重新进入队列，并从头执行。简历阅读会优先领取。';
   return '停止这个任务？服务器上的简历、岗位要求和面试记录将立即删除，且无法恢复。';
@@ -73,7 +68,8 @@ function timing(job: TaskCenterJob, now: number) {
 
 function ordered(jobs: readonly TaskCenterJob[]) {
   return [...jobs].sort((a, b) => {
-    const active = Number(activeStates.has(b.state)) - Number(activeStates.has(a.state));
+    const active =
+      Number(activeStates.has(b.state)) - Number(activeStates.has(a.state));
     return active || b.updated - a.updated;
   });
 }
@@ -112,7 +108,11 @@ export function TaskCenterView({
           {ordered(jobs).map((job) => {
             const pending = pendingId === job.id;
             return (
-              <article className={`task-card ${job.state}`} data-job-id={job.id} key={job.id}>
+              <article
+                className={`task-card ${job.state}`}
+                data-job-id={job.id}
+                key={job.id}
+              >
                 <div className="task-card-heading">
                   <div>
                     <strong>{job.label}</strong>
@@ -123,39 +123,53 @@ export function TaskCenterView({
                           ? '笔试复盘补充'
                           : job.kind === 'work-sample'
                             ? '笔试作品评估'
-                          : '结论评估'}
+                            : '结论评估'}
                     </span>
                   </div>
-                  <span className={`task-state ${job.state}`}>{labels[job.state]}</span>
+                  <span className={`task-state ${job.state}`}>
+                    {labels[job.state]}
+                  </span>
                 </div>
                 <div className="task-meta">
                   <span>{timing(job, now)}</span>
                   {(job.kind === 'resume' ||
                     job.kind === 'written-test' ||
                     job.kind === 'work-sample') &&
-                    job.state === 'queued' && (
-                    <em>准备优先</em>
-                    )}
+                    job.state === 'queued' && <em>准备优先</em>}
                 </div>
                 {job.error && <p className="task-error">{job.error}</p>}
                 <div className="task-actions">
                   {(job.state === 'queued' || job.state === 'running') && (
-                    <button disabled={pending} onClick={() => onAction(job, 'pause')}>
+                    <button
+                      disabled={pending}
+                      onClick={() => onAction(job, 'pause')}
+                    >
                       暂停
                     </button>
                   )}
                   {job.state === 'paused' && (
-                    <button disabled={pending} onClick={() => onAction(job, 'resume')}>
+                    <button
+                      disabled={pending}
+                      onClick={() => onAction(job, 'resume')}
+                    >
                       恢复
                     </button>
                   )}
                   {activeStates.has(job.state) && (
-                    <button className="danger" disabled={pending} onClick={() => onAction(job, 'stop')}>
+                    <button
+                      className="danger"
+                      disabled={pending}
+                      onClick={() => onAction(job, 'stop')}
+                    >
                       停止
                     </button>
                   )}
                   {job.state === 'completed' && (
-                    <button className="result" disabled={pending} onClick={() => onResult(job)}>
+                    <button
+                      className="result"
+                      disabled={pending}
+                      onClick={() => onResult(job)}
+                    >
                       查看结果
                     </button>
                   )}

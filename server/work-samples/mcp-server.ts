@@ -55,7 +55,11 @@ for await (const line of lines) {
         params.arguments && typeof params.arguments === 'object'
           ? (params.arguments as Record<string, unknown>)
           : {};
-      send({ jsonrpc: '2.0', id: request.id, result: await mcp.call(name, args) });
+      send({
+        jsonrpc: '2.0',
+        id: request.id,
+        result: await mcp.call(name, args),
+      });
     } else {
       throw new Error('接口不存在。');
     }

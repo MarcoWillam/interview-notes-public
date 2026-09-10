@@ -20,18 +20,29 @@ export function WorkSampleView({
       <div className="work-sample-observations">
         <div>
           <strong>作品亮点</strong>
-          <ul>{value.strengths.map((item) => <li key={item}>{item}</li>)}</ul>
+          <ul>
+            {value.strengths.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </div>
         <div>
           <strong>风险与待核实</strong>
-          <ul>{value.risks.map((item) => <li key={item}>{item}</li>)}</ul>
+          <ul>
+            {value.risks.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </div>
       </div>
       {showQuestions && (
         <section className="written-test-supplement">
           <h3>作品复盘问题 · 追加 3 题</h3>
           {value.questions.map((question, index) => (
-            <article className="interview-question-card" key={question.question}>
+            <article
+              className="interview-question-card"
+              key={question.question}
+            >
               <span className="question-index">{index + 1}</span>
               <div>
                 <h4>{question.question}</h4>
