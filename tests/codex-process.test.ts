@@ -4,6 +4,7 @@ import {
   runCommand,
   codexEnvironment,
   codexArgs,
+  codexWorkSampleArgs,
   codexCommandCandidates,
   findReadyCodexCommand,
 } from '../server/codex.ts';
@@ -23,6 +24,21 @@ void test('Codex environment never inherits API keys or application secrets', ()
   assert.ok(args.includes('--ephemeral'));
   assert.ok(args.includes('read-only'));
   assert.ok(args.includes('forced_login_method="chatgpt"'));
+});
+void test('work sample Codex uses only the root-confined MCP alongside the read-only sandbox', () => {
+  const args = codexWorkSampleArgs('/tmp/schema', '/tmp/work-sample-mcp.json');
+  assert.ok(args.includes('read-only'));
+  assert.ok(args.includes('--disable'));
+  assert.ok(args.includes('shell_tool'));
+  assert.ok(args.includes('unified_exec'));
+  assert.ok(args.some((arg) => arg.startsWith('mcp_servers.work_sample.command=')));
+  assert.ok(args.some((arg) => arg.includes('work-sample-mcp.json')));
+  assert.ok(args.includes('view_image'));
+  assert.ok(
+    args.findIndex((arg) => arg.startsWith('mcp_servers.work_sample.command=')) <
+      args.lastIndexOf('-'),
+    'MCP configuration must appear before the stdin prompt marker',
+  );
 });
 void test('process accepts literal stdin without shell interpolation and captures final output', async () => {
   const input = '$(echo unsafe) `echo unsafe`\n面试正文';

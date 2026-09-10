@@ -74,7 +74,7 @@ export function validateWorkSampleReference(
     !/\.zip$/i.test(name) ||
     name.includes('/') ||
     name.includes('\\') ||
-    /[\u0000-\u001f]/.test(name)
+    Array.from(name).some((character) => character.charCodeAt(0) < 32)
   )
     throw new Error('作品文件名格式不正确。');
   const sha256 = boundedText(item.sha256, 64, '作品哈希').toLowerCase();
