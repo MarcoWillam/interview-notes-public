@@ -138,8 +138,17 @@ void test('initial analysis combines resume reading with three file-backed quest
       new AbortController().signal,
       {
         createDirectory: async () => extraction,
-        runStructured: async (input, _signal, _instructions, _schema, mcp) => {
+        runStructured: async (input, _signal, instructions, _schema, mcp) => {
           assert.equal(JSON.stringify(input).includes(f.root), false);
+          assert.equal(
+            JSON.stringify(input).includes(AI_PM_WORK_SAMPLE_RUBRIC_VERSION),
+            true,
+          );
+          assert.match(instructions, /统一出题目的/);
+          assert.match(instructions, /用户问题与场景理解/);
+          assert.match(instructions, /AI 理解与产品判断/);
+          assert.match(instructions, /不计算或输出 100 分总分/);
+          assert.match(instructions, /材料没有覆盖或无法读取.*score=null/);
           assert.equal(mcp.root, extraction);
           return report;
         },
@@ -176,7 +185,18 @@ void test('later analysis returns three grounded questions and rejects fabricate
       input,
       f.zip,
       new AbortController().signal,
-      { runStructured: async () => valid },
+      {
+        runStructured: async (actual, _signal, instructions) => {
+          assert.equal(
+            JSON.stringify(actual).includes(AI_PM_WORK_SAMPLE_RUBRIC_VERSION),
+            true,
+          );
+          assert.match(instructions, /第 1 题核实用户问题/);
+          assert.match(instructions, /第 2 题核实 AI 核心价值/);
+          assert.match(instructions, /第 3 题核实判断依据/);
+          return valid;
+        },
+      },
     );
     assert.equal(result.questions.length, 3);
     await assert.rejects(

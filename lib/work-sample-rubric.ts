@@ -38,6 +38,11 @@ export const aiPmWorkSampleRubricNames = aiPmWorkSampleRubric.map(
   ({ name }) => name,
 );
 
+export const aiPmWorkSampleRubricContext = {
+  version: AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
+  dimensions: aiPmWorkSampleRubric,
+};
+
 export const aiPmWorkSampleRubricPrompt = [
   `统一出题目的框架版本：${AI_PM_WORK_SAMPLE_RUBRIC_VERSION}。`,
   '必须严格按以下六个作品维度及顺序返回 dimensions：',
