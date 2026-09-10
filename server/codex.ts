@@ -13,6 +13,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { resolve } from 'node:path';
 import type { InterviewInput } from '../lib/interview.ts';
 import { assessmentInstructions, reportSchema } from '../lib/assessment.ts';
 import { AnalysisError } from './analysis.ts';
@@ -253,6 +254,24 @@ export function codexArgs(directory: string) {
     '--output-schema',
     join(directory, 'report-schema.json'),
     '-',
+  ];
+}
+
+export function codexWorkSampleArgs(directory: string, mcpConfig: string) {
+  const args = codexArgs(directory);
+  const promptMarker = args.pop();
+  const server = resolve(import.meta.dirname, 'work-samples/mcp-server.ts');
+  return [
+    ...args,
+    '-c',
+    `mcp_servers.work_sample.command=${JSON.stringify(process.execPath)}`,
+    '-c',
+    `mcp_servers.work_sample.args=${JSON.stringify([
+      '--experimental-strip-types',
+      server,
+      mcpConfig,
+    ])}`,
+    promptMarker!,
   ];
 }
 export async function analyzeWithCodex(
