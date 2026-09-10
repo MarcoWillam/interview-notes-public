@@ -36,6 +36,24 @@ import {
   type SidebarSortMode,
 } from '@/lib/interview-sidebar';
 import type { InterviewGroup, SavedInterview } from '@/lib/local/store';
+import {
+  interviewStatus,
+  interviewStatusLabel,
+  interviewStatusOptions,
+  type InterviewStatus,
+} from '@/lib/interview-status';
+
+type SidebarStatusFilter = 'all' | InterviewStatus;
+
+function sidebarStatusStorageKey(scope: string) {
+  return `interview-sidebar-status:${encodeURIComponent(scope)}`;
+}
+
+function parseSidebarStatusFilter(value: string | null): SidebarStatusFilter {
+  return value && interviewStatusOptions.some((item) => item.value === value)
+    ? (value as InterviewStatus)
+    : 'all';
+}
 
 type Props = {
   storageScope: string;
@@ -58,6 +76,7 @@ export function InterviewSidebar(props: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [sortMode, setSortMode] = useState<SidebarSortMode>('newest');
+  const [statusFilter, setStatusFilter] = useState<SidebarStatusFilter>('all');
   const [manualOrder, setManualOrder] = useState<string[]>([]);
   const [collapsedGroupIds, setCollapsedGroupIds] = useState<string[]>([]);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -77,6 +96,11 @@ export function InterviewSidebar(props: Props) {
         setSortMode(
           parseSidebarSortMode(
             localStorage.getItem(sidebarSortStorageKey(props.storageScope)),
+          ),
+        );
+        setStatusFilter(
+          parseSidebarStatusFilter(
+            localStorage.getItem(sidebarStatusStorageKey(props.storageScope)),
           ),
         );
         const storedOrder = JSON.parse(
@@ -100,6 +124,7 @@ export function InterviewSidebar(props: Props) {
       } catch {
         setCollapsed(false);
         setSortMode('newest');
+        setStatusFilter('all');
         setManualOrder([]);
         setCollapsedGroupIds([]);
       }
@@ -116,15 +141,24 @@ export function InterviewSidebar(props: Props) {
     () => reconcileManualOrder(manualOrder, props.sessions),
     [manualOrder, props.sessions],
   );
+  const visibleSessions = useMemo(
+    () =>
+      statusFilter === 'all'
+        ? props.sessions
+        : props.sessions.filter(
+            (session) => interviewStatus(session) === statusFilter,
+          ),
+    [props.sessions, statusFilter],
+  );
   const groupedSessions = useMemo(
     () =>
       groupInterviewSessions(
-        props.sessions,
+        visibleSessions,
         props.groups,
         sortMode,
         reconciledManualOrder,
       ),
-    [props.groups, props.sessions, reconciledManualOrder, sortMode],
+    [props.groups, visibleSessions, reconciledManualOrder, sortMode],
   );
 
   const focusSidebarTrigger = useCallback(() => {
@@ -168,6 +202,15 @@ export function InterviewSidebar(props: Props) {
     }
   }
 
+  function changeStatusFilter(next: SidebarStatusFilter) {
+    setStatusFilter(next);
+    try {
+      localStorage.setItem(sidebarStatusStorageKey(props.storageScope), next);
+    } catch {
+      // The selected status remains active for this page session.
+    }
+  }
+
   function changeManualOrder(next: string[]) {
     setManualOrder(next);
     try {
@@ -199,9 +242,11 @@ export function InterviewSidebar(props: Props) {
     ...props,
     sections: groupedSessions,
     sortMode,
+    statusFilter,
     manualOrder: reconciledManualOrder,
     collapsedGroupIds,
     onSortModeChange: changeSortMode,
+    onStatusFilterChange: changeStatusFilter,
     onManualOrderChange: changeManualOrder,
     onToggleGroup: toggleGroup,
   };
@@ -297,9 +342,11 @@ function SidebarPanel({
   panelRef,
   sections,
   sortMode,
+  statusFilter,
   manualOrder,
   collapsedGroupIds,
   onSortModeChange,
+  onStatusFilterChange,
   onManualOrderChange,
   onToggleGroup,
   onCreateGroup,
@@ -312,9 +359,11 @@ function SidebarPanel({
   panelRef?: React.Ref<HTMLElement>;
   sections: InterviewSessionGroup[];
   sortMode: SidebarSortMode;
+  statusFilter: SidebarStatusFilter;
   manualOrder: string[];
   collapsedGroupIds: string[];
   onSortModeChange: (mode: SidebarSortMode) => void;
+  onStatusFilterChange: (status: SidebarStatusFilter) => void;
   onManualOrderChange: (order: string[]) => void;
   onToggleGroup: (groupId: string) => void;
 }) {
@@ -369,6 +418,7 @@ function SidebarPanel({
     section: InterviewSessionGroup,
   ) {
     const current = session.id === currentId;
+    const status = interviewStatus(session);
     const createdAt = interviewCreatedAt(session);
     const sessionGroupId = normalizedGroupId(session);
     const moveMenuOpen = movingId === session.id;
@@ -403,7 +453,12 @@ function SidebarPanel({
             if (!current) onOpen(session.id);
           }}
         >
-          <strong>{session.candidate || '未命名面试'}</strong>
+          <span className="interview-sidebar-record-heading">
+            <strong>{session.candidate || '未命名面试'}</strong>
+            <span className="interview-status-badge" data-status={status}>
+              {interviewStatusLabel(status)}
+            </span>
+          </span>
           <span>{session.role || '未填写岗位'}</span>
           <time dateTime={new Date(createdAt).toISOString()} title="添加时间">
             {new Date(createdAt).toLocaleString('zh-CN', {
@@ -530,6 +585,31 @@ function SidebarPanel({
           <option value="newest">最近添加</option>
           <option value="oldest">最早添加</option>
           <option value="manual">自定义排序</option>
+        </NativeSelect>
+      </label>
+      <label
+        className="interview-sidebar-sort interview-sidebar-status-filter"
+        htmlFor="interview-sidebar-status-filter"
+      >
+        <span>状态</span>
+        <NativeSelect
+          className="interview-sidebar-sort-control"
+          size="sm"
+          id="interview-sidebar-status-filter"
+          aria-label="面试状态筛选"
+          value={statusFilter}
+          onChange={(event) =>
+            onStatusFilterChange(
+              parseSidebarStatusFilter(event.currentTarget.value),
+            )
+          }
+        >
+          <option value="all">全部状态</option>
+          {interviewStatusOptions.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
         </NativeSelect>
       </label>
       <button
