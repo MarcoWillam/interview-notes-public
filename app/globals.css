@@ -1319,6 +1319,65 @@ fieldset:disabled {
   line-height: 1.9;
   white-space: pre-wrap;
 }
+.work-sample-verification {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px solid #d5e3dd;
+  border-radius: 10px;
+  background: #f8fbfa;
+}
+.work-sample-verification-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.work-sample-verification-heading h3 {
+  margin: 4px 0 0;
+  font-size: 16px;
+}
+.work-sample-verification article {
+  padding: 12px 0;
+  border-top: 1px solid #e2ebe7;
+}
+.work-sample-verification article > p {
+  margin: 8px 0;
+  color: #526a63;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+.work-sample-verification blockquote {
+  margin: 8px 0 0;
+  border-left: 3px solid #a7cbbf;
+  background: #fff;
+  padding: 10px 12px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.work-sample-verification blockquote span {
+  display: block;
+  margin-bottom: 3px;
+  color: #718980;
+  font-size: 11px;
+}
+.work-verification-status {
+  display: inline-flex;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #edf1ef;
+  color: #61716b;
+  font-size: 12px;
+  font-weight: 600;
+}
+.work-verification-status.supported {
+  background: #e1f3eb;
+  color: #226d57;
+}
+.work-verification-status.conflicted {
+  background: #fbe9e5;
+  color: #9a4638;
+}
 .assessment {
   padding: 22px 0;
   border-bottom: 1px solid #e8eeee;

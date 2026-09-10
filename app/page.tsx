@@ -62,7 +62,12 @@ import {
   AlertDialogAction,
   AlertDialogFooter,
 } from '@/components/ui/alert-dialog';
-import { validateInput, exportMarkdown, type Report } from '@/lib/interview';
+import {
+  validateInput,
+  exportMarkdown,
+  workSampleVerificationLabels,
+  type Report,
+} from '@/lib/interview';
 import { useInterviewLibrary } from '@/hooks/use-interview-library';
 import type { NewInterviewSeed } from '@/lib/local/store';
 import {
@@ -302,6 +307,7 @@ export default function Home({
     focus,
     scoringGuidance,
     reportRequirements,
+    ...(workSample ? { workSample } : {}),
   };
   const standards: InterviewStandards = {
     role,
@@ -420,6 +426,8 @@ export default function Home({
           setResumeReading(next.resumeReading);
           setWorkSample(next.workSample);
           setWorkSampleJobId(undefined);
+          setReport(null);
+          setConfirmed(false);
           setHasWrittenTest(true);
           setWrittenTestConfirmed(true);
           setNotice('已恢复完成的作品分析，并追加 3 道作品复盘题。');
@@ -887,6 +895,8 @@ export default function Home({
       setResumeReading(next.resumeReading);
       setWorkSample(next.workSample);
       setWorkSampleJobId(undefined);
+      setReport(null);
+      setConfirmed(false);
       setHasWrittenTest(true);
       setWrittenTestConfirmed(true);
       resumeContext.current = {
@@ -1867,6 +1877,31 @@ export default function Home({
                             评分参考：1 明确不符合 · 2 部分达到 · 3 基本达到 · 4
                             充分达到 · 5 显著超出
                           </p>
+                          {report.workSampleReview?.length ? (
+                            <section className="work-sample-verification">
+                              <div className="work-sample-verification-heading">
+                                <div>
+                                  <span className="eyebrow">笔试作品核对</span>
+                                  <h3>作品表现（归属与过程待核实）</h3>
+                                </div>
+                                <span className="badge">不计入对话评分</span>
+                              </div>
+                              {report.workSampleReview.map((item, index) => (
+                                <article key={`${item.status}-${index}`}>
+                                  <span className={`work-verification-status ${item.status}`}>
+                                    {workSampleVerificationLabels[item.status]}
+                                  </span>
+                                  <p>{item.observation}</p>
+                                  {item.transcriptEvidence.map((quote, quoteIndex) => (
+                                    <blockquote key={quoteIndex}>
+                                      <span>对话依据</span>
+                                      {quote}
+                                    </blockquote>
+                                  ))}
+                                </article>
+                              ))}
+                            </section>
+                          ) : null}
                           {report.dimensions.map((d) => (
                             <article className="assessment" key={d.name}>
                               <div className="assessment-heading">
