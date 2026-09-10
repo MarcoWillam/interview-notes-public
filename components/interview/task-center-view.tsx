@@ -1,6 +1,6 @@
 export type TaskCenterJob = {
   id: string;
-  kind?: 'interview' | 'resume' | 'written-test';
+  kind?: 'interview' | 'resume' | 'written-test' | 'work-sample';
   label: string;
   state:
     | 'queued'
@@ -15,6 +15,8 @@ export type TaskCenterJob = {
   startedAt?: number | null;
   position?: number | null;
   error?: string | null;
+  targetDeviceName?: string | null;
+  waitingForDevice?: boolean;
 };
 
 export type TaskAction = 'pause' | 'resume' | 'stop';
@@ -58,6 +60,8 @@ function duration(value: number) {
 
 function timing(job: TaskCenterJob, now: number) {
   if (job.state === 'queued') {
+    if (job.waitingForDevice)
+      return `等待作品所在电脑${job.targetDeviceName ? ` · ${job.targetDeviceName}` : ''}`;
     const prefix = job.position ? `排队第 ${job.position} 位 · ` : '';
     return `${prefix}已等待 ${duration(now - (job.queuedAt || job.created))}`;
   }
@@ -117,6 +121,8 @@ export function TaskCenterView({
                         ? '简历阅读'
                         : job.kind === 'written-test'
                           ? '笔试复盘补充'
+                          : job.kind === 'work-sample'
+                            ? '笔试作品评估'
                           : '结论评估'}
                     </span>
                   </div>
@@ -124,7 +130,9 @@ export function TaskCenterView({
                 </div>
                 <div className="task-meta">
                   <span>{timing(job, now)}</span>
-                  {(job.kind === 'resume' || job.kind === 'written-test') &&
+                  {(job.kind === 'resume' ||
+                    job.kind === 'written-test' ||
+                    job.kind === 'work-sample') &&
                     job.state === 'queued' && (
                     <em>准备优先</em>
                     )}

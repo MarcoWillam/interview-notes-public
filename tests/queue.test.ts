@@ -267,7 +267,7 @@ void test('work sample inventory is account isolated and binds resume work to it
     const reference = { ...workSample, deviceId: target.id };
     s.syncArtifacts(target.token, [reference]);
     assert.deepEqual(s.artifacts(a), [
-      { ...reference, deviceName: '作品电脑', available: true },
+      { ...reference, syncedAt: 1000000, deviceName: '作品电脑', available: true },
     ]);
     assert.deepEqual(s.artifacts(b), []);
     assert.throws(() =>

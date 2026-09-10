@@ -5,6 +5,8 @@ import { configureLocalStore } from '../../lib/local/store';
 import {
   remoteRequest,
   configureRemoteAccount,
+  listRemoteArtifacts,
+  type RemoteArtifact,
 } from '../../lib/remote-analysis';
 import {
   Dialog,
@@ -277,6 +279,7 @@ function RemotePanel({
   preview: boolean;
 }) {
   const [devices, setDevices] = useState<Device[]>([]);
+  const [artifacts, setArtifacts] = useState<RemoteArtifact[]>([]);
   const [pair, setPair] = useState<{ code: string; expiresAt: number } | null>(
       null,
     ),
@@ -286,8 +289,12 @@ function RemotePanel({
   async function refresh(target = panel) {
     try {
       if (target === 'devices') {
-        const data = await remoteRequest<{ devices: Device[] }>('/api/devices');
+        const [data, workSamples] = await Promise.all([
+          remoteRequest<{ devices: Device[] }>('/api/devices'),
+          listRemoteArtifacts(),
+        ]);
         setDevices(data.devices);
+        setArtifacts(workSamples);
       }
       setLoaded(true);
       setError('');
@@ -403,6 +410,49 @@ function RemotePanel({
               </button>
             </div>
           ))}
+          <div className="remote-section-label remote-artifact-heading">
+            <div>
+              <h3>本地笔试作品</h3>
+              <span>
+                将不超过 50 MB 的 ZIP 放入连接器目录下的 <code>works/</code>
+              </span>
+            </div>
+            {artifacts.length > 0 && (
+              <small>
+                最近扫描：
+                {new Date(
+                  Math.max(...artifacts.map((item) => item.syncedAt)),
+                ).toLocaleTimeString('zh-CN')}
+              </small>
+            )}
+          </div>
+          {!artifacts.length ? (
+            <div className="remote-empty remote-artifact-empty">
+              <p>暂未发现 ZIP 作品</p>
+              <span>连接器保持运行后，网页会自动刷新文件清单。</span>
+            </div>
+          ) : (
+            <div className="remote-artifact-list">
+              {artifacts.map((artifact) => (
+                <div className="remote-artifact" key={artifact.id}>
+                  <div>
+                    <strong>{artifact.name}</strong>
+                    <span>
+                      {artifact.deviceName} ·{' '}
+                      {(artifact.bytes / 1024 / 1024).toFixed(1)} MB
+                    </span>
+                  </div>
+                  <em className={artifact.available ? 'available' : ''}>
+                    {artifact.available ? '可选择' : '等待作品所在电脑'}
+                  </em>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="small-note">
+            ZIP 和源码只保存在这台电脑。仅 AI 产品经理模板可选择作品；Codex
+            只读分析，不运行代码或安装依赖。旧版连接器看不到作品时，请重新下载当前连接器包。
+          </p>
           <div className="remote-pair">
             <h3>
               <Link2 size={18} />

@@ -138,6 +138,34 @@ void test('task center labels written-test supplement work explicitly', async ()
   assert.ok(html.includes('准备优先'));
 });
 
+void test('task center labels work samples and names the offline target computer', async () => {
+  const { TaskCenterView } = await loadView();
+  const html = renderToStaticMarkup(
+    createElement(TaskCenterView, {
+      jobs: [
+        {
+          id: 'work-sample',
+          kind: 'work-sample',
+          label: '张三 · 笔试作品',
+          state: 'queued',
+          created: now,
+          updated: now,
+          queuedAt: now,
+          waitingForDevice: true,
+          targetDeviceName: '张三的 MacBook',
+        },
+      ],
+      now,
+      pendingId: null,
+      onAction() {},
+      onResult() {},
+    }),
+  );
+  assert.ok(html.includes('笔试作品评估'));
+  assert.ok(html.includes('等待作品所在电脑 · 张三的 MacBook'));
+  assert.ok(html.includes('准备优先'));
+});
+
 void test('task center drawer clears dialog translation and keeps the list in a flexible viewport', async () => {
   const [source, css] = await Promise.all([
     readFile(new URL('../components/interview/task-center.tsx', import.meta.url), 'utf8'),

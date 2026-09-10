@@ -367,6 +367,64 @@
   display: inline-block;
   margin-right: 6px;
 }
+.remote-artifact-heading {
+  align-items: flex-end;
+  margin-top: 14px;
+}
+.remote-artifact-heading > div {
+  min-width: 0;
+}
+.remote-artifact-heading h3 {
+  margin-bottom: 2px;
+}
+.remote-artifact-heading span,
+.remote-artifact-heading small {
+  color: #6b7b75;
+  font-size: 12px;
+}
+.remote-artifact-heading code {
+  color: #31584d;
+}
+.remote-artifact-list {
+  border-top: 1px solid #e2e8ea;
+}
+.remote-artifact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e2e8ea;
+}
+.remote-artifact > div {
+  min-width: 0;
+}
+.remote-artifact strong,
+.remote-artifact span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.remote-artifact strong {
+  color: #29463e;
+  font-size: 13px;
+}
+.remote-artifact span {
+  margin-top: 3px;
+  color: #6b7b75;
+  font-size: 12px;
+}
+.remote-artifact em {
+  flex: none;
+  color: #8a6451;
+  font-size: 12px;
+  font-style: normal;
+}
+.remote-artifact em.available {
+  color: #17705b;
+}
+.remote-artifact-empty {
+  margin-top: 8px;
+}
 .remote-job p {
   color: #aa4840;
   font-size: 13px;

@@ -16,6 +16,14 @@ import {
   type WrittenTestSupplementInput,
   type WrittenTestSupplementResult,
 } from './written-test-supplement.ts';
+import {
+  validateWorkSampleAssessment,
+  validateWorkSampleInput,
+  validateWorkSampleReference,
+  type WorkSampleAssessment,
+  type WorkSampleInput,
+  type WorkSampleReference,
+} from './work-sample.ts';
 let account: string | null = null;
 export function configureRemoteAccount(value: string) {
   account = value;
@@ -29,7 +37,7 @@ class RemoteError extends Error {
   }
 }
 export type RemoteJob<T = Report> = {
-  kind?: 'interview' | 'resume' | 'written-test';
+  kind?: 'interview' | 'resume' | 'written-test' | 'work-sample';
   id: string;
   label: string;
   state:
@@ -46,6 +54,14 @@ export type RemoteJob<T = Report> = {
   position?: number | null;
   report?: T | null;
   error?: string | null;
+  artifactId?: string | null;
+  targetDeviceName?: string | null;
+  waitingForDevice?: boolean;
+};
+export type RemoteArtifact = WorkSampleReference & {
+  deviceName: string;
+  available: boolean;
+  syncedAt: number;
 };
 export async function remoteRequest<T>(
   path: string,
@@ -86,8 +102,8 @@ export function controlRemoteJob(
   );
 }
 async function submitRemoteTask<T>(
-  input: InterviewInput | ResumeInput | WrittenTestSupplementInput,
-  kind: 'interview' | 'resume' | 'written-test',
+  input: InterviewInput | ResumeInput | WrittenTestSupplementInput | WorkSampleInput,
+  kind: 'interview' | 'resume' | 'written-test' | 'work-sample',
   validateResult: (value: unknown) => T,
   label: string,
   signal: AbortSignal,
@@ -188,6 +204,51 @@ async function submitRemoteTask<T>(
   }
 }
 
+export async function listRemoteArtifacts(
+  fetcher: typeof fetch = fetch,
+): Promise<RemoteArtifact[]> {
+  const result = await remoteRequest<{ artifacts: unknown[] }>(
+    '/api/artifacts',
+    {},
+    fetcher,
+  );
+  if (!Array.isArray(result.artifacts) || result.artifacts.length > 100)
+    throw new Error('作品清单格式无效。');
+  return result.artifacts.map((value) => {
+    if (!value || typeof value !== 'object') throw new Error('作品清单格式无效。');
+    const item = value as Record<string, unknown>;
+    const allowed = new Set([
+      'id',
+      'deviceId',
+      'name',
+      'sha256',
+      'bytes',
+      'modifiedAt',
+      'deviceName',
+      'available',
+      'syncedAt',
+    ]);
+    if (Object.keys(item).some((key) => !allowed.has(key)))
+      throw new Error('作品清单格式无效。');
+    const reference = validateWorkSampleReference(item);
+    if (
+      typeof item.deviceName !== 'string' ||
+      !item.deviceName.trim() ||
+      item.deviceName.length > 80 ||
+      typeof item.available !== 'boolean'
+      || !Number.isSafeInteger(item.syncedAt)
+      || Number(item.syncedAt) < 0
+    )
+      throw new Error('作品清单格式无效。');
+    return {
+      ...reference,
+      deviceName: item.deviceName.trim(),
+      available: item.available,
+      syncedAt: Number(item.syncedAt),
+    };
+  });
+}
+
 export function submitRemoteAnalysis(
   input: InterviewInput,
   label: string,
@@ -240,6 +301,35 @@ export function submitRemoteWrittenTest(
     normalized,
     'written-test',
     (value) => validateWrittenTestSupplement(value, normalized),
+    label,
+    signal,
+    onProgress,
+    dependencies,
+  );
+}
+
+export function submitRemoteWorkSample(
+  input: WorkSampleInput,
+  label: string,
+  signal: AbortSignal,
+  onProgress: (job: RemoteJob<WorkSampleAssessment>) => void,
+  dependencies: {
+    fetcher: typeof fetch;
+    pollMs: number;
+    scope?: string;
+  } = { fetcher: fetch, pollMs: 2000 },
+): Promise<WorkSampleAssessment> {
+  const normalized = validateWorkSampleInput(input);
+  return submitRemoteTask(
+    normalized,
+    'work-sample',
+    (value) =>
+      validateWorkSampleAssessment(value, {
+        reference: normalized.workSample,
+        dimensionText: normalized.dimensionText,
+        questionCount: 3,
+        existingQuestions: normalized.existingQuestions,
+      }),
     label,
     signal,
     onProgress,
