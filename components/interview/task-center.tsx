@@ -9,7 +9,10 @@ import {
 } from '../../lib/interview';
 import type { ResumeReading } from '../../lib/resume-reading';
 import type { WrittenTestSupplementResult } from '../../lib/written-test-supplement';
-import type { WorkSampleAssessment } from '../../lib/work-sample';
+import {
+  workSampleRubricLabel,
+  type WorkSampleAssessment,
+} from '../../lib/work-sample';
 import {
   controlRemoteJob,
   remoteRequest,
@@ -335,6 +338,7 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
 function WorkSampleTaskResult({ value }: { value: WorkSampleAssessment }) {
   return (
     <>
+      <p className="small-note">{workSampleRubricLabel(value)}</p>
       <p>{value.summary}</p>
       <section>
         <h4>作品观察</h4>
