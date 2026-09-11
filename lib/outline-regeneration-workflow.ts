@@ -37,15 +37,15 @@ export function canRegenerateOutline(value: OutlineRegenerationState) {
   );
 }
 
-export function createOutlineRegenerationInput(value: {
+export async function createOutlineRegenerationInput(value: {
   resumeText: string;
   standards: InterviewStandards;
   reading: ResumeReading;
-}): OutlineRegenerationInput {
+}): Promise<OutlineRegenerationInput> {
   return validateOutlineRegenerationInput({
     ...value.standards,
     resumeText: value.resumeText,
-    revision: outlineRevision(value),
+    revision: await outlineRevision(value),
     interviewQuestions: value.reading.interviewQuestions,
     writtenTestSupplement: value.reading.writtenTestSupplement || null,
     workSample: value.reading.workSample || null,

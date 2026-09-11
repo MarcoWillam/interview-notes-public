@@ -38,7 +38,7 @@ const reading: ResumeReading = {
   followUps: [],
   interviewQuestions: Array.from({ length: 6 }, (_, index) => question(index)),
 };
-const revision = outlineRevision({ resumeText, standards, reading });
+const revision = await outlineRevision({ resumeText, standards, reading });
 const input = validateOutlineRegenerationInput({
   ...standards,
   resumeText,
@@ -97,7 +97,7 @@ void test('stale revisions and changed source positions are rejected', () => {
   );
 });
 
-void test('initially embedded work-sample questions stay identical in both views', () => {
+void test('initially embedded work-sample questions stay identical in both views', async () => {
   const workSampleEvidence = {
     path: 'brief.md',
     excerpt: '目标用户是首次使用 AI 工具的运营人员',
@@ -146,7 +146,7 @@ void test('initially embedded work-sample questions stay identical in both views
     interviewQuestions: embeddedQuestions,
     workSample,
   };
-  const workRevision = outlineRevision({
+  const workRevision = await outlineRevision({
     resumeText,
     standards,
     reading: workReading,

@@ -38,7 +38,7 @@ export function conciseQuestion(value: unknown): string {
   );
   if (
     (evidenceChain && new Set(evidenceChain).size >= 3) ||
-    (enumerationSeparators && enumerationSeparators.length >= 3) ||
+    (enumerationSeparators && enumerationSeparators.length >= 2) ||
     /(?:并|且)(?:说明|分析|介绍|复盘|验证|评估|比较|提出|给出)|以及(?:结果|复盘|反思|验证|评估)|分别(?:说明|介绍|分析|验证|评估)/.test(
       result,
     )

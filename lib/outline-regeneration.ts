@@ -86,7 +86,7 @@ function validateExistingWorkSample(
   });
 }
 
-export function outlineRevision(value: {
+export async function outlineRevision(value: {
   resumeText: string;
   standards: InterviewStandards;
   reading: ResumeReading;
@@ -98,12 +98,13 @@ export function outlineRevision(value: {
     writtenTestSupplement: value.reading.writtenTestSupplement || null,
     workSample: value.reading.workSample || null,
   });
-  let hash = 2166136261;
-  for (const character of source) {
-    hash ^= character.codePointAt(0) || 0;
-    hash = Math.imul(hash, 16777619);
-  }
-  return `outline-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(source),
+  );
+  return `outline-${Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('')}`;
 }
 
 export function validateOutlineRegenerationInput(

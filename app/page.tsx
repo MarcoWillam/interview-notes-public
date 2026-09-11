@@ -680,7 +680,7 @@ export default function Home({
       try {
         if (transcript.trim() || report || confirmed)
           throw new Error('面试记录已开始，未应用重新生成的提纲。');
-        regenerationInput = createOutlineRegenerationInput({
+        regenerationInput = await createOutlineRegenerationInput({
           resumeText,
           standards: {
             role,
@@ -1093,7 +1093,11 @@ export default function Home({
       if (!queuedCodex)
         throw new Error('请使用队列版工作台连接 Codex 后重新生成提纲。');
       const regenerationInput: OutlineRegenerationInput =
-        createOutlineRegenerationInput({ resumeText, standards, reading });
+        await createOutlineRegenerationInput({
+          resumeText,
+          standards,
+          reading,
+        });
       setOutlineRevision(regenerationInput.revision);
       const result = await submitRemoteOutline(
         regenerationInput,
@@ -1120,7 +1124,7 @@ export default function Home({
       const live = outlineLiveRef.current;
       if (!live.reading?.interviewQuestions)
         throw new Error('面试记录已变化，未应用过期提纲。');
-      const currentInput = createOutlineRegenerationInput({
+      const currentInput = await createOutlineRegenerationInput({
         resumeText: live.resumeText,
         standards: live.standards,
         reading: live.reading,
