@@ -483,6 +483,9 @@ function RemotePanel({
                 </span>
                 <span className="remote-device-version">
                   连接器 {device.version || '旧版（未报告版本）'}
+                  {device.protocol
+                    ? ` · 协议 ${device.protocol}`
+                    : ' · 协议未知'}
                   {device.updateState !== 'current' && (
                     <em className={device.updateState}>
                       {device.updateState === 'update-required'
@@ -491,6 +494,12 @@ function RemotePanel({
                     </em>
                   )}
                 </span>
+                {!device.supportsOutline && (
+                  <span className="remote-device-capability">
+                    暂不支持提纲重新生成，请升级至{' '}
+                    {release?.latestVersion || '最新版'}。
+                  </span>
+                )}
               </div>
               <button
                 disabled={pending}

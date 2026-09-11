@@ -33,8 +33,12 @@ export function conciseQuestion(value: unknown): string {
   if ((result.match(/[?？]/g) || []).length > 1)
     throw new Error('面试主问题只能包含一个问点。');
   const evidenceChain = result.match(/背景|过程|行动|结果|复盘|反思|收获/g);
+  const enumerationSeparators = result.match(
+    /[、，,]|(?:与|和|及)(?=[\p{Script=Han}]{2,8}(?:[？?。]|$))/gu,
+  );
   if (
     (evidenceChain && new Set(evidenceChain).size >= 3) ||
+    (enumerationSeparators && enumerationSeparators.length >= 3) ||
     /(?:并|且)(?:说明|分析|介绍|复盘|验证|评估|比较|提出|给出)|以及(?:结果|复盘|反思|验证|评估)|分别(?:说明|介绍|分析|验证|评估)/.test(
       result,
     )

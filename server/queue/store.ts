@@ -96,6 +96,9 @@ export class QueueStore {
       this.db.exec('ALTER TABLE jobs ADD COLUMN artifactId TEXT');
     if (!jobColumns.some((column) => column.name === 'scope'))
       this.db.exec('ALTER TABLE jobs ADD COLUMN scope TEXT');
+    this.db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS outline_record_once ON jobs(user,scope) WHERE kind='outline' AND scope IS NOT NULL AND state IN ('queued','running','paused','completed')",
+    );
     const deviceColumns = this.db
       .prepare('PRAGMA table_info(devices)')
       .all() as Row[];
@@ -480,6 +483,7 @@ export class QueueStore {
     if (
       scope &&
       kind !== 'resume' &&
+      kind !== 'written-test' &&
       kind !== 'work-sample' &&
       kind !== 'outline'
     )
@@ -533,6 +537,18 @@ export class QueueStore {
           409,
         );
       }
+    }
+    if (scope) {
+      const conflicting = this.db
+        .prepare(
+          "SELECT kind FROM jobs WHERE user=? AND scope=? AND kind<>? AND kind IN ('resume','written-test','work-sample','outline') AND state IN ('queued','running','paused') LIMIT 1",
+        )
+        .get(user, scope, kind) as Row | undefined;
+      if (conflicting)
+        throw new QueueError(
+          '当前面试记录已有准备任务，请在任务中心等待完成或停止后重试。',
+          409,
+        );
     }
     const workSample: WorkSampleReference | undefined =
       (kind === 'resume' || kind === 'work-sample') &&
@@ -590,25 +606,34 @@ export class QueueStore {
     if (Number(count.n) >= 20)
       throw new QueueError('待处理任务已达 20 项，请先处理或取消。', 429);
     const id = randomUUID();
-    this.db
-      .prepare(
-        "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued,targetDevice,artifactId,scope) VALUES(?,?,?,?,?,'queued',?,?,?,?,?,?,?,?)",
-      )
-      .run(
-        id,
-        user,
-        client,
-        digest,
-        safeLabel,
-        input,
-        this.now(),
-        this.now(),
-        kind,
-        this.now(),
-        targetDevice,
-        artifactId,
-        scope || null,
-      );
+    try {
+      this.db
+        .prepare(
+          "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued,targetDevice,artifactId,scope) VALUES(?,?,?,?,?,'queued',?,?,?,?,?,?,?,?)",
+        )
+        .run(
+          id,
+          user,
+          client,
+          digest,
+          safeLabel,
+          input,
+          this.now(),
+          this.now(),
+          kind,
+          this.now(),
+          targetDevice,
+          artifactId,
+          scope || null,
+        );
+    } catch (insertError) {
+      if (kind === 'outline')
+        throw new QueueError(
+          '当前面试记录已有提纲重新生成任务，请在任务中心查看。',
+          409,
+        );
+      throw insertError;
+    }
     return this.get(user, id);
   }
   get(user: string, id: string) {
@@ -892,12 +917,17 @@ export class QueueStore {
     }
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      if (!error && job.kind === 'outline')
-        this.db
+      if (!error && job.kind === 'outline') {
+        const completion = this.db
           .prepare(
             'INSERT OR IGNORE INTO outline_completions(user,scope,job,inputHash,completed) VALUES(?,?,?,?,?)',
           )
           .run(job.user, job.scope, job.id, job.inputHash, this.now());
+        if (completion.changes === 0) {
+          report = null;
+          error = '当前面试记录已有成功提纲，本次重复结果未应用。';
+        }
+      }
       this.db
         .prepare(
           'UPDATE jobs SET state=?,report=?,error=?,input=NULL,updated=? WHERE id=?',

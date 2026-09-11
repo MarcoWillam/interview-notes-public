@@ -166,6 +166,27 @@ void test('outline regeneration requires a current connector and reports its ver
       'outline',
       'record-outline-123',
     );
+    assert.throws(
+      () =>
+        s.submit(
+          a,
+          'written-conflict-123',
+          '冲突的笔试补充',
+          writtenTestInput,
+          'written-test',
+          'record-outline-123',
+        ),
+      /已有准备任务/,
+    );
+    assert.throws(
+      () =>
+        s.db
+          .prepare(
+            "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued,scope) SELECT 'duplicate-outline-job',user,'duplicate-outline-client',inputHash,label,'queued',input,created,updated,kind,queued,scope FROM jobs WHERE id=?",
+          )
+          .run(submitted.id),
+      /UNIQUE constraint failed/,
+    );
     const claimed = s.claim(device.token, true, ['outline'], release)!;
     assert.equal(claimed.id, submitted.id);
     assert.equal(claimed.kind, 'outline');

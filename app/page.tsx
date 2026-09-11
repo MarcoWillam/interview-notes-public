@@ -296,6 +296,7 @@ export default function Home({
     preparationJobIds: [writtenTestJobId, workSampleJobId],
     busy: !!busy,
   });
+  const outlineTaskActive = !!outlineRegenerationJobId;
   // Imports and queue responses may finish after the render that started them.
   const resumeContext = useRef({
     candidate,
@@ -790,6 +791,10 @@ export default function Home({
     }
   }
   function applyTranscript(text: string, name: string) {
+    if (outlineTaskActive) {
+      setError('提纲正在重新生成，请等待完成或先在任务中心停止任务。');
+      return;
+    }
     editTranscript(text);
     setTranscriptName(name);
     setTab('transcript');
@@ -797,7 +802,11 @@ export default function Home({
     setNotice('面试记录已导入，请校对文字与说话人归属后再生成评估。');
   }
   async function transcriptFile(file: File) {
-    if (busyRef.current) return;
+    if (busyRef.current || outlineTaskActive) {
+      if (outlineTaskActive)
+        setError('提纲正在重新生成，请等待完成或先在任务中心停止任务。');
+      return;
+    }
     busyRef.current = true;
     setBusy('import');
     setError('');
@@ -1126,7 +1135,6 @@ export default function Home({
         confirmed: live.confirmed,
       });
       if (!canApply) {
-        if (live.recordId === recordId) setOutlineRegeneratedAt(completedAt);
         throw new Error('面试记录已变化，未应用过期提纲。');
       }
       const currentResult = validateOutlineRegenerationResult(
@@ -1225,6 +1233,7 @@ export default function Home({
             setRemoteJob({ ...job, report: null });
           }
         },
+        { fetcher: fetch, pollMs: 2000, scope: library.id },
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
@@ -1501,6 +1510,10 @@ export default function Home({
     });
   }
   function editTranscript(text: string) {
+    if (outlineTaskActive) {
+      setError('提纲正在重新生成，请等待完成或先在任务中心停止任务。');
+      return;
+    }
     invalidate();
     setTranscript(text);
     if (!transcriptName && text.trim())
@@ -1510,7 +1523,11 @@ export default function Home({
     setReviewed(false);
   }
   async function analyze() {
-    if (busyRef.current) return;
+    if (busyRef.current || outlineTaskActive) {
+      if (outlineTaskActive)
+        setError('提纲正在重新生成，请等待完成或先在任务中心停止任务。');
+      return;
+    }
     setError('');
     try {
       validateInput(input);
@@ -1999,7 +2016,7 @@ export default function Home({
               }
               workSampleAnalyzed={!!workSample}
               outlineLocked={outlineLocked}
-              disabled={!!busy}
+              disabled={!!busy || outlineTaskActive}
               open={preparationOpen}
               onOpen={() => setPreparationOpen(true)}
             />
@@ -2280,7 +2297,7 @@ export default function Home({
                             id="transcript-file"
                             type="file"
                             accept=".md,.txt"
-                            disabled={!!busy}
+                            disabled={!!busy || outlineTaskActive}
                             onChange={(e) => {
                               const file = e.target.files?.[0];
                               e.target.value = '';
@@ -2299,7 +2316,7 @@ export default function Home({
                         <textarea
                           id="transcript"
                           className="transcript-input"
-                          disabled={!!busy}
+                          disabled={!!busy || outlineTaskActive}
                           value={transcript}
                           maxLength={80000}
                           onChange={(e) => editTranscript(e.target.value)}
@@ -2314,7 +2331,9 @@ export default function Home({
                           <Checkbox
                             id="transcript-reviewed"
                             checked={reviewed}
-                            disabled={!transcript.trim() || !!busy}
+                            disabled={
+                              !transcript.trim() || !!busy || outlineTaskActive
+                            }
                             onCheckedChange={(v) => {
                               setReviewed(v);
                               setConfirmed(false);

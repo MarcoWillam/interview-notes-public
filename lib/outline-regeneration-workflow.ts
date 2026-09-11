@@ -24,6 +24,9 @@ export function canRegenerateOutline(value: OutlineRegenerationState) {
   return !!(
     value.resumeText.trim() &&
     value.reading?.interviewQuestions?.length === 6 &&
+    value.reading.interviewQuestions.every(
+      (question) => question.questionSource,
+    ) &&
     !value.transcript.trim() &&
     !value.report &&
     !value.confirmed &&
