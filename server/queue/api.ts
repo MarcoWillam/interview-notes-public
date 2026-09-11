@@ -206,7 +206,8 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
           const kind =
             body.kind === undefined
               ? 'interview'
-              : body.kind === 'resume' ||
+              : body.kind === 'interview' ||
+                  body.kind === 'resume' ||
                   body.kind === 'written-test' ||
                   body.kind === 'work-sample'
                 ? body.kind

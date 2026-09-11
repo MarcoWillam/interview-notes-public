@@ -241,6 +241,23 @@ void test('HTTP queue holds offline jobs, pairs a connector, and returns a valid
     await f.close();
   }
 });
+void test('HTTP queue accepts an explicit interview task kind from the browser client', async () => {
+  const f = await fixture();
+  try {
+    const submitted = await f.api('/api/jobs', 'POST', {
+      client: 'explicit-interview-kind-123',
+      kind: 'interview',
+      label: '候选人辅助评估',
+      input,
+    });
+    assert.equal(submitted.status, 202);
+    const job = (await submitted.json()) as { id: string; kind: string };
+    assert.equal(job.kind, 'interview');
+    assert.equal(f.store.get(f.user, job.id).kind, 'interview');
+  } finally {
+    await f.close();
+  }
+});
 void test('worker syncs metadata-only artifacts and web submissions keep device affinity', async () => {
   const f = await fixture();
   try {
