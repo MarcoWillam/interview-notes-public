@@ -63,6 +63,10 @@ void test('concise generation rejects short, long and compound questions', () =>
     () => conciseQuestion('请说明项目目标、个人职责、协作方式？'),
     /一个问点/,
   );
+  assert.throws(
+    () => conciseQuestion('请说明项目目标与个人职责及协作方式？'),
+    /一个问点/,
+  );
 });
 
 void test('historical long questions remain readable outside generation validation', () => {
