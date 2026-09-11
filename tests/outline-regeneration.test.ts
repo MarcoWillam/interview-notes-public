@@ -96,3 +96,96 @@ void test('stale revisions and changed source positions are rejected', () => {
     /来源顺序/,
   );
 });
+
+void test('initially embedded work-sample questions stay identical in both views', () => {
+  const workSampleEvidence = {
+    path: 'brief.md',
+    excerpt: '目标用户是首次使用 AI 工具的运营人员',
+  };
+  const workQuestions: InterviewQuestion[] = Array.from(
+    { length: 3 },
+    (_, index) => ({
+      ...question(index + 1),
+      question: `请解释作品中第${index + 1}个关键判断与依据。`,
+      questionSource: 'work-sample',
+      resumeEvidence: null,
+      workSampleEvidence,
+    }),
+  );
+  const embeddedQuestions = [...reading.interviewQuestions!];
+  embeddedQuestions.splice(1, 3, ...workQuestions);
+  const workSample = {
+    artifact: {
+      id: 'artifact-12345678',
+      name: '作品.zip',
+      sha256: 'a'.repeat(64),
+      bytes: 1024,
+      modifiedAt: 1,
+    },
+    coverage: {
+      analyzed: ['brief.md'],
+      excluded: [],
+      unsupported: [],
+      truncated: false,
+    },
+    summary: '作品摘要。',
+    dimensions: [
+      {
+        name: '用户洞察',
+        score: 3,
+        assessment: '有明确问题描述。',
+        evidence: [workSampleEvidence],
+      },
+    ],
+    strengths: ['问题明确。'],
+    risks: ['验证不足。'],
+    questions: workQuestions,
+  };
+  const workReading: ResumeReading = {
+    ...reading,
+    interviewQuestions: embeddedQuestions,
+    workSample,
+  };
+  const workRevision = outlineRevision({
+    resumeText,
+    standards,
+    reading: workReading,
+  });
+  const workInput = validateOutlineRegenerationInput({
+    ...standards,
+    resumeText,
+    revision: workRevision,
+    interviewQuestions: embeddedQuestions,
+    writtenTestSupplement: null,
+    workSample,
+  });
+  const replacements = embeddedQuestions.map((item, index) => ({
+    ...item,
+    question: `请说明第${index + 1}项判断的核心依据？`,
+  }));
+  const output = {
+    revision: workRevision,
+    interviewQuestions: replacements,
+    writtenTestSupplement: null,
+    workSampleQuestions: replacements.slice(1, 4),
+  };
+  const result = validateOutlineRegenerationResult(output, workInput);
+  const updated = applyOutlineRegeneration(workReading, result);
+  assert.deepEqual(
+    updated.workSample?.questions,
+    updated.interviewQuestions?.slice(1, 4),
+  );
+  assert.throws(
+    () =>
+      validateOutlineRegenerationResult(
+        {
+          ...output,
+          workSampleQuestions: output.workSampleQuestions.map((item, index) =>
+            index === 0 ? { ...item, reason: '不同理由。' } : item,
+          ),
+        },
+        workInput,
+      ),
+    /保持一致/,
+  );
+});

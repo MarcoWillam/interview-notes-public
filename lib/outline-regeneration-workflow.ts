@@ -16,6 +16,7 @@ export type OutlineRegenerationState = {
   confirmed: boolean;
   regeneratedAt?: number;
   activeJobId?: string;
+  preparationJobIds?: Array<string | undefined>;
   busy?: boolean;
 };
 
@@ -28,6 +29,7 @@ export function canRegenerateOutline(value: OutlineRegenerationState) {
     !value.confirmed &&
     !value.regeneratedAt &&
     !value.activeJobId &&
+    !value.preparationJobIds?.some(Boolean) &&
     !value.busy
   );
 }
@@ -52,4 +54,22 @@ export function regenerationResultIsCurrent(
   result: OutlineRegenerationResult,
 ) {
   return input.revision === result.revision;
+}
+
+export function canApplyOutlineRegeneration(value: {
+  submittedRecordId: string;
+  currentRecordId: string;
+  submittedInput: OutlineRegenerationInput;
+  currentInput: OutlineRegenerationInput;
+  transcript: string;
+  report: Report | null;
+  confirmed: boolean;
+}) {
+  return !!(
+    value.submittedRecordId === value.currentRecordId &&
+    value.submittedInput.revision === value.currentInput.revision &&
+    !value.transcript.trim() &&
+    !value.report &&
+    !value.confirmed
+  );
 }
