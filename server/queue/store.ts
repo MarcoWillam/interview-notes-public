@@ -27,6 +27,7 @@ import {
   validateOutlineRegenerationResult,
 } from '../../lib/outline-regeneration.ts';
 import {
+  CONNECTOR_VERSION,
   OUTLINE_CONNECTOR_PROTOCOL,
   connectorSupportsOutline,
   connectorUpdateState,
@@ -96,6 +97,11 @@ export class QueueStore {
       this.db.exec('ALTER TABLE jobs ADD COLUMN artifactId TEXT');
     if (!jobColumns.some((column) => column.name === 'scope'))
       this.db.exec('ALTER TABLE jobs ADD COLUMN scope TEXT');
+    this.db
+      .prepare(
+        "UPDATE jobs SET state='failed',input=NULL,report=NULL,error='旧版提纲任务缺少面试记录范围，请重新提交。',updated=? WHERE kind='outline' AND scope IS NULL AND state IN ('queued','running','paused','completed')",
+      )
+      .run(this.now());
     this.db.exec(
       "CREATE UNIQUE INDEX IF NOT EXISTS outline_record_once ON jobs(user,scope) WHERE kind='outline' AND scope IS NOT NULL AND state IN ('queued','running','paused','completed')",
     );
@@ -337,23 +343,32 @@ export class QueueStore {
           'SELECT id,name,seen,ready,version,protocol,versionSeen FROM devices WHERE user=? AND revoked=0',
         )
         .all(user) as Row[]
-    ).map((row) => ({
-      id: row.id,
-      name: row.name,
-      lastSeen: row.seen,
-      online: Number(row.seen) > this.now() - 45000,
-      ready: !!row.ready,
-      version: row.version ? String(row.version) : null,
-      protocol: row.protocol === null ? null : Number(row.protocol),
-      versionSeen: row.versionSeen === null ? null : Number(row.versionSeen),
-      updateState: connectorUpdateState(
-        row.version ? String(row.version) : null,
+    ).map((row) => {
+      const supportsOutline = connectorSupportsOutline(
         row.protocol === null ? null : Number(row.protocol),
-      ),
-      supportsOutline: connectorSupportsOutline(
-        row.protocol === null ? null : Number(row.protocol),
-      ),
-    }));
+      );
+      return {
+        id: row.id,
+        name: row.name,
+        lastSeen: row.seen,
+        online: Number(row.seen) > this.now() - 45000,
+        ready: !!row.ready,
+        version: row.version ? String(row.version) : null,
+        protocol: row.protocol === null ? null : Number(row.protocol),
+        versionSeen: row.versionSeen === null ? null : Number(row.versionSeen),
+        updateState: connectorUpdateState(
+          row.version ? String(row.version) : null,
+          row.protocol === null ? null : Number(row.protocol),
+        ),
+        supportsOrdinaryAnalysis:
+          row.protocol === null || Number(row.protocol) >= 1,
+        supportsOutline,
+        unsupportedCapabilities: supportsOutline
+          ? []
+          : ['outline-regeneration'],
+        latestVersion: CONNECTOR_VERSION,
+      };
+    });
   }
   syncArtifacts(
     secret: string,

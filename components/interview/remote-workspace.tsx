@@ -29,7 +29,10 @@ type Device = {
   protocol: number | null;
   versionSeen: number | null;
   updateState: 'current' | 'update-available' | 'update-required';
+  supportsOrdinaryAnalysis: boolean;
   supportsOutline: boolean;
+  unsupportedCapabilities: string[];
+  latestVersion: string;
 };
 type ConnectorReleaseInfo = {
   latestVersion: string;
@@ -497,7 +500,8 @@ function RemotePanel({
                 {!device.supportsOutline && (
                   <span className="remote-device-capability">
                     暂不支持提纲重新生成，请升级至{' '}
-                    {release?.latestVersion || '最新版'}。
+                    {device.latestVersion || release?.latestVersion || '最新版'}
+                    。
                   </span>
                 )}
               </div>

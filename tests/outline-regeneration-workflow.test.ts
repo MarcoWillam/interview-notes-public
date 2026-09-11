@@ -71,8 +71,8 @@ void test('outline can regenerate once before an interview starts', () => {
   );
 });
 
-void test('regeneration input reuses persisted resume and current outline', () => {
-  const input = createOutlineRegenerationInput({
+void test('regeneration input reuses persisted resume and current outline', async () => {
+  const input = await createOutlineRegenerationInput({
     resumeText: '负责用户访谈并整理需求。',
     standards,
     reading,
@@ -82,8 +82,8 @@ void test('regeneration input reuses persisted resume and current outline', () =
   assert.equal(input.writtenTestSupplement, null);
 });
 
-void test('completed outline only applies to the unchanged active record', () => {
-  const input = createOutlineRegenerationInput({
+void test('completed outline only applies to the unchanged active record', async () => {
+  const input = await createOutlineRegenerationInput({
     resumeText: '负责用户访谈并整理需求。',
     standards,
     reading,

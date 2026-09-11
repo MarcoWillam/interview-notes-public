@@ -156,7 +156,10 @@ void test('outline regeneration requires a current connector and reports its ver
     const listed = s.devices(a).find((item) => item.id === device.id)!;
     assert.equal(listed.version, CONNECTOR_VERSION);
     assert.equal(listed.updateState, 'current');
+    assert.equal(listed.supportsOrdinaryAnalysis, true);
     assert.equal(listed.supportsOutline, true);
+    assert.deepEqual(listed.unsupportedCapabilities, []);
+    assert.equal(listed.latestVersion, CONNECTOR_VERSION);
 
     const submitted = s.submit(
       a,
@@ -508,6 +511,11 @@ void test('legacy job databases gain artifact binding columns without losing wor
         "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued) VALUES('job','user','client','hash','历史任务','queued','{}',100,200,'interview',100)",
       )
       .run();
+    legacy
+      .prepare(
+        "INSERT INTO jobs(id,user,client,inputHash,label,state,input,report,created,updated,kind,queued) VALUES('legacy-outline','user','outline-client','outline-hash','旧版提纲','completed',NULL,'{}',100,200,'outline',100)",
+      )
+      .run();
     legacy.close();
     const migrated = new QueueStore(file);
     const columns = migrated.db.prepare('PRAGMA table_info(jobs)').all() as {
@@ -520,6 +528,18 @@ void test('legacy job databases gain artifact binding columns without losing wor
       migrated.db.prepare('SELECT label FROM jobs WHERE id=?').get('job')
         ?.label,
       '历史任务',
+    );
+    assert.deepEqual(
+      {
+        ...(migrated.db
+          .prepare('SELECT state,report,error FROM jobs WHERE id=?')
+          .get('legacy-outline') as Record<string, unknown>),
+      },
+      {
+        state: 'failed',
+        report: null,
+        error: '旧版提纲任务缺少面试记录范围，请重新提交。',
+      },
     );
     migrated.close();
   } finally {
