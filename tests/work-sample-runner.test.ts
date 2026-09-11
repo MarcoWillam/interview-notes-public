@@ -34,7 +34,7 @@ const question = (
   index: number,
   source: 'resume' | 'role' | 'work-sample',
 ) => ({
-  question: `第 ${index + 1} 题：请说明你的具体判断、行动和复盘。`,
+  question: `第 ${index + 1} 题：这项判断的核心依据是什么？`,
   questionSource: source,
   dimensions: [index === 1 ? '方案取舍' : '问题定义'],
   reason:
@@ -74,7 +74,7 @@ function assessment(
 ) {
   const questions = [1, 2, 3].map((index) => ({
     ...question(index, 'work-sample'),
-    question: `作品复盘第 ${index} 题：请说明文件中的具体判断和取舍。`,
+    question: `作品复盘第 ${index} 题：哪项依据最关键？`,
   }));
   return {
     rubricVersion: AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
