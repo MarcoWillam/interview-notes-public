@@ -57,6 +57,15 @@ export function RemoteWorkspace() {
       if (value.user) {
         configureRemoteAccount(value.user.id);
         configureLocalStore(value.preview ? '' : value.user.id);
+        try {
+          setDismissedRelease(
+            sessionStorage.getItem(
+              `interview-connector-update-dismissed:${value.user.id}`,
+            ) || '',
+          );
+        } catch {
+          setDismissedRelease('');
+        }
       }
       setSession(value);
       setError('');
@@ -86,6 +95,18 @@ export function RemoteWorkspace() {
       clearInterval(timer);
     };
   }, [session]);
+  function dismissConnectorRelease(version: string) {
+    setDismissedRelease(version);
+    if (!session?.user) return;
+    try {
+      sessionStorage.setItem(
+        `interview-connector-update-dismissed:${session.user.id}`,
+        version,
+      );
+    } catch {
+      // The in-memory dismissal still lasts for this rendered workspace.
+    }
+  }
   async function login(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -202,7 +223,7 @@ export function RemoteWorkspace() {
             onDismiss: required
               ? undefined
               : () =>
-                  setDismissedRelease(
+                  dismissConnectorRelease(
                     deviceStatus.connectorRelease.latestVersion,
                   ),
           };

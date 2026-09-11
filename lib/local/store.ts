@@ -40,6 +40,7 @@ export type SavedInterview = {
   writtenTestConfirmed?: boolean;
   workSample?: import('../work-sample.ts').WorkSampleAssessment | null;
   workSampleJobId?: string;
+  writtenTestJobId?: string;
   outlineRegeneratedAt?: number;
   outlineRegenerationJobId?: string;
   outlineRevision?: string;

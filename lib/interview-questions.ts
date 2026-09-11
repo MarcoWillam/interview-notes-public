@@ -32,6 +32,14 @@ export function conciseQuestion(value: unknown): string {
     throw new Error('面试主问题必须为 12–30 个字符。');
   if ((result.match(/[?？]/g) || []).length > 1)
     throw new Error('面试主问题只能包含一个问点。');
+  const evidenceChain = result.match(/背景|过程|行动|结果|复盘|反思|收获/g);
+  if (
+    (evidenceChain && new Set(evidenceChain).size >= 3) ||
+    /并(?:说明|分析|介绍|复盘)|以及(?:结果|复盘|反思)|分别(?:说明|介绍|分析)/.test(
+      result,
+    )
+  )
+    throw new Error('面试主问题只能包含一个问点。');
   return result;
 }
 

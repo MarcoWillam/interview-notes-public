@@ -19,7 +19,10 @@ import {
   listRemoteArtifacts,
   type RemoteArtifact,
 } from '@/lib/remote-analysis';
-import type { WrittenTestSupplementResult } from '@/lib/written-test-supplement';
+import {
+  validateWrittenTestSupplement,
+  type WrittenTestSupplementResult,
+} from '@/lib/written-test-supplement';
 import type {
   WorkSampleAssessment,
   WorkSampleReference,
@@ -116,6 +119,7 @@ import {
   type OutlineRegenerationResult,
 } from '@/lib/outline-regeneration';
 import {
+  canApplyOutlineRegeneration,
   canRegenerateOutline,
   createOutlineRegenerationInput,
 } from '@/lib/outline-regeneration-workflow';
@@ -206,6 +210,9 @@ export default function Home({
   } | null>(null);
   const [pendingWrittenTestSupplement, setPendingWrittenTestSupplement] =
     useState(false);
+  const [writtenTestJobId, setWrittenTestJobId] = useState<
+    string | undefined
+  >();
   const [pendingOutlineRegeneration, setPendingOutlineRegeneration] =
     useState(false);
   const [outlineRegeneratedAt, setOutlineRegeneratedAt] = useState<
@@ -286,6 +293,7 @@ export default function Home({
     confirmed,
     regeneratedAt: outlineRegeneratedAt,
     activeJobId: outlineRegenerationJobId,
+    preparationJobIds: [writtenTestJobId, workSampleJobId],
     busy: !!busy,
   });
   // Imports and queue responses may finish after the render that started them.
@@ -385,6 +393,7 @@ export default function Home({
       writtenTestConfirmed: effectiveWrittenTestConfirmed,
       workSample,
       workSampleJobId,
+      writtenTestJobId,
       outlineRegeneratedAt,
       outlineRegenerationJobId,
       outlineRevision,
@@ -417,6 +426,7 @@ export default function Home({
         saved.workSample || saved.resumeReading?.workSample || null,
       );
       setWorkSampleJobId(saved.workSampleJobId);
+      setWrittenTestJobId(saved.writtenTestJobId);
       setOutlineRegeneratedAt(saved.outlineRegeneratedAt);
       setOutlineRegenerationJobId(saved.outlineRegenerationJobId);
       setOutlineRevision(saved.outlineRevision);
@@ -434,6 +444,46 @@ export default function Home({
     },
     reset,
   );
+  const outlineLiveRef = useRef({
+    recordId: library.id,
+    resumeText,
+    standards,
+    reading: resumeReading,
+    transcript,
+    report,
+    confirmed,
+  });
+  useEffect(() => {
+    outlineLiveRef.current = {
+      recordId: library.id,
+      resumeText,
+      standards: {
+        role,
+        requirements,
+        dimensionText,
+        focus,
+        scoringGuidance,
+        reportRequirements,
+      },
+      reading: resumeReading,
+      transcript,
+      report,
+      confirmed,
+    };
+  }, [
+    library.id,
+    resumeText,
+    role,
+    requirements,
+    dimensionText,
+    focus,
+    scoringGuidance,
+    reportRequirements,
+    resumeReading,
+    transcript,
+    report,
+    confirmed,
+  ]);
   useEffect(() => {
     if (!library.ready || !workSampleJobId || workSample || busyRef.current)
       return;
@@ -515,6 +565,80 @@ export default function Home({
   useEffect(() => {
     if (
       !library.ready ||
+      !writtenTestJobId ||
+      !resumeReading?.interviewQuestions ||
+      busyRef.current
+    )
+      return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const supplementInput = {
+      resumeText,
+      role,
+      requirements,
+      dimensionText,
+      focus,
+      scoringGuidance,
+      reportRequirements,
+      existingQuestions: resumeReading.interviewQuestions,
+    };
+    const recover = async () => {
+      try {
+        const job = await remoteRequest<RemoteJob<WrittenTestSupplementResult>>(
+          '/api/jobs/' + encodeURIComponent(writtenTestJobId),
+        );
+        if (disposed) return;
+        if (job.state === 'completed' && job.report) {
+          const result = validateWrittenTestSupplement(
+            job.report,
+            supplementInput,
+            { conciseQuestions: true },
+          );
+          setResumeReading(applyWrittenTestSupplement(resumeReading, result));
+          setHasWrittenTest(true);
+          setWrittenTestConfirmed(true);
+          setWrittenTestJobId(undefined);
+          setNotice('已恢复并追加 3 道笔试复盘题。');
+          return;
+        }
+        if (job.state === 'failed' || job.state === 'cancelled') {
+          setWrittenTestJobId(undefined);
+          setError(job.error || '笔试复盘补充未完成，可以再次提交。');
+          return;
+        }
+        setRemoteJob({ ...job, report: null });
+        timer = setTimeout(() => void recover(), 3000);
+      } catch (reason) {
+        if (disposed) return;
+        if ((reason as { status?: number }).status === 404) {
+          setWrittenTestJobId(undefined);
+          setError('笔试复盘任务已过期，可以再次提交。');
+          return;
+        }
+        setError('暂时无法获取笔试复盘任务进度，系统会继续重试。');
+        timer = setTimeout(() => void recover(), 5000);
+      }
+    };
+    void recover();
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [
+    library.ready,
+    writtenTestJobId,
+    resumeReading,
+    resumeText,
+    role,
+    requirements,
+    dimensionText,
+    focus,
+    scoringGuidance,
+    reportRequirements,
+  ]);
+  useEffect(() => {
+    if (
+      !library.ready ||
       !outlineRegenerationJobId ||
       !resumeReading?.interviewQuestions ||
       busyRef.current
@@ -523,10 +647,11 @@ export default function Home({
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const recover = async () => {
+      let regenerationInput: OutlineRegenerationInput;
       try {
         if (transcript.trim() || report || confirmed)
           throw new Error('面试记录已开始，未应用重新生成的提纲。');
-        const regenerationInput = createOutlineRegenerationInput({
+        regenerationInput = createOutlineRegenerationInput({
           resumeText,
           standards: {
             role,
@@ -540,15 +665,40 @@ export default function Home({
         });
         if (outlineRevision && outlineRevision !== regenerationInput.revision)
           throw new Error('面试记录已变化，未应用过期提纲。');
+      } catch (reason) {
+        if (!disposed) {
+          setOutlineRegenerationJobId(undefined);
+          setOutlineRevision(undefined);
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : '面试记录已变化，未应用重新生成的提纲。',
+          );
+        }
+        return;
+      }
+      try {
         const job = await remoteRequest<RemoteJob<OutlineRegenerationResult>>(
           '/api/jobs/' + encodeURIComponent(outlineRegenerationJobId),
         );
         if (disposed) return;
         if (job.state === 'completed' && job.report) {
-          const result = validateOutlineRegenerationResult(
-            job.report,
-            regenerationInput,
-          );
+          let result: OutlineRegenerationResult;
+          try {
+            result = validateOutlineRegenerationResult(
+              job.report,
+              regenerationInput,
+            );
+          } catch (reason) {
+            setOutlineRegenerationJobId(undefined);
+            setOutlineRevision(undefined);
+            setError(
+              reason instanceof Error
+                ? reason.message
+                : '重新生成的提纲格式异常，旧提纲已保留。',
+            );
+            return;
+          }
           setResumeReading(applyOutlineRegeneration(resumeReading, result));
           setOutlineRegeneratedAt(job.updated);
           setOutlineRegenerationJobId(undefined);
@@ -565,15 +715,15 @@ export default function Home({
         setRemoteJob({ ...job, report: null });
         timer = setTimeout(() => void recover(), 3000);
       } catch (reason) {
-        if (!disposed) {
+        if (disposed) return;
+        if ((reason as { status?: number }).status === 404) {
           setOutlineRegenerationJobId(undefined);
           setOutlineRevision(undefined);
-          setError(
-            reason instanceof Error
-              ? reason.message
-              : '提纲重新生成任务恢复失败。',
-          );
+          setError('提纲重新生成任务已过期，可以再次提交。');
+          return;
         }
+        setError('暂时无法获取提纲重新生成进度，系统会继续重试。');
+        timer = setTimeout(() => void recover(), 5000);
       }
     };
     void recover();
@@ -644,6 +794,7 @@ export default function Home({
     setResumeReading(null);
     setWorkSample(null);
     setWorkSampleJobId(undefined);
+    setWrittenTestJobId(undefined);
     setOutlineRegeneratedAt(undefined);
     setOutlineRegenerationJobId(undefined);
     setOutlineRevision(undefined);
@@ -869,6 +1020,7 @@ export default function Home({
   }
   async function runOutlineRegeneration() {
     const reading = resumeReading;
+    const recordId = library.id;
     if (
       busyRef.current ||
       !reading?.interviewQuestions ||
@@ -880,6 +1032,7 @@ export default function Home({
         confirmed,
         regeneratedAt: outlineRegeneratedAt,
         activeJobId: outlineRegenerationJobId,
+        preparationJobIds: [writtenTestJobId, workSampleJobId],
       })
     ) {
       setPendingOutlineRegeneration(false);
@@ -927,7 +1080,32 @@ export default function Home({
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
-      setResumeReading(applyOutlineRegeneration(reading, result));
+      const live = outlineLiveRef.current;
+      if (!live.reading?.interviewQuestions)
+        throw new Error('面试记录已变化，未应用过期提纲。');
+      const currentInput = createOutlineRegenerationInput({
+        resumeText: live.resumeText,
+        standards: live.standards,
+        reading: live.reading,
+      });
+      const canApply = canApplyOutlineRegeneration({
+        submittedRecordId: recordId,
+        currentRecordId: live.recordId,
+        submittedInput: regenerationInput,
+        currentInput,
+        transcript: live.transcript,
+        report: live.report,
+        confirmed: live.confirmed,
+      });
+      if (!canApply) {
+        if (live.recordId === recordId) setOutlineRegeneratedAt(completedAt);
+        throw new Error('面试记录已变化，未应用过期提纲。');
+      }
+      const currentResult = validateOutlineRegenerationResult(
+        result,
+        currentInput,
+      );
+      setResumeReading(applyOutlineRegeneration(live.reading, currentResult));
       setOutlineRegeneratedAt(completedAt);
       setOutlineRegenerationJobId(undefined);
       setOutlineRevision(undefined);
@@ -962,6 +1140,7 @@ export default function Home({
   }
   async function runWrittenTestSupplement() {
     const reading = resumeReading;
+    let submittedJobId: string | undefined;
     if (
       busyRef.current ||
       !reading?.interviewQuestions ||
@@ -1012,8 +1191,11 @@ export default function Home({
           if (
             analysisController.current === controller &&
             !controller.signal.aborted
-          )
+          ) {
+            submittedJobId = job.id;
+            setWrittenTestJobId(job.id);
             setRemoteJob({ ...job, report: null });
+          }
         },
       );
       if (analysisController.current !== controller) return;
@@ -1022,6 +1204,7 @@ export default function Home({
       setResumeReading(applyWrittenTestSupplement(reading, result));
       setHasWrittenTest(true);
       setWrittenTestConfirmed(true);
+      setWrittenTestJobId(undefined);
       resumeContext.current = {
         ...resumeContext.current,
         hasWrittenTest: true,
@@ -1031,14 +1214,20 @@ export default function Home({
       setTab('resume');
     } catch (e) {
       if (analysisController.current !== controller) return;
+      const message =
+        e instanceof Error ? e.message : '笔试复盘补充题生成失败。';
+      const stillRemote =
+        !!submittedJobId &&
+        !cancelledRemotely.current &&
+        (/任务已提交|无法获取进度/.test(message) ||
+          (controller.signal.aborted && !cancelledRemotely.current));
+      if (!stillRemote) setWrittenTestJobId(undefined);
       setError(
         controller.signal.aborted
           ? cancelledRemotely.current
             ? '笔试复盘补充任务已取消，原提纲保留。'
             : '已停止等待，可在任务中心查看结果。'
-          : e instanceof Error
-            ? e.message
-            : '笔试复盘补充题生成失败。',
+          : message,
       );
     } finally {
       if (analysisController.current === controller) {
@@ -1421,6 +1610,7 @@ export default function Home({
     setResumeReading(null);
     setWorkSample(null);
     setWorkSampleJobId(undefined);
+    setWrittenTestJobId(undefined);
     setOutlineRegeneratedAt(undefined);
     setOutlineRegenerationJobId(undefined);
     setOutlineRevision(undefined);

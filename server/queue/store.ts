@@ -50,6 +50,8 @@ const token = () => Buffer.from(randomBytes(32)).toString('base64url');
 const hash = (value: string) =>
   createHash('sha256').update(value).digest('hex');
 type Row = Record<string, string | number | null>;
+const PREPARATION_PRIORITY =
+  "CASE WHEN kind IN ('resume','written-test','work-sample','outline') THEN 0 ELSE 1 END";
 export class QueueStore {
   db: DatabaseSync;
   now: () => number;
@@ -62,7 +64,8 @@ export class QueueStore {
       CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,user TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS pairs(hash TEXT PRIMARY KEY,user TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,user TEXT NOT NULL,name TEXT NOT NULL,hash TEXT UNIQUE NOT NULL,seen INTEGER NOT NULL,ready INTEGER NOT NULL DEFAULT 0,revoked INTEGER NOT NULL DEFAULT 0,version TEXT,protocol INTEGER,versionSeen INTEGER);
-      CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,kind TEXT NOT NULL DEFAULT 'interview',queued INTEGER,started INTEGER,UNIQUE(user,client));
+      CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,kind TEXT NOT NULL DEFAULT 'interview',queued INTEGER,started INTEGER,scope TEXT,UNIQUE(user,client));
+      CREATE TABLE IF NOT EXISTS outline_completions(user TEXT NOT NULL,scope TEXT NOT NULL,job TEXT NOT NULL,inputHash TEXT NOT NULL,completed INTEGER NOT NULL,PRIMARY KEY(user,scope));
       CREATE TABLE IF NOT EXISTS artifacts(user TEXT NOT NULL,device TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,sha256 TEXT NOT NULL,bytes INTEGER NOT NULL,modified INTEGER NOT NULL,seen INTEGER NOT NULL,PRIMARY KEY(device,id));
       CREATE INDEX IF NOT EXISTS jobs_owner_created ON jobs(user,created);
       CREATE INDEX IF NOT EXISTS jobs_claim ON jobs(user,state,created);
@@ -91,6 +94,8 @@ export class QueueStore {
       this.db.exec('ALTER TABLE jobs ADD COLUMN targetDevice TEXT');
     if (!jobColumns.some((column) => column.name === 'artifactId'))
       this.db.exec('ALTER TABLE jobs ADD COLUMN artifactId TEXT');
+    if (!jobColumns.some((column) => column.name === 'scope'))
+      this.db.exec('ALTER TABLE jobs ADD COLUMN scope TEXT');
     const deviceColumns = this.db
       .prepare('PRAGMA table_info(devices)')
       .all() as Row[];
@@ -470,6 +475,8 @@ export class QueueStore {
       throw new QueueError('任务标识无效。');
     if (scope && !/^[a-zA-Z0-9-]{8,100}$/.test(scope))
       throw new QueueError('任务范围无效。');
+    if (kind === 'outline' && !scope)
+      throw new QueueError('重新生成提纲需要绑定面试记录。');
     if (
       scope &&
       kind !== 'resume' &&
@@ -506,6 +513,27 @@ export class QueueStore {
         '当前连接器不支持重新生成提纲，请先下载并启动新版连接器。',
         409,
       );
+    if (kind === 'outline') {
+      if (
+        this.db
+          .prepare('SELECT 1 FROM outline_completions WHERE user=? AND scope=?')
+          .get(user, scope)
+      )
+        throw new QueueError('当前面试记录已经成功重新生成过提纲。', 409);
+      const scoped = this.db
+        .prepare(
+          "SELECT id,inputHash,state FROM jobs WHERE user=? AND kind='outline' AND scope=? AND state IN ('queued','running','paused') ORDER BY created LIMIT 1",
+        )
+        .get(user, scope) as Row | undefined;
+      if (scoped) {
+        if (scoped.inputHash === digest)
+          return this.get(user, String(scoped.id));
+        throw new QueueError(
+          '当前面试记录已有提纲重新生成任务，请在任务中心查看。',
+          409,
+        );
+      }
+    }
     const workSample: WorkSampleReference | undefined =
       (kind === 'resume' || kind === 'work-sample') &&
       'workSample' in validatedInput
@@ -564,7 +592,7 @@ export class QueueStore {
     const id = randomUUID();
     this.db
       .prepare(
-        "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued,targetDevice,artifactId) VALUES(?,?,?,?,?,'queued',?,?,?,?,?,?,?)",
+        "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued,targetDevice,artifactId,scope) VALUES(?,?,?,?,?,'queued',?,?,?,?,?,?,?,?)",
       )
       .run(
         id,
@@ -579,6 +607,7 @@ export class QueueStore {
         this.now(),
         targetDevice,
         artifactId,
+        scope || null,
       );
     return this.get(user, id);
   }
@@ -626,7 +655,7 @@ export class QueueStore {
   private queuePosition(user: string, id: string) {
     const rows = this.db
       .prepare(
-        "SELECT id FROM jobs WHERE user=? AND state='queued' ORDER BY CASE WHEN kind='resume' THEN 0 ELSE 1 END,queued,created,rowid",
+        `SELECT id FROM jobs WHERE user=? AND state='queued' ORDER BY ${PREPARATION_PRIORITY},queued,created,rowid`,
       )
       .all(user) as Row[];
     const index = rows.findIndex((row) => row.id === id);
@@ -738,7 +767,7 @@ export class QueueStore {
     const lease = token();
     const row = this.db
       .prepare(
-        `UPDATE jobs SET state='running',device=?,lease=?,until=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1) OR (kind='outline' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY CASE WHEN kind IN ('resume','written-test','work-sample','outline') THEN 0 ELSE 1 END,queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId`,
+        `UPDATE jobs SET state='running',device=?,lease=?,until=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1) OR (kind='outline' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY ${PREPARATION_PRIORITY},queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId`,
       )
       .get(
         device.id,
@@ -857,11 +886,24 @@ export class QueueStore {
         error = '评估引用或结构校验失败，请核实后重新提交。';
       }
     }
-    this.db
-      .prepare(
-        'UPDATE jobs SET state=?,report=?,error=?,input=NULL,updated=? WHERE id=?',
-      )
-      .run(error ? 'failed' : 'completed', report, error, this.now(), id);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      if (!error && job.kind === 'outline')
+        this.db
+          .prepare(
+            'INSERT OR IGNORE INTO outline_completions(user,scope,job,inputHash,completed) VALUES(?,?,?,?,?)',
+          )
+          .run(job.user, job.scope, job.id, job.inputHash, this.now());
+      this.db
+        .prepare(
+          'UPDATE jobs SET state=?,report=?,error=?,input=NULL,updated=? WHERE id=?',
+        )
+        .run(error ? 'failed' : 'completed', report, error, this.now(), id);
+      this.db.exec('COMMIT');
+    } catch (finishError) {
+      this.db.exec('ROLLBACK');
+      throw finishError;
+    }
     return { accepted: true };
   }
 }

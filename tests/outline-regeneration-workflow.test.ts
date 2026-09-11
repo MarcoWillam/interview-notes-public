@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  canApplyOutlineRegeneration,
   canRegenerateOutline,
   createOutlineRegenerationInput,
 } from '../lib/outline-regeneration-workflow.ts';
@@ -48,6 +49,13 @@ void test('outline can regenerate once before an interview starts', () => {
   );
   assert.equal(canRegenerateOutline({ ...state, regeneratedAt: 1 }), false);
   assert.equal(canRegenerateOutline({ ...state, activeJobId: 'job-1' }), false);
+  assert.equal(
+    canRegenerateOutline({
+      ...state,
+      preparationJobIds: [undefined, 'work-job-1'],
+    }),
+    false,
+  );
 });
 
 void test('regeneration input reuses persisted resume and current outline', () => {
@@ -59,4 +67,33 @@ void test('regeneration input reuses persisted resume and current outline', () =
   assert.equal(input.interviewQuestions.length, 6);
   assert.match(input.revision, /^outline-/);
   assert.equal(input.writtenTestSupplement, null);
+});
+
+void test('completed outline only applies to the unchanged active record', () => {
+  const input = createOutlineRegenerationInput({
+    resumeText: '负责用户访谈并整理需求。',
+    standards,
+    reading,
+  });
+  const current = {
+    submittedRecordId: 'record-12345678',
+    currentRecordId: 'record-12345678',
+    submittedInput: input,
+    currentInput: input,
+    transcript: '',
+    report: null,
+    confirmed: false,
+  };
+  assert.equal(canApplyOutlineRegeneration(current), true);
+  assert.equal(
+    canApplyOutlineRegeneration({
+      ...current,
+      currentRecordId: 'record-87654321',
+    }),
+    false,
+  );
+  assert.equal(
+    canApplyOutlineRegeneration({ ...current, transcript: '面试已开始' }),
+    false,
+  );
 });

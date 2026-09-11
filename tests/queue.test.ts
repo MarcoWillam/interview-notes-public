@@ -180,6 +180,18 @@ void test('outline regeneration requires a current connector and reports its ver
     };
     s.finish(device.token, claimed.id, claimed.lease, result);
     assert.equal(s.get(a, submitted.id).state, 'completed');
+    assert.throws(
+      () =>
+        s.submit(
+          a,
+          'outline-second-123',
+          '另一个名称',
+          { ...outlineInput, revision: 'outline-changed-1234' },
+          'outline',
+          'record-outline-123',
+        ),
+      /已经成功重新生成过/,
+    );
   } finally {
     s.close();
   }
@@ -441,6 +453,7 @@ void test('legacy job databases gain artifact binding columns without losing wor
     }[];
     assert.ok(columns.some((column) => column.name === 'targetDevice'));
     assert.ok(columns.some((column) => column.name === 'artifactId'));
+    assert.ok(columns.some((column) => column.name === 'scope'));
     assert.equal(
       migrated.db.prepare('SELECT label FROM jobs WHERE id=?').get('job')
         ?.label,
