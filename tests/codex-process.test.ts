@@ -1,13 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import {
   runCommand,
   codexEnvironment,
   codexArgs,
   codexWorkSampleArgs,
   codexCommandCandidates,
+  codexAnalysisTimeoutMs,
+  codexFailure,
+  createWorkSampleCodexDirectory,
   findReadyCodexCommand,
 } from '../server/codex.ts';
+import { workFailure } from '../server/queue/connector-client.ts';
 void test('Codex environment never inherits API keys or application secrets', () => {
   assert.deepEqual(
     codexEnvironment({
@@ -55,6 +62,43 @@ void test('work sample Codex uses only the root-confined MCP alongside the read-
     ) < args.lastIndexOf('-'),
     'MCP configuration must appear before the stdin prompt marker',
   );
+});
+void test('work sample analysis has enough time to inspect a bounded archive', () => {
+  assert.equal(codexAnalysisTimeoutMs('text'), 240_000);
+  assert.equal(codexAnalysisTimeoutMs('work-sample'), 600_000);
+});
+void test('work sample Codex runtime stays inside the sandbox-readable archive root', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'codex-work-root-'));
+  try {
+    const runtime = await createWorkSampleCodexDirectory(root);
+    assert.equal(await realpath(dirname(runtime)), await realpath(root));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+void test('Codex failures preserve the actionable cause', () => {
+  assert.match(
+    codexFailure('stream disconnected before completion', '作品分析').message,
+    /网络连接中断/,
+  );
+  assert.match(
+    codexFailure('usage limit reached', '作品分析').message,
+    /使用额度不足/,
+  );
+  assert.match(
+    codexFailure('authentication token expired', '作品分析').message,
+    /登录已失效/,
+  );
+});
+void test('connector preserves work sample timeout and network failures', () => {
+  assert.equal(
+    workFailure(new Error('作品复盘题必须包含文件依据。')),
+    'validation',
+  );
+  assert.equal(workFailure(new Error('Codex 分析超时。')), 'timeout');
+  assert.equal(workFailure(new Error('Codex 网络连接中断。')), 'network');
+  assert.equal(workFailure(new Error('Codex 登录已失效。')), 'login');
+  assert.equal(workFailure(new Error('Codex 使用额度不足。')), 'quota');
 });
 void test('process accepts literal stdin without shell interpolation and captures final output', async () => {
   const input = '$(echo unsafe) `echo unsafe`\n面试正文';

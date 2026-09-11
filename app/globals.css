@@ -3459,6 +3459,9 @@ fieldset label:last-of-type {
   padding: 0 20px 18px;
 }
 .interview-session-summary {
+  position: sticky;
+  top: calc(var(--workbench-header-height) + 8px);
+  z-index: 35;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3468,6 +3471,7 @@ fieldset label:last-of-type {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: #f7fbf9;
+  box-shadow: 0 6px 18px #193e3c12;
 }
 .interview-session-summary dl {
   display: flex;

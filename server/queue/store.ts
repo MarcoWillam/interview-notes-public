@@ -725,6 +725,12 @@ export class QueueStore {
         'artifact-invalid':
           '笔试作品 ZIP 无法安全读取，请检查文件内容后重新提交。',
         validation: '作品评估的引用或结构校验失败，请重新提交。',
+        timeout:
+          '本地 Codex 作品分析超时。较大的作品可能需要更久，请保持连接器运行后重新提交。',
+        network: '本地 Codex 作品分析时网络连接中断，请确认网络后重新提交。',
+        login:
+          '本地 Codex 登录已失效，请在连接器电脑运行 codex login 后重新提交。',
+        quota: '本地 Codex 使用额度不足或请求受限，请稍后重新提交。',
         codex: '本地 Codex 未完成分析，请检查登录、网络或使用额度后重新提交。',
       };
       error =
