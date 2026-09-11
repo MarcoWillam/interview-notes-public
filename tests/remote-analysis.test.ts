@@ -303,9 +303,11 @@ void test('written-test supplement uses its own kind and validates the completed
     const body = JSON.parse(options?.body as string) as {
       kind: string;
       input: unknown;
+      scope?: string;
     };
     assert.equal(body.kind, 'written-test');
     assert.deepEqual(body.input, writtenTestInput);
+    assert.equal(body.scope, 'interview-record-123');
     return Response.json({
       id: 'written-test-job',
       kind: 'written-test',
@@ -319,7 +321,7 @@ void test('written-test supplement uses its own kind and validates the completed
       '张三 · 笔试复盘补充',
       new AbortController().signal,
       () => {},
-      { fetcher, pollMs: 0 },
+      { fetcher, pollMs: 0, scope: 'interview-record-123' },
     ),
     writtenTestResult,
   );

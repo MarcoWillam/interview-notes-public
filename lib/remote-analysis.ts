@@ -301,7 +301,11 @@ export function submitRemoteWrittenTest(
   label: string,
   signal: AbortSignal,
   onProgress: (job: RemoteJob<WrittenTestSupplementResult>) => void,
-  dependencies = { fetcher: fetch, pollMs: 2000 },
+  dependencies: {
+    fetcher: typeof fetch;
+    pollMs: number;
+    scope?: string;
+  } = { fetcher: fetch, pollMs: 2000 },
 ): Promise<WrittenTestSupplementResult> {
   const normalized = validateWrittenTestSupplementInput(input);
   return submitRemoteTask(

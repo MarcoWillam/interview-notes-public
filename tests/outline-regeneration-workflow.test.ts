@@ -52,6 +52,19 @@ void test('outline can regenerate once before an interview starts', () => {
   assert.equal(
     canRegenerateOutline({
       ...state,
+      reading: {
+        ...reading,
+        interviewQuestions: reading.interviewQuestions.map((question) => ({
+          ...question,
+          questionSource: undefined,
+        })),
+      },
+    }),
+    false,
+  );
+  assert.equal(
+    canRegenerateOutline({
+      ...state,
       preparationJobIds: [undefined, 'work-job-1'],
     }),
     false,
