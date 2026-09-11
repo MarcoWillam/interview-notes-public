@@ -110,13 +110,18 @@ const delay = (ms: number, signal: AbortSignal) =>
     signal.addEventListener('abort', done, { once: true });
     if (signal.aborted) done();
   });
-function workFailure(error: unknown) {
+export function workFailure(error: unknown) {
   const message = error instanceof Error ? error.message : '';
   if (/发生变化|哈希/.test(message)) return 'artifact-changed';
   if (/不存在|未找到|已移除/.test(message)) return 'artifact-missing';
   if (/ZIP|压缩|加密|链接|路径|文件数量|读取范围/.test(message))
     return 'artifact-invalid';
-  if (/引用|结构|格式|问题|维度/.test(message)) return 'validation';
+  if (/引用|结构|格式|问题|维度|文件依据|复盘题/.test(message))
+    return 'validation';
+  if (/超时/.test(message)) return 'timeout';
+  if (/网络|连接中断/.test(message)) return 'network';
+  if (/登录/.test(message)) return 'login';
+  if (/额度|请求受限/.test(message)) return 'quota';
   return 'codex';
 }
 export async function runConnector(

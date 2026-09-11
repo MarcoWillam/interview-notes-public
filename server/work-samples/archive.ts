@@ -92,6 +92,8 @@ function excludedPath(path: string) {
   const parts = lower.split('/');
   const base = parts.at(-1)!;
   return (
+    parts.includes('__macosx') ||
+    base.startsWith('._') ||
     parts.some((part) =>
       [
         '.git',
@@ -109,6 +111,20 @@ function excludedPath(path: string) {
     /\.(?:pem|key|p12|pfx)$/i.test(base) ||
     /^(?:id_rsa|id_ed25519)(?:\.pub)?$/i.test(base)
   );
+}
+
+function decodedUnzipPath(name: string) {
+  for (let index = 0; index < name.length; index++)
+    if (name.charCodeAt(index) > 255) return name;
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(
+      Uint8Array.from({ length: name.length }, (_, index) =>
+        name.charCodeAt(index),
+      ),
+    );
+  } catch {
+    return name;
+  }
 }
 
 function supportedPath(path: string) {
@@ -167,7 +183,7 @@ export async function extractWorkSample(
   let unpacked: Record<string, Uint8Array>;
   try {
     unpacked = unzipSync(bytes, {
-      filter: (entry) => allowed.has(safePath(entry.name)),
+      filter: (entry) => allowed.has(safePath(decodedUnzipPath(entry.name))),
     });
   } catch (error) {
     throw new Error(
@@ -179,7 +195,7 @@ export async function extractWorkSample(
   await mkdir(outputDirectory, { recursive: true, mode: 0o700 });
   for (const [originalName, data] of Object.entries(unpacked)) {
     if (originalName.endsWith('/')) continue;
-    const path = safePath(originalName);
+    const path = safePath(decodedUnzipPath(originalName));
     if (!allowed.has(path)) continue;
     const destination = resolve(outputDirectory, ...path.split('/'));
     if (!destination.startsWith(resolve(outputDirectory) + '/'))

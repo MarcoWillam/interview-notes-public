@@ -148,6 +148,12 @@ void test('current interview summary replaces the sidebar with a wrapping full-w
   assert.ok(summary);
   assert.match(summary, /display:\s*flex/);
   assert.match(summary, /justify-content:\s*space-between/);
+  assert.match(summary, /position:\s*sticky/);
+  assert.match(
+    summary,
+    /top:\s*calc\(var\(--workbench-header-height\)\s*\+\s*\d+px\)/,
+  );
+  assert.match(summary, /z-index:\s*\d+/);
   assert.ok(summaryList);
   assert.match(summaryList, /flex-wrap:\s*wrap/);
   assert.match(

@@ -114,6 +114,40 @@ const setup = () => {
     },
   };
 };
+void test('work sample failures retain a specific actionable reason', () => {
+  const { s, a } = setup();
+  try {
+    const device = s.redeem(s.pairing(a).code, '作品电脑');
+    const reference = { ...workSample, deviceId: device.id };
+    s.syncArtifacts(device.token, [reference]);
+    for (const [failure, expected] of [
+      ['timeout', /分析超时/],
+      ['network', /网络连接中断/],
+      ['login', /登录已失效/],
+      ['quota', /使用额度不足/],
+    ] as const) {
+      const job = s.submit(
+        a,
+        `failure-${failure}`,
+        `作品失败-${failure}`,
+        {
+          ...resumeInput,
+          role: 'AI 产品经理（校招）',
+          workSample: reference,
+          existingQuestions: reading.interviewQuestions,
+        },
+        'work-sample',
+        `record-${failure}`,
+      );
+      const claimed = s.claim(device.token, true, ['work-sample'])!;
+      assert.equal(claimed.id, job.id);
+      s.finish(device.token, claimed.id, claimed.lease, null, true, failure);
+      assert.match(String(s.get(a, job.id).error || ''), expected);
+    }
+  } finally {
+    s.close();
+  }
+});
 void test('account administration lists users and rejects duplicate usernames', () => {
   const { s } = setup();
   try {

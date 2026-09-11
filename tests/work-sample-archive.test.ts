@@ -17,6 +17,31 @@ async function fixture(entries: Record<string, Uint8Array>) {
   return { root, input, output: join(root, 'output') };
 }
 
+function clearUtf8NameFlags(bytes: Uint8Array) {
+  const result = bytes.slice();
+  const view = new DataView(
+    result.buffer,
+    result.byteOffset,
+    result.byteLength,
+  );
+  for (let offset = 0; offset + 10 <= result.length; offset++) {
+    const signature = view.getUint32(offset, true);
+    if (signature === 0x04034b50)
+      view.setUint16(
+        offset + 6,
+        view.getUint16(offset + 6, true) & ~0x800,
+        true,
+      );
+    if (signature === 0x02014b50)
+      view.setUint16(
+        offset + 8,
+        view.getUint16(offset + 8, true) & ~0x800,
+        true,
+      );
+  }
+  return result;
+}
+
 void test('local inbox exposes bounded metadata without leaking paths', async () => {
   const root = await mkdtemp(join(tmpdir(), 'work-sample-inbox-test-'));
   try {
@@ -70,6 +95,30 @@ void test('safe extraction keeps source and document files while excluding secre
   }
 });
 
+void test('safe extraction preserves UTF-8 paths when a macOS ZIP omits the UTF-8 flag', async () => {
+  const item = await fixture({});
+  try {
+    await writeFile(
+      item.input,
+      clearUtf8NameFlags(
+        zipSync({
+          '候选人/README.md': strToU8('中文产品说明'),
+          '__MACOSX/候选人/._README.md': new Uint8Array([0, 5, 22, 7]),
+        }),
+      ),
+    );
+    const manifest = await extractWorkSample(item.input, item.output);
+    assert.deepEqual(manifest.readable, ['候选人/README.md']);
+    assert.ok(manifest.excluded.includes('__MACOSX/候选人/._README.md'));
+    assert.equal(
+      await readFile(join(item.output, '候选人/README.md'), 'utf8'),
+      '中文产品说明',
+    );
+  } finally {
+    await rm(item.root, { recursive: true, force: true });
+  }
+});
+
 void test('unsafe archive paths and nested archives are rejected before extraction', async () => {
   const cases: Record<string, Uint8Array>[] = [
     { '../escape.txt': strToU8('escape') },
@@ -94,7 +143,7 @@ void test('an indexed work sample is not reusable after the ZIP changes', async 
     const file = join(inbox, 'candidate.zip');
     await writeFile(file, zipSync({ 'a.txt': strToU8('one') }));
     const first = await scanWorkSampleInbox(inbox, 'device-12345678');
-    await writeFile(file, zipSync({ 'a.txt': strToU8('two') }));
+    await writeFile(file, zipSync({ 'a.txt': strToU8('two-updated') }));
     const second = await scanWorkSampleInbox(inbox, 'device-12345678');
     assert.notEqual(first.artifacts[0].sha256, second.artifacts[0].sha256);
     assert.notEqual(first.artifacts[0].id, second.artifacts[0].id);
