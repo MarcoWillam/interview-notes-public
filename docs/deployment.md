@@ -5,7 +5,7 @@
 ## 当前云服务器
 
 - 网站：`https://your-server-ip`，初始账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。其他面试官账号通过下述服务器命令创建。
-- 代码：当前版本为 `/opt/interview-notes/releases/20260911-3`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一稳定版本 `20260911-2` 保留用于回滚；`20260909-19` 为桌面工具显示修正前的中间版本，不作为回滚目标。
+- 代码：当前版本为 `/opt/interview-notes/releases/20260911-4`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一稳定版本 `20260911-3` 保留用于回滚；`20260909-19` 为桌面工具显示修正前的中间版本，不作为回滚目标。
 - 数据：`/var/lib/interview-notes/queue.sqlite`；环境配置：`/etc/interview-notes/server.env`；运行时：`/opt/node-v24.13.0-linux-x64/bin/node`。服务器只需已构建的 `dist/web` 和队列服务源码，无需安装模型或上传电脑上的 Codex 登录信息。
 - Nginx：`/etc/nginx/conf.d/interview-notes.conf`，对应仓库 `deploy/nginx-ip.conf`，HTTP 自动跳转 HTTPS，80 端口保留 ACME 验证路径。
 - 证书：Let's Encrypt IP 证书，由 acme.sh 3.1.2 的 `shortlived` profile 签发。使用 `--days 3`，`interview-cert-renew.timer` 每天两次检查续期；续期成功自动安装到 `/etc/nginx/ssl/interview/` 并检查、重载 Nginx。不要关闭公网 80 端口，否则续期验证会失败。
@@ -23,9 +23,9 @@ journalctl -u interview-notes -n 50 --no-pager
 
 发布更新前在本机运行 `npm test`、`npm run typecheck`、`npm run lint`、`npm run build` 和 `git diff --check`，均须退出 0。HTTP 测试需要本机 loopback 监听权限。生产采用 `dist/web` 静态入口，完整构建生成的 `dist/client`、`dist/server` 不上传。
 
-发布包采用明确白名单：`dist/web`、`server/start.ts`、`server/accounts.ts`、`server/queue/{api,http,store}.ts`、`lib/interview.ts`、`lib/assessment-groups.ts`、`lib/interview-questions.ts`、`lib/work-sample.ts`、`lib/work-sample-rubric.ts`、`lib/resume-reading.ts`、`lib/standards.ts`、`lib/written-test-supplement.ts` 和 `package.json`。这些文件构成云端服务的 import 闭包；作品读取器与 Codex 运行逻辑只打入 `dist/web` 内的连接器下载包，不作为云端运行依赖。生产服务此外仅依赖 Node 内置模块，不需要 `node_modules`。包内不得包含 `.env*`、`.local`、简历或作品源文件、浏览器数据、Codex credentials、`node_modules` 或 `.git`；后续增加服务端依赖时重新核对闭包。PDF CMap 与字体资源随 `dist/web` 一起发布。
+发布包采用明确白名单：`dist/web`、`server/start.ts`、`server/accounts.ts`、`server/queue/{api,http,store}.ts`、`lib/interview.ts`、`lib/assessment-groups.ts`、`lib/interview-questions.ts`、`lib/work-sample.ts`、`lib/work-sample-rubric.ts`、`lib/resume-reading.ts`、`lib/standards.ts`、`lib/written-test-supplement.ts`、`lib/connector-release.ts`、`lib/outline-regeneration.ts` 和 `package.json`。这些文件构成云端服务的 import 闭包；作品读取器与 Codex 运行逻辑只打入 `dist/web` 内的连接器下载包，不作为云端运行依赖。生产服务此外仅依赖 Node 内置模块，不需要 `node_modules`。包内不得包含 `.env*`、`.local`、简历或作品源文件、浏览器数据、Codex credentials、`node_modules` 或 `.git`；后续增加服务端依赖时重新核对闭包。PDF CMap 与字体资源随 `dist/web` 一起发布。
 
-本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。本次 `20260911-3` 发布包 SHA-256 为 `afd1eea6228a149e7f3630b14117dc959c45ff47bae0c6dd1110097a205dcca1`。macOS 打包时必须禁用 AppleDouble 和扩展属性，发布校验会拒绝 `._*` 条目。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。本机端口健康探针必须带 `Host: your-server-ip`，否则正式环境的来源校验会返回 403；服务重启后在有限重试窗口内探测，不能把首次连接拒绝误判为启动失败。
+本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。本次 `20260911-4` 发布包 SHA-256 为 `a93249c298aba8fbea7e4923e540622e265981ec9638f7a8b842783dde841948`。macOS 打包时必须禁用 AppleDouble 和扩展属性，发布校验会拒绝 `._*` 条目。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。本机端口健康探针必须带 `Host: your-server-ip`，否则正式环境的来源校验会返回 403；服务重启后在有限重试窗口内探测，不能把首次连接拒绝误判为启动失败。
 
 发布检查包括 `nginx -t`、`systemctl is-active interview-notes nginx interview-cert-renew.timer`、HTTPS `/api/session`，以及 HTTP 308 跳转、无需跳过校验的 TLS 证书、登录 Cookie 的 HttpOnly/Secure/SameSite=Strict、登录后工作台和实际构建清单中的 JS/CSS、PDF CMap/font 资源。账号和连接凭据仅由本机脚本读取，不打印值，不写入发布包；`.local/cloud-access.txt` 与 `.local/cloud-connector.json` 保持权限 600。
 
@@ -96,6 +96,8 @@ journalctl -u interview-notes -n 50 --no-pager
 `20260911-2` 修复网页明确提交 `kind: interview` 时，队列接口将合法辅助评估误判为“任务类型无效”的协议不一致。接口现在同时接受明确的 `interview` 和兼容旧网页的省略类型写法，并新增 HTTP 边界回归测试。完整 276 项测试、类型检查、代码检查、格式检查和生产构建通过。生产用李婉的已校对面试记录完成真实验证：任务以 `interview` 类型成功入队、被本地连接器领取，约 67 秒完成结构校验并自动回写结论评估，左侧记录同步显示“已完成”。公网 HTTPS 200 且 TLS 校验为 0，HTTP 308、Nginx、应用服务、证书续期定时器和 SQLite quick check 均通过。发布包 SHA-256 为 `362719a3536719edee25d8cbf986ec5a6285b8b5a31c87a2ff10e43b61306abc`，上一版本 `20260911-1` 保留用于回滚。
 
 `20260911-3` 将 AI 产品经理和产品运营的结论评估按能力域展示：通用素质能力固定先列自驱力与结果闭环、学习力、挑战力与韧性、团队精神与沟通协作，随后分别列产品能力或运营能力。历史报告在维度与内置模板完整匹配时直接按新分组展示和导出，无需重新调用 Codex；自定义或不完整维度继续保持原顺序。新生成报告的总结按“通用素质能力、产品能力/运营能力、综合判断”三段输出，并在通用素质中重点判断自驱力。浏览器数据库升级到版本 7 后仅更新未被用户修改的两份内置模板，AI 研发和其他模板不受影响。完整 283 项测试、类型检查、代码检查、格式检查和生产构建通过；生产页面已验证李婉的历史 AI 产品经理报告按通用素质能力和产品能力分组显示。发布包 SHA-256 为 `afd1eea6228a149e7f3630b14117dc959c45ff47bae0c6dd1110097a205dcca1`，线上连接器包 SHA-256 为 `74365ab762a8df83829912276306431c80df62b0431b2f62b9bc8e7d0f2211d8`；公网 HTTPS 200、TLS 校验为 0、HTTP 308、Nginx、应用服务和证书续期定时器均通过检查，上一版本 `20260911-2` 保留用于回滚。
+
+`20260911-4` 为已有简历阅读结果增加一次性重新生成提纲，无需重复上传或重新提取简历。重新生成沿用当前岗位、笔试状态、作品观察和简历快照，成功后替换原提纲；服务端用内容修订值和完成记录保证同一快照只成功一次，并阻止简历、笔试补充、作品补交和提纲重生成互相并发。新提纲的主问题限制为 12–30 个字符且只问一个核心点，追问保持短句；连接器按协议版本显示更新提醒，支持从网页下载当前连接包，旧协议仍可处理原有任务但不能领取提纲重生成。完整 297 项测试、类型检查、代码检查和生产构建通过，代码审查无剩余问题。发布包 SHA-256 为 `a93249c298aba8fbea7e4923e540622e265981ec9638f7a8b842783dde841948`，线上连接器包 SHA-256 为 `0a54614133f690d9ff095fcc447a57baa49e44aa7946c0549649f64e2de9999f`；生产 `current` 已切到本版本，公网 HTTPS 200、HTTP 308、新资源 `index-qj4x6KFH.js`、Nginx、应用服务、证书续期定时器和 SQLite quick check 均通过。本机云端连接器已保留原配对凭据和作品箱升级到 `2026.9.11-4`、协议 2，并合并为单一后台进程；上一版本 `20260911-3` 保留用于回滚。
 
 ## 服务器
 
