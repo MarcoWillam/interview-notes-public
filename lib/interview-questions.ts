@@ -35,7 +35,7 @@ export function conciseQuestion(value: unknown): string {
   const evidenceChain = result.match(/背景|过程|行动|结果|复盘|反思|收获/g);
   if (
     (evidenceChain && new Set(evidenceChain).size >= 3) ||
-    /并(?:说明|分析|介绍|复盘)|以及(?:结果|复盘|反思)|分别(?:说明|介绍|分析)/.test(
+    /(?:并|且)(?:说明|分析|介绍|复盘|验证|评估|比较|提出|给出)|以及(?:结果|复盘|反思|验证|评估)|分别(?:说明|介绍|分析|验证|评估)/.test(
       result,
     )
   )

@@ -196,6 +196,47 @@ void test('outline regeneration requires a current connector and reports its ver
     s.close();
   }
 });
+void test('legacy outline work without a stored scope fails safely on finish', () => {
+  const { s, a } = setup();
+  const release = {
+    version: CONNECTOR_VERSION,
+    protocol: CONNECTOR_PROTOCOL,
+  };
+  const outlineInput = {
+    ...writtenTestInput,
+    revision: 'outline-legacy-1234',
+    interviewQuestions: reading.interviewQuestions,
+    writtenTestSupplement: null,
+    workSample: null,
+  };
+  try {
+    const device = s.redeem(s.pairing(a).code, '新版电脑', release);
+    const submitted = s.submit(
+      a,
+      'outline-legacy-123',
+      '旧版提纲任务',
+      outlineInput,
+      'outline',
+      'record-legacy-123',
+    );
+    s.db.prepare('UPDATE jobs SET scope=NULL WHERE id=?').run(submitted.id);
+    const claimed = s.claim(device.token, true, ['outline'], release)!;
+    s.finish(device.token, claimed.id, claimed.lease, {
+      revision: outlineInput.revision,
+      interviewQuestions: reading.interviewQuestions.map((question, index) => ({
+        ...question,
+        question: `请说明第${index + 1}项经历中的个人行动与结果？`,
+      })),
+      writtenTestSupplement: null,
+      workSampleQuestions: null,
+    });
+    const result = s.get(a, submitted.id);
+    assert.equal(result.state, 'failed');
+    assert.match(String(result.error), /旧版提纲任务/);
+  } finally {
+    s.close();
+  }
+});
 void test('work sample failures retain a specific actionable reason', () => {
   const { s, a } = setup();
   try {
