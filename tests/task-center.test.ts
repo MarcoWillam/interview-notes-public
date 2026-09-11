@@ -203,4 +203,5 @@ void test('completed interview tasks separate work-sample verification in result
   assert.match(source, /workSampleReview/);
   assert.match(source, /transcriptEvidence/);
   assert.match(source, /workSampleRubricLabel/);
+  assert.match(source, /groupAssessmentDimensions/);
 });

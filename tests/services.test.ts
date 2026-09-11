@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { handleAnalysis } from '../lib/services.ts';
+import { assessmentInstructions } from '../lib/assessment.ts';
 function request(body: unknown) {
   return new Request('https://example.test/api/analyze', {
     method: 'POST',
@@ -17,6 +18,21 @@ void test('unconfigured AI returns explicit unavailability and no invented repor
   assert.equal(
     ((await response.json()) as { error: string }).error,
     '尚未配置 AI 分析服务',
+  );
+});
+void test('assessment conclusion groups general qualities before role abilities and an overall judgment', () => {
+  const general = assessmentInstructions.indexOf('通用素质能力：');
+  const product = assessmentInstructions.indexOf('产品能力：');
+  const operations = assessmentInstructions.indexOf('运营能力：');
+  const overall = assessmentInstructions.indexOf('综合判断：');
+  assert.ok(general >= 0);
+  assert.ok(product > general);
+  assert.ok(operations > general);
+  assert.ok(overall > product);
+  assert.ok(overall > operations);
+  assert.match(
+    assessmentInstructions,
+    /自驱力与结果闭环、学习力、挑战力与韧性、团队精神与沟通协作/,
   );
 });
 import { handleTranscription, serviceStatus } from '../lib/services.ts';

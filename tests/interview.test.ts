@@ -153,6 +153,11 @@ void test('unknown or duplicate dimensions and oversized transcripts are rejecte
 });
 
 import { exportMarkdown } from '../lib/interview.ts';
+import {
+  AI_PM_PRODUCT_COMPETENCY_NAMES,
+  GENERAL_COMPETENCY_NAMES,
+  PRODUCT_OPERATIONS_COMPETENCY_NAMES,
+} from '../lib/assessment-groups.ts';
 void test('manual reports export honestly as drafts until the interviewer confirms', () => {
   const draft = exportMarkdown(
     '李明',
@@ -166,6 +171,51 @@ void test('manual reports export honestly as drafts until the interviewer confir
   assert.ok(draft.includes(input.transcript));
   const final = exportMarkdown('李明', input, null, '安排下一轮核实项目', true);
   assert.ok(final.includes('面试官已确认'));
+});
+void test('Markdown groups general competencies before product or operations abilities', () => {
+  const exportFor = (role: string, names: readonly string[]) =>
+    exportMarkdown(
+      '测试候选人',
+      {
+        role,
+        requirements: '校招岗位要求',
+        transcript: '候选人：示例回答。',
+        dimensions: [...names],
+      },
+      {
+        summary: '通用素质能力与岗位专业能力仍需结合证据判断。',
+        dimensions: names.map((name) => ({
+          name,
+          score: null,
+          assessment: `${name}证据不足`,
+          evidence: [],
+        })),
+        followUps: [],
+      },
+      '',
+      false,
+    );
+  const product = exportFor('AI 产品经理（校招）', [
+    ...AI_PM_PRODUCT_COMPETENCY_NAMES,
+    ...GENERAL_COMPETENCY_NAMES,
+  ]);
+  assert.ok(
+    product.indexOf('## 通用素质能力') < product.indexOf('## 产品能力'),
+  );
+  assert.ok(
+    product.indexOf('### 自驱力与结果闭环') <
+      product.indexOf('### 用户洞察与问题定义'),
+  );
+  const operations = exportFor('产品运营（校招）', [
+    ...PRODUCT_OPERATIONS_COMPETENCY_NAMES,
+    ...GENERAL_COMPETENCY_NAMES,
+  ]);
+  assert.ok(
+    operations.indexOf('## 通用素质能力') < operations.indexOf('## 运营能力'),
+  );
+  const custom = exportFor('自定义岗位', ['能力甲', '能力乙']);
+  assert.equal(custom.includes('## 通用素质能力'), false);
+  assert.ok(custom.indexOf('### 能力甲') < custom.indexOf('### 能力乙'));
 });
 void test('resume and interview preferences are included in validated analysis input and export', () => {
   const full = {
