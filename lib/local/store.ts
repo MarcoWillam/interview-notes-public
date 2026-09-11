@@ -9,6 +9,7 @@ import {
   BUILTIN_TEMPLATE_IDS,
   builtInRoleTemplates,
   replacementForLegacyBuiltInRoleTemplate,
+  replacementForPreviousBuiltInRoleTemplate,
 } from '../default-role-templates.ts';
 export type SavedInterview = {
   id: string;
@@ -87,7 +88,7 @@ export function createLocalStore(
   name = 'interview-notes-local',
 ) {
   const connection = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = factory.open(name, 6);
+    const request = factory.open(name, 7);
     request.onupgradeneeded = (event) => {
       const db = request.result;
       if (event.oldVersion < 1) {
@@ -167,6 +168,18 @@ export function createLocalStore(
             if (selected.result === undefined) saveAiProductManagerDefault();
           };
         };
+      }
+      if (event.oldVersion < 7) {
+        const preferences = request.transaction!.objectStore('preferences');
+        for (const template of builtInRoleTemplates.slice(0, 2)) {
+          const existing = preferences.get(template.id);
+          existing.onsuccess = () => {
+            const replacement = replacementForPreviousBuiltInRoleTemplate(
+              existing.result,
+            );
+            if (replacement) preferences.put(replacement);
+          };
+        }
       }
     };
     request.onsuccess = () => {

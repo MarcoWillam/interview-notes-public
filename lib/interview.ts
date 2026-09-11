@@ -2,6 +2,7 @@ import {
   validateWorkSampleAssessment,
   type WorkSampleAssessment,
 } from './work-sample.ts';
+import { groupAssessmentDimensions } from './assessment-groups.ts';
 
 export type InterviewInput = {
   role: string;
@@ -231,13 +232,19 @@ export function exportMarkdown(
   if (report) {
     lines.push('', '## AI 辅助评估（需人工核实）', report.summary);
     lines.push(...workSampleReviewMarkdownLines(report));
-    for (const d of report.dimensions)
-      lines.push(
-        '',
-        `### ${d.name} · ${d.score === null ? '证据不足' : d.score + '/5'}`,
-        d.assessment,
-        ...d.evidence.map((q) => '> ' + q.replaceAll('\n', '\n> ')),
-      );
+    for (const group of groupAssessmentDimensions(
+      input.role,
+      report.dimensions,
+    )) {
+      if (group.title) lines.push('', `## ${group.title}`);
+      for (const d of group.dimensions)
+        lines.push(
+          '',
+          `### ${d.name} · ${d.score === null ? '证据不足' : d.score + '/5'}`,
+          d.assessment,
+          ...d.evidence.map((q) => '> ' + q.replaceAll('\n', '\n> ')),
+        );
+    }
     lines.push('', '## 待核实事项', ...report.followUps.map((q) => '- ' + q));
   } else lines.push('', 'AI 评估：未生成。');
   lines.push(

@@ -4,6 +4,7 @@ export const connectorPackageFiles = [
   'server/codex.ts',
   'server/analysis.ts',
   'lib/interview.ts',
+  'lib/assessment-groups.ts',
   'lib/interview-questions.ts',
   'lib/work-sample.ts',
   'lib/work-sample-rubric.ts',

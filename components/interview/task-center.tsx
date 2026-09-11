@@ -13,6 +13,7 @@ import {
   workSampleRubricLabel,
   type WorkSampleAssessment,
 } from '../../lib/work-sample';
+import { groupAssessmentDimensions } from '../../lib/assessment-groups';
 import {
   controlRemoteJob,
   remoteRequest,
@@ -47,6 +48,7 @@ function downloadReport(job: Job) {
   )
     return;
   const report = job.report as Report;
+  const groups = groupAssessmentDimensions(job.label, report.dimensions);
   const markdown = [
     `# ${job.label}`,
     '',
@@ -54,13 +56,16 @@ function downloadReport(job: Job) {
     '',
     report.summary,
     ...workSampleReviewMarkdownLines(report),
-    ...report.dimensions.flatMap((dimension) => [
-      '',
-      `## ${dimension.name} · ${dimension.score === null ? '证据不足' : dimension.score + '/5'}`,
-      dimension.assessment,
-      ...dimension.evidence.map(
-        (quote) => '> ' + quote.replaceAll('\n', '\n> '),
-      ),
+    ...groups.flatMap((group) => [
+      ...(group.title ? ['', `## ${group.title}`] : []),
+      ...group.dimensions.flatMap((dimension) => [
+        '',
+        `${group.title ? '###' : '##'} ${dimension.name} · ${dimension.score === null ? '证据不足' : dimension.score + '/5'}`,
+        dimension.assessment,
+        ...dimension.evidence.map(
+          (quote) => '> ' + quote.replaceAll('\n', '\n> '),
+        ),
+      ]),
     ]),
     '',
     '## 待核实事项',
@@ -296,22 +301,37 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
                 ))}
               </section>
             ) : null}
-            {job.report.dimensions.map((dimension) => (
-              <section key={dimension.name}>
-                <h4>
-                  {dimension.name}
-                  <span>
-                    {dimension.score === null
-                      ? '证据不足'
-                      : `${dimension.score}/5`}
-                  </span>
-                </h4>
-                <p>{dimension.assessment}</p>
-                {dimension.evidence.map((quote, index) => (
-                  <blockquote key={index}>{quote}</blockquote>
-                ))}
-              </section>
-            ))}
+            {groupAssessmentDimensions(job.label, job.report.dimensions).map(
+              (group, groupIndex) => (
+                <section
+                  className="assessment-group"
+                  key={group.title || `dimensions-${groupIndex}`}
+                >
+                  {group.title && (
+                    <div className="assessment-group-heading">
+                      <span>能力分组</span>
+                      <h3>{group.title}</h3>
+                    </div>
+                  )}
+                  {group.dimensions.map((dimension) => (
+                    <section key={dimension.name}>
+                      <h4>
+                        {dimension.name}
+                        <span>
+                          {dimension.score === null
+                            ? '证据不足'
+                            : `${dimension.score}/5`}
+                        </span>
+                      </h4>
+                      <p>{dimension.assessment}</p>
+                      {dimension.evidence.map((quote, index) => (
+                        <blockquote key={index}>{quote}</blockquote>
+                      ))}
+                    </section>
+                  ))}
+                </section>
+              ),
+            )}
             {job.report.followUps.length > 0 && (
               <section>
                 <h4>待核实事项</h4>

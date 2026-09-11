@@ -107,6 +107,7 @@ import {
   applyLateWorkSample,
   canSubmitWorkSample,
 } from '@/lib/work-sample-workflow';
+import { groupAssessmentDimensions } from '@/lib/assessment-groups';
 
 const defaultDimensions = defaultStandards.dimensionText;
 const MANUAL_TRANSCRIPT_SOURCE = '手动粘贴 / 输入';
@@ -1907,28 +1908,44 @@ export default function Home({
                               ))}
                             </section>
                           ) : null}
-                          {report.dimensions.map((d) => (
-                            <article className="assessment" key={d.name}>
-                              <div className="assessment-heading">
-                                <h3>{d.name}</h3>
-                                <span
-                                  className={
-                                    d.score === null ? 'unscored' : 'score'
-                                  }
-                                >
-                                  {d.score === null
-                                    ? '证据不足'
-                                    : `${d.score} / 5`}
-                                </span>
-                              </div>
-                              <p>{d.assessment}</p>
-                              {d.evidence.map((quote, i) => (
-                                <blockquote key={i}>
-                                  <span>对话依据</span>
-                                  {quote}
-                                </blockquote>
+                          {groupAssessmentDimensions(
+                            role,
+                            report.dimensions,
+                          ).map((group, groupIndex) => (
+                            <section
+                              className="assessment-group"
+                              key={group.title || `dimensions-${groupIndex}`}
+                            >
+                              {group.title && (
+                                <div className="assessment-group-heading">
+                                  <span>能力分组</span>
+                                  <h3>{group.title}</h3>
+                                </div>
+                              )}
+                              {group.dimensions.map((d) => (
+                                <article className="assessment" key={d.name}>
+                                  <div className="assessment-heading">
+                                    <h3>{d.name}</h3>
+                                    <span
+                                      className={
+                                        d.score === null ? 'unscored' : 'score'
+                                      }
+                                    >
+                                      {d.score === null
+                                        ? '证据不足'
+                                        : `${d.score} / 5`}
+                                    </span>
+                                  </div>
+                                  <p>{d.assessment}</p>
+                                  {d.evidence.map((quote, i) => (
+                                    <blockquote key={i}>
+                                      <span>对话依据</span>
+                                      {quote}
+                                    </blockquote>
+                                  ))}
+                                </article>
                               ))}
-                            </article>
+                            </section>
                           ))}
                           {report.followUps.length > 0 && (
                             <div className="follow-ups">

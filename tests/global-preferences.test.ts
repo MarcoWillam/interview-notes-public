@@ -24,7 +24,7 @@ const approvedBuiltInTemplates = [
     scoringGuidance:
       '自驱力中，仅按要求完成通常不高于 3 分；主动定义阶段目标、协调资源并闭环可评 4 分；发现无人负责的重要问题，在资源不足或路径不明时推动形成可验证成果可评 5 分。产品和 AI 能力不以术语、模型数量、提示词复杂度、代码量或界面精美度评分。',
     reportRequirements:
-      '先说明自驱力证据，再总结产品基本功、AI 产品判断、验证意识与协作表现。区分面试已证明的能力、仅来自简历或作品的自述、仍需核实的判断。不得生成录用或淘汰决定。',
+      '结论先按自驱力与结果闭环、学习力、挑战力与韧性、团队精神与沟通协作总结通用素质能力，再总结用户洞察、方案取舍、AI 产品判断和数据验证四项产品能力，最后形成综合判断。区分面试已证明的能力、仅来自简历或作品的自述、仍需核实的判断。不得生成录用或淘汰决定。',
   },
   {
     id: builtInIds.productOperations,
@@ -39,7 +39,7 @@ const approvedBuiltInTemplates = [
     scoringGuidance:
       '用户运营约占岗位能力判断的 60%，数据增长约占 40%，用于提问和结论组织，不机械计算总分。自驱力中，仅按要求完成通常不高于 3 分；主动定义阶段目标、协调资源并闭环可评 4 分；发现无人负责的重要问题，在资源不足或路径不明时推动形成可验证成果可评 5 分。活动规模、曝光量和用户数量不能脱离目标、个人动作与复盘单独证明能力。',
     reportRequirements:
-      '先总结自驱力和结果闭环，再按用户运营、数据增长、学习与挑战、团队协作组织结论。明确个人贡献、具体动作、数据和结果；未确认内容列入待核实事项。',
+      '结论先按自驱力与结果闭环、学习力、挑战力与韧性、团队精神与沟通协作总结通用素质能力，再按用户运营约 60%、数据增长约 40% 总结运营能力，最后形成综合判断。明确个人贡献、具体动作、数据和结果；未确认内容列入待核实事项。',
   },
   {
     id: builtInIds.aiEngineering,
@@ -57,6 +57,16 @@ const approvedBuiltInTemplates = [
       '先总结自驱力及真实项目贡献，再按前端基础与交付、服务端理解、AI 工程实践、问题定位和团队协作组织结论。区分已验证事实、候选人自述与待核实事项；课程项目、个人作品、实习和开源经历均可作为证据，不把正式工作年限作为必要条件。不得自动生成录用或淘汰决定。',
   },
 ] as const;
+
+const previousBuiltInTemplatesV6 = approvedBuiltInTemplates
+  .slice(0, 2)
+  .map((template, index) => ({
+    ...template,
+    reportRequirements:
+      index === 0
+        ? '先说明自驱力证据，再总结产品基本功、AI 产品判断、验证意识与协作表现。区分面试已证明的能力、仅来自简历或作品的自述、仍需核实的判断。不得生成录用或淘汰决定。'
+        : '先总结自驱力和结果闭环，再按用户运营、数据增长、学习与挑战、团队协作组织结论。明确个人贡献、具体动作、数据和结果；未确认内容列入待核实事项。',
+  }));
 
 const legacyBuiltInTemplatesV1 = [
   {
@@ -153,6 +163,43 @@ async function createVersionFiveDatabase(
 ) {
   await new Promise<void>((resolve, reject) => {
     const request = factory.open(name, 5);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      const interviewStore = db.createObjectStore('interviews', {
+        keyPath: 'id',
+      });
+      interviews.forEach((item) => interviewStore.put(item));
+      db.createObjectStore('audio', { keyPath: 'id' });
+      const preferenceStore = db.createObjectStore('preferences', {
+        keyPath: 'id',
+      });
+      preferences.forEach((item) => preferenceStore.put(item));
+      db.createObjectStore('chunks', {
+        keyPath: ['id', 'sequence'],
+      }).createIndex('session', 'id');
+      const settingsStore = db.createObjectStore('settings', {
+        keyPath: 'id',
+      });
+      if (settings) settingsStore.put(settings);
+      db.createObjectStore('interviewGroups', { keyPath: 'id' });
+    };
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      request.result.close();
+      resolve();
+    };
+  });
+}
+
+async function createVersionSixDatabase(
+  factory: IDBFactory,
+  name: string,
+  preferences: readonly object[],
+  settings?: object,
+  interviews: readonly object[] = [],
+) {
+  await new Promise<void>((resolve, reject) => {
+    const request = factory.open(name, 6);
     request.onupgradeneeded = () => {
       const db = request.result;
       const interviewStore = db.createObjectStore('interviews', {
@@ -346,6 +393,47 @@ void test('version 5 repairs a null default without changing interview history',
     ),
     approvedBuiltInTemplates[0],
   );
+  assert.deepEqual(await store.getInterview(history.id), history);
+});
+
+void test('version 6 upgrades only untouched conclusion requirements and preserves history', async () => {
+  const factory = new IDBFactory();
+  const history = { id: 'v6-history', candidate: '历史候选人', report: {} };
+  const editedOperations = {
+    ...previousBuiltInTemplatesV6[1],
+    reportRequirements: '用户自定义的报告要求',
+  };
+  const settings = {
+    id: 'global',
+    defaultTemplateId: builtInIds.productOperations,
+    defaults,
+  };
+  await createVersionSixDatabase(
+    factory,
+    'version-six-groups',
+    [
+      previousBuiltInTemplatesV6[0],
+      editedOperations,
+      approvedBuiltInTemplates[2],
+    ],
+    settings,
+    [history],
+  );
+  const store = createLocalStore(factory, 'version-six-groups');
+  const saved = await store.listPreferences();
+  assert.deepEqual(
+    saved.find(({ id }) => id === builtInIds.aiProductManager),
+    approvedBuiltInTemplates[0],
+  );
+  assert.deepEqual(
+    saved.find(({ id }) => id === builtInIds.productOperations),
+    editedOperations,
+  );
+  assert.deepEqual(
+    saved.find(({ id }) => id === builtInIds.aiEngineering),
+    approvedBuiltInTemplates[2],
+  );
+  assert.deepEqual(await store.getSettings(), settings);
   assert.deepEqual(await store.getInterview(history.id), history);
 });
 
