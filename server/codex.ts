@@ -16,6 +16,13 @@ import { join } from 'node:path';
 import { resolve } from 'node:path';
 import type { InterviewInput } from '../lib/interview.ts';
 import { assessmentInstructions, reportSchema } from '../lib/assessment.ts';
+import {
+  outlineRegenerationInstructions,
+  outlineRegenerationSchema,
+  validateOutlineRegenerationInput,
+  validateOutlineRegenerationResult,
+  type OutlineRegenerationInput,
+} from '../lib/outline-regeneration.ts';
 import { AnalysisError } from './analysis.ts';
 
 // Only the CLI reads its own authentication. Do not copy tokens or inherit API keys.
@@ -332,6 +339,36 @@ export async function generateWrittenTestSupplementWithCodex(
     writtenTestSupplementInstructions,
     writtenTestSupplementSchema,
   );
+}
+export async function regenerateOutlineWithCodex(
+  value: OutlineRegenerationInput,
+  signal: AbortSignal,
+): Promise<unknown> {
+  const input = validateOutlineRegenerationInput(value);
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const raw = await runStructuredCodex(
+      input,
+      signal,
+      `${outlineRegenerationInstructions}${
+        attempt
+          ? '\n上一次结果的主问题未满足短句结构。本次必须逐题检查 12–30 字、最多一个问号，并把所有细节移入观察点和追问。'
+          : ''
+      }`,
+      outlineRegenerationSchema,
+    );
+    try {
+      return validateOutlineRegenerationResult(raw, input);
+    } catch (error) {
+      lastError = error;
+      if (
+        attempt > 0 ||
+        !/12–30|一个问点/.test(error instanceof Error ? error.message : '')
+      )
+        throw error;
+    }
+  }
+  throw lastError;
 }
 async function runStructuredCodex(
   input: unknown,

@@ -1,4 +1,5 @@
 import { QueueStore, QueueError, type JobKind } from './store.ts';
+import { connectorReleaseInfo } from '../../lib/connector-release.ts';
 export type QueueConfig = {
   origin: string;
   previewUser?: string;
@@ -120,7 +121,9 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
       }
       if (path === '/api/pair/redeem' && method === 'POST') {
         limit('pair:' + clientAddress);
-        return json(store.redeem(str('code', 32), str('name', 80)));
+        return json(
+          store.redeem(str('code', 32), str('name', 80), body.connector),
+        );
       }
       if (path.startsWith('/api/worker/') && method === 'POST') {
         const auth = request.headers.get('authorization');
@@ -138,7 +141,7 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
           if (body.artifacts !== undefined) {
             if (!capabilities.includes('work-sample'))
               throw new QueueError('当前连接器不支持作品清单。');
-            store.syncArtifacts(secret, body.artifacts);
+            store.syncArtifacts(secret, body.artifacts, body.connector);
           }
           return json({
             job: store.claim(
@@ -150,16 +153,23 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
                       kind === 'interview' ||
                       kind === 'resume' ||
                       kind === 'written-test' ||
+                      kind === 'outline' ||
                       (kind === 'work-sample' &&
                         capabilities.includes('work-sample')),
                   )
                 : ['interview'],
+              body.connector,
             ),
           });
         }
         if (path === '/api/worker/heartbeat')
           return json(
-            store.heartbeat(secret, str('id', 100), str('lease', 100)),
+            store.heartbeat(
+              secret,
+              str('id', 100),
+              str('lease', 100),
+              body.connector,
+            ),
           );
         if (path === '/api/worker/finish')
           return json(
@@ -187,12 +197,16 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
             ? '电脑已连接，可以执行评估'
             : '电脑离线或 Codex 未就绪，提交后将排队等待',
           devices,
+          connectorRelease: connectorReleaseInfo,
         });
       }
       if (path === '/api/pair' && method === 'POST')
         return json(store.pairing(user.id));
       if (path === '/api/devices' && method === 'GET')
-        return json({ devices: store.devices(user.id) });
+        return json({
+          devices: store.devices(user.id),
+          connectorRelease: connectorReleaseInfo,
+        });
       if (path === '/api/artifacts' && method === 'GET')
         return json({ artifacts: store.artifacts(user.id) });
       if (path.startsWith('/api/devices/') && method === 'DELETE') {
@@ -209,6 +223,7 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
               : body.kind === 'interview' ||
                   body.kind === 'resume' ||
                   body.kind === 'written-test' ||
+                  body.kind === 'outline' ||
                   body.kind === 'work-sample'
                 ? body.kind
                 : null;

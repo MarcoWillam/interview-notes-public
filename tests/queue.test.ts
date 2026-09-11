@@ -11,6 +11,10 @@ import {
   AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
   aiPmWorkSampleRubric,
 } from '../lib/work-sample-rubric.ts';
+import {
+  CONNECTOR_PROTOCOL,
+  CONNECTOR_VERSION,
+} from '../lib/connector-release.ts';
 const resumeInput = {
   role: '产品经理',
   requirements: '用户研究与需求分析',
@@ -114,6 +118,72 @@ const setup = () => {
     },
   };
 };
+void test('outline regeneration requires a current connector and reports its version', () => {
+  const { s, a } = setup();
+  const outlineInput = {
+    role: resumeInput.role,
+    requirements: resumeInput.requirements,
+    dimensionText: resumeInput.dimensionText,
+    focus: resumeInput.focus,
+    scoringGuidance: resumeInput.scoringGuidance,
+    reportRequirements: resumeInput.reportRequirements,
+    resumeText: resumeInput.resumeText,
+    revision: 'outline-test-1234',
+    interviewQuestions: reading.interviewQuestions,
+    writtenTestSupplement: null,
+    workSample: null,
+  };
+  try {
+    s.redeem(s.pairing(a).code, '旧版电脑');
+    assert.throws(
+      () =>
+        s.submit(
+          a,
+          'outline-old-123',
+          '重新生成提纲',
+          outlineInput,
+          'outline',
+          'record-outline-123',
+        ),
+      /新版连接器/,
+    );
+
+    const release = {
+      version: CONNECTOR_VERSION,
+      protocol: CONNECTOR_PROTOCOL,
+    };
+    const device = s.redeem(s.pairing(a).code, '新版电脑', release);
+    const listed = s.devices(a).find((item) => item.id === device.id)!;
+    assert.equal(listed.version, CONNECTOR_VERSION);
+    assert.equal(listed.updateState, 'current');
+    assert.equal(listed.supportsOutline, true);
+
+    const submitted = s.submit(
+      a,
+      'outline-new-123',
+      '重新生成提纲',
+      outlineInput,
+      'outline',
+      'record-outline-123',
+    );
+    const claimed = s.claim(device.token, true, ['outline'], release)!;
+    assert.equal(claimed.id, submitted.id);
+    assert.equal(claimed.kind, 'outline');
+    const result = {
+      revision: outlineInput.revision,
+      interviewQuestions: reading.interviewQuestions.map((question, index) => ({
+        ...question,
+        question: `请说明第${index + 1}项经历中的个人行动与结果？`,
+      })),
+      writtenTestSupplement: null,
+      workSampleQuestions: null,
+    };
+    s.finish(device.token, claimed.id, claimed.lease, result);
+    assert.equal(s.get(a, submitted.id).state, 'completed');
+  } finally {
+    s.close();
+  }
+});
 void test('work sample failures retain a specific actionable reason', () => {
   const { s, a } = setup();
   try {

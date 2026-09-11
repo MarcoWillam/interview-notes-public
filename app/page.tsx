@@ -15,6 +15,7 @@ import {
   submitRemoteResume,
   submitRemoteWrittenTest,
   submitRemoteWorkSample,
+  submitRemoteOutline,
   listRemoteArtifacts,
   type RemoteArtifact,
 } from '@/lib/remote-analysis';
@@ -108,6 +109,16 @@ import {
   canSubmitWorkSample,
 } from '@/lib/work-sample-workflow';
 import { groupAssessmentDimensions } from '@/lib/assessment-groups';
+import {
+  applyOutlineRegeneration,
+  validateOutlineRegenerationResult,
+  type OutlineRegenerationInput,
+  type OutlineRegenerationResult,
+} from '@/lib/outline-regeneration';
+import {
+  canRegenerateOutline,
+  createOutlineRegenerationInput,
+} from '@/lib/outline-regeneration-workflow';
 
 const defaultDimensions = defaultStandards.dimensionText;
 const MANUAL_TRANSCRIPT_SOURCE = '手动粘贴 / 输入';
@@ -122,6 +133,14 @@ export type WorkspaceAccount = {
   onOpenAccount: () => void;
   onLogout: () => void;
 };
+export type WorkspaceConnectorUpdate = {
+  required: boolean;
+  latestVersion: string;
+  notes: string;
+  downloadUrl: string;
+  onOpenDevices: () => void;
+  onDismiss?: () => void;
+};
 function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -132,8 +151,10 @@ function download(blob: Blob, name: string) {
 }
 export default function Home({
   workspaceAccount,
+  connectorUpdate,
 }: {
   workspaceAccount?: WorkspaceAccount;
+  connectorUpdate?: WorkspaceConnectorUpdate;
 } = {}) {
   const [view, setView] = useState<'dashboard' | 'workbench'>('dashboard');
   const [tab, setTab] = useState('resume');
@@ -185,6 +206,15 @@ export default function Home({
   } | null>(null);
   const [pendingWrittenTestSupplement, setPendingWrittenTestSupplement] =
     useState(false);
+  const [pendingOutlineRegeneration, setPendingOutlineRegeneration] =
+    useState(false);
+  const [outlineRegeneratedAt, setOutlineRegeneratedAt] = useState<
+    number | undefined
+  >();
+  const [outlineRegenerationJobId, setOutlineRegenerationJobId] = useState<
+    string | undefined
+  >();
+  const [outlineRevision, setOutlineRevision] = useState<string | undefined>();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -206,6 +236,7 @@ export default function Home({
     | 'resume-read'
     | 'written-test'
     | 'work-sample'
+    | 'outline'
     | 'prepare'
     | null
   >(null);
@@ -246,6 +277,16 @@ export default function Home({
     resumeReading,
     workSample,
     workSampleJobId,
+  });
+  const outlineRegenerationEligible = canRegenerateOutline({
+    resumeText,
+    reading: resumeReading,
+    transcript,
+    report,
+    confirmed,
+    regeneratedAt: outlineRegeneratedAt,
+    activeJobId: outlineRegenerationJobId,
+    busy: !!busy,
   });
   // Imports and queue responses may finish after the render that started them.
   const resumeContext = useRef({
@@ -344,6 +385,9 @@ export default function Home({
       writtenTestConfirmed: effectiveWrittenTestConfirmed,
       workSample,
       workSampleJobId,
+      outlineRegeneratedAt,
+      outlineRegenerationJobId,
+      outlineRevision,
     },
     async (saved) => {
       analysisController.current?.abort();
@@ -352,6 +396,7 @@ export default function Home({
       setPendingResume(null);
       setPendingResumeOutline(null);
       setPendingWrittenTestSupplement(false);
+      setPendingOutlineRegeneration(false);
       setLateWorkSampleOpen(false);
       setLateWorkSampleArtifact(null);
       setCandidate(saved.candidate);
@@ -372,6 +417,9 @@ export default function Home({
         saved.workSample || saved.resumeReading?.workSample || null,
       );
       setWorkSampleJobId(saved.workSampleJobId);
+      setOutlineRegeneratedAt(saved.outlineRegeneratedAt);
+      setOutlineRegenerationJobId(saved.outlineRegenerationJobId);
+      setOutlineRevision(saved.outlineRevision);
       setResumeBodyOpen(false);
       setTranscript(saved.transcript);
       setTranscriptName(
@@ -464,6 +512,92 @@ export default function Home({
     workSample,
     workSampleJobId,
   ]);
+  useEffect(() => {
+    if (
+      !library.ready ||
+      !outlineRegenerationJobId ||
+      !resumeReading?.interviewQuestions ||
+      busyRef.current
+    )
+      return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const recover = async () => {
+      try {
+        if (transcript.trim() || report || confirmed)
+          throw new Error('面试记录已开始，未应用重新生成的提纲。');
+        const regenerationInput = createOutlineRegenerationInput({
+          resumeText,
+          standards: {
+            role,
+            requirements,
+            dimensionText,
+            focus,
+            scoringGuidance,
+            reportRequirements,
+          },
+          reading: resumeReading,
+        });
+        if (outlineRevision && outlineRevision !== regenerationInput.revision)
+          throw new Error('面试记录已变化，未应用过期提纲。');
+        const job = await remoteRequest<RemoteJob<OutlineRegenerationResult>>(
+          '/api/jobs/' + encodeURIComponent(outlineRegenerationJobId),
+        );
+        if (disposed) return;
+        if (job.state === 'completed' && job.report) {
+          const result = validateOutlineRegenerationResult(
+            job.report,
+            regenerationInput,
+          );
+          setResumeReading(applyOutlineRegeneration(resumeReading, result));
+          setOutlineRegeneratedAt(job.updated);
+          setOutlineRegenerationJobId(undefined);
+          setOutlineRevision(undefined);
+          setNotice('已恢复并应用重新生成的短问题提纲。');
+          return;
+        }
+        if (job.state === 'failed' || job.state === 'cancelled') {
+          setOutlineRegenerationJobId(undefined);
+          setOutlineRevision(undefined);
+          setError(job.error || '提纲重新生成未完成，可以再次提交。');
+          return;
+        }
+        setRemoteJob({ ...job, report: null });
+        timer = setTimeout(() => void recover(), 3000);
+      } catch (reason) {
+        if (!disposed) {
+          setOutlineRegenerationJobId(undefined);
+          setOutlineRevision(undefined);
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : '提纲重新生成任务恢复失败。',
+          );
+        }
+      }
+    };
+    void recover();
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [
+    busy,
+    library.ready,
+    outlineRegenerationJobId,
+    outlineRevision,
+    resumeReading,
+    resumeText,
+    role,
+    requirements,
+    dimensionText,
+    focus,
+    scoringGuidance,
+    reportRequirements,
+    transcript,
+    report,
+    confirmed,
+  ]);
   async function localAction(action: () => Promise<void>) {
     if (busyRef.current) return;
     busyRef.current = true;
@@ -510,6 +644,9 @@ export default function Home({
     setResumeReading(null);
     setWorkSample(null);
     setWorkSampleJobId(undefined);
+    setOutlineRegeneratedAt(undefined);
+    setOutlineRegenerationJobId(undefined);
+    setOutlineRevision(undefined);
     setLateWorkSampleOpen(false);
     setLateWorkSampleArtifact(null);
     setPendingCandidateName(null);
@@ -729,6 +866,99 @@ export default function Home({
       resolved.hasWrittenTest,
       selectedArtifact,
     );
+  }
+  async function runOutlineRegeneration() {
+    const reading = resumeReading;
+    if (
+      busyRef.current ||
+      !reading?.interviewQuestions ||
+      !canRegenerateOutline({
+        resumeText,
+        reading,
+        transcript,
+        report,
+        confirmed,
+        regeneratedAt: outlineRegeneratedAt,
+        activeJobId: outlineRegenerationJobId,
+      })
+    ) {
+      setPendingOutlineRegeneration(false);
+      setError('当前记录不能重新生成提纲。');
+      return;
+    }
+    setPendingOutlineRegeneration(false);
+    analysisController.current?.abort();
+    const controller = new AbortController();
+    analysisController.current = controller;
+    busyRef.current = true;
+    setBusy('outline');
+    setError('');
+    setNotice('');
+    setRemoteJob(null);
+    setCancelling(false);
+    cancelledRemotely.current = false;
+    let submittedJobId: string | undefined;
+    let completedAt = 1;
+    try {
+      if (!queuedCodex)
+        throw new Error('请使用队列版工作台连接 Codex 后重新生成提纲。');
+      const regenerationInput: OutlineRegenerationInput =
+        createOutlineRegenerationInput({ resumeText, standards, reading });
+      setOutlineRevision(regenerationInput.revision);
+      const result = await submitRemoteOutline(
+        regenerationInput,
+        `${candidate || resumeName || '未命名候选人'} · 重新生成提纲`.slice(
+          0,
+          100,
+        ),
+        controller.signal,
+        (job) => {
+          if (
+            analysisController.current === controller &&
+            !controller.signal.aborted
+          ) {
+            submittedJobId = job.id;
+            completedAt = job.updated;
+            setOutlineRegenerationJobId(job.id);
+            setRemoteJob({ ...job, report: null });
+          }
+        },
+        { fetcher: fetch, pollMs: 2000, scope: library.id },
+      );
+      if (analysisController.current !== controller) return;
+      controller.signal.throwIfAborted();
+      setResumeReading(applyOutlineRegeneration(reading, result));
+      setOutlineRegeneratedAt(completedAt);
+      setOutlineRegenerationJobId(undefined);
+      setOutlineRevision(undefined);
+      setNotice('面试提纲已重新生成，主问题已精简为现场可直接提问的短句。');
+      setTab('resume');
+    } catch (reason) {
+      if (analysisController.current !== controller) return;
+      const message =
+        reason instanceof Error ? reason.message : '提纲重新生成失败。';
+      const stillRemote =
+        !!submittedJobId &&
+        !controller.signal.aborted &&
+        /任务已提交|无法获取进度/.test(message);
+      if (!stillRemote) {
+        setOutlineRegenerationJobId(undefined);
+        setOutlineRevision(undefined);
+      }
+      setError(
+        controller.signal.aborted
+          ? cancelledRemotely.current
+            ? '提纲重新生成任务已取消，旧提纲保留。'
+            : '已停止等待，可在任务中心查看结果。'
+          : message,
+      );
+    } finally {
+      if (analysisController.current === controller) {
+        analysisController.current = null;
+        busyRef.current = false;
+        setBusy(null);
+      }
+    }
   }
   async function runWrittenTestSupplement() {
     const reading = resumeReading;
@@ -1191,6 +1421,9 @@ export default function Home({
     setResumeReading(null);
     setWorkSample(null);
     setWorkSampleJobId(undefined);
+    setOutlineRegeneratedAt(undefined);
+    setOutlineRegenerationJobId(undefined);
+    setOutlineRevision(undefined);
     setLateWorkSampleOpen(false);
     setLateWorkSampleArtifact(null);
     setResumeBodyOpen(false);
@@ -1198,6 +1431,7 @@ export default function Home({
     setPendingResume(null);
     setPendingResumeOutline(null);
     setPendingWrittenTestSupplement(false);
+    setPendingOutlineRegeneration(false);
     setTranscript('');
     setTranscriptName('');
     setPendingImport(null);
@@ -1417,6 +1651,47 @@ export default function Home({
           ) : null}
         </nav>
       </header>
+      {connectorUpdate && (
+        <aside
+          className={`connector-update-banner ${connectorUpdate.required ? 'is-required' : ''}`}
+          role={connectorUpdate.required ? 'alert' : 'status'}
+        >
+          <div>
+            <strong>
+              {connectorUpdate.required
+                ? '电脑连接器需要更新'
+                : '电脑连接器有新版本'}
+            </strong>
+            <span>
+              最新版 {connectorUpdate.latestVersion} · {connectorUpdate.notes}
+            </span>
+          </div>
+          <div className="connector-update-actions">
+            <button
+              className="text-button"
+              onClick={connectorUpdate.onOpenDevices}
+            >
+              查看设备
+            </button>
+            <a
+              className="secondary-button"
+              href={connectorUpdate.downloadUrl}
+              download
+            >
+              <Download size={15} /> 下载更新
+            </a>
+            {connectorUpdate.onDismiss && (
+              <button
+                className="icon-button"
+                aria-label="暂时关闭更新提醒"
+                onClick={connectorUpdate.onDismiss}
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+        </aside>
+      )}
       {workspaceAccount?.error && (
         <p className="remote-error workspace-remote-error" role="alert">
           {workspaceAccount.error}
@@ -1529,7 +1804,8 @@ export default function Home({
             {(busy === 'analyze' ||
               busy === 'resume-read' ||
               busy === 'written-test' ||
-              busy === 'work-sample') && (
+              busy === 'work-sample' ||
+              busy === 'outline') && (
               <output className="message">
                 <LoaderCircle className="spin" size={18} />
                 <span>
@@ -1541,7 +1817,9 @@ export default function Home({
                           ? 'Codex 正在生成 3 道笔试复盘补充题。可以关闭网页，稍后从任务中心查看结果。'
                           : busy === 'work-sample'
                             ? 'Codex 正在只读分析笔试作品。可以关闭网页，稍后从任务中心查看结果。'
-                            : '电脑正在分析。可以关闭网页，稍后从评估任务查看结果。'
+                            : busy === 'outline'
+                              ? 'Codex 正在重新生成短问题提纲，旧提纲会保留到新结果完成。'
+                              : '电脑正在分析。可以关闭网页，稍后从评估任务查看结果。'
                       : remoteJob
                         ? '任务已提交，等待已配对的电脑领取。电脑离线时也会保留任务。'
                         : '正在提交评估任务…'
@@ -1713,6 +1991,12 @@ export default function Home({
                             canSubmitWork={workSampleEligible}
                             workBusy={busy === 'work-sample'}
                             onSubmitWork={openLateWorkSample}
+                            canRegenerate={outlineRegenerationEligible}
+                            regenerationUsed={!!outlineRegeneratedAt}
+                            regenerationBusy={busy === 'outline'}
+                            onRegenerate={() =>
+                              setPendingOutlineRegeneration(true)
+                            }
                           />
                         )}
                         <div className="action-footer">
@@ -2156,6 +2440,52 @@ export default function Home({
               </button>
             </DialogContent>
           </Dialog>
+          <AlertDialog
+            open={pendingOutlineRegeneration}
+            onOpenChange={setPendingOutlineRegeneration}
+          >
+            <AlertDialogContent className="outline-regeneration-dialog">
+              <AlertDialogTitle>重新生成面试提纲</AlertDialogTitle>
+              <AlertDialogDescription>
+                使用已保存的简历文字重新生成一次短问题提纲。旧提纲会保留到新结果完整生成。
+              </AlertDialogDescription>
+              <dl className="outline-regeneration-summary">
+                <div>
+                  <dt>候选人</dt>
+                  <dd>{candidate || '未填写'}</dd>
+                </div>
+                <div>
+                  <dt>岗位</dt>
+                  <dd>{role}</dd>
+                </div>
+                <div>
+                  <dt>笔试情况</dt>
+                  <dd>
+                    {supportsWrittenTest(sourceTemplateId)
+                      ? effectiveHasWrittenTest
+                        ? '有笔试'
+                        : '无笔试'
+                      : '不适用'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>作品情况</dt>
+                  <dd>{workSample ? '已分析' : '无作品分析'}</dd>
+                </div>
+              </dl>
+              <p className="small-note">
+                成功后将替换整套问题并使用本记录唯一一次重新生成机会；失败、暂停或停止不会消耗机会。
+              </p>
+              <AlertDialogFooter>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => void runOutlineRegeneration()}
+                >
+                  确认并重新生成
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <AlertDialog
             open={pendingWrittenTestSupplement}
             onOpenChange={setPendingWrittenTestSupplement}

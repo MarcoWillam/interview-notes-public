@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
 import { connectorPackageFiles } from '../scripts/connector-package-files.mjs';
+import { CONNECTOR_VERSION } from '../lib/connector-release.ts';
 import { unzipSync } from 'fflate';
 
 const root = resolve(import.meta.dirname, '..');
@@ -30,7 +31,13 @@ void test('connector package carries the ZIP reader and its license without inst
   const instructions = new TextDecoder().decode(
     files['interview-connector/使用说明.txt'],
   );
+  const packageJson = JSON.parse(
+    new TextDecoder().decode(files['interview-connector/package.json']),
+  ) as { version: string };
+  assert.equal(packageJson.version, CONNECTOR_VERSION);
   assert.match(instructions, /works/);
   assert.match(instructions, /50 MB/);
   assert.match(instructions, /作品原件.*不会上传服务器/);
+  assert.match(instructions, /\.local\/connector\.json/);
+  assert.match(instructions, /无需重新配对/);
 });

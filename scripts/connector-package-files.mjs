@@ -5,6 +5,8 @@ export const connectorPackageFiles = [
   'server/analysis.ts',
   'lib/interview.ts',
   'lib/assessment-groups.ts',
+  'lib/outline-regeneration.ts',
+  'lib/connector-release.ts',
   'lib/interview-questions.ts',
   'lib/work-sample.ts',
   'lib/work-sample-rubric.ts',
