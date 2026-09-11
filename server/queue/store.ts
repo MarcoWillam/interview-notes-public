@@ -22,7 +22,23 @@ import {
   validateWorkSampleReference,
   type WorkSampleReference,
 } from '../../lib/work-sample.ts';
-export type JobKind = 'interview' | 'resume' | 'written-test' | 'work-sample';
+import {
+  validateOutlineRegenerationInput,
+  validateOutlineRegenerationResult,
+} from '../../lib/outline-regeneration.ts';
+import {
+  OUTLINE_CONNECTOR_PROTOCOL,
+  connectorSupportsOutline,
+  connectorUpdateState,
+  validateConnectorReport,
+  type ConnectorReport,
+} from '../../lib/connector-release.ts';
+export type JobKind =
+  | 'interview'
+  | 'resume'
+  | 'written-test'
+  | 'work-sample'
+  | 'outline';
 export class QueueError extends Error {
   status: number;
   constructor(message: string, status = 400) {
@@ -45,7 +61,7 @@ export class QueueStore {
       CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, salt TEXT NOT NULL, password TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1);
       CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,user TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS pairs(hash TEXT PRIMARY KEY,user TEXT NOT NULL,expires INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,user TEXT NOT NULL,name TEXT NOT NULL,hash TEXT UNIQUE NOT NULL,seen INTEGER NOT NULL,ready INTEGER NOT NULL DEFAULT 0,revoked INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,user TEXT NOT NULL,name TEXT NOT NULL,hash TEXT UNIQUE NOT NULL,seen INTEGER NOT NULL,ready INTEGER NOT NULL DEFAULT 0,revoked INTEGER NOT NULL DEFAULT 0,version TEXT,protocol INTEGER,versionSeen INTEGER);
       CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,kind TEXT NOT NULL DEFAULT 'interview',queued INTEGER,started INTEGER,UNIQUE(user,client));
       CREATE TABLE IF NOT EXISTS artifacts(user TEXT NOT NULL,device TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,sha256 TEXT NOT NULL,bytes INTEGER NOT NULL,modified INTEGER NOT NULL,seen INTEGER NOT NULL,PRIMARY KEY(device,id));
       CREATE INDEX IF NOT EXISTS jobs_owner_created ON jobs(user,created);
@@ -75,6 +91,15 @@ export class QueueStore {
       this.db.exec('ALTER TABLE jobs ADD COLUMN targetDevice TEXT');
     if (!jobColumns.some((column) => column.name === 'artifactId'))
       this.db.exec('ALTER TABLE jobs ADD COLUMN artifactId TEXT');
+    const deviceColumns = this.db
+      .prepare('PRAGMA table_info(devices)')
+      .all() as Row[];
+    if (!deviceColumns.some((column) => column.name === 'version'))
+      this.db.exec('ALTER TABLE devices ADD COLUMN version TEXT');
+    if (!deviceColumns.some((column) => column.name === 'protocol'))
+      this.db.exec('ALTER TABLE devices ADD COLUMN protocol INTEGER');
+    if (!deviceColumns.some((column) => column.name === 'versionSeen'))
+      this.db.exec('ALTER TABLE devices ADD COLUMN versionSeen INTEGER');
     this.db.exec('UPDATE jobs SET queued=created WHERE queued IS NULL');
   }
   close() {
@@ -243,7 +268,24 @@ export class QueueStore {
       .run(hash(code), user, this.now() + 600000);
     return { code, expiresAt: this.now() + 600000 };
   }
-  redeem(code: string, name: string) {
+  private connector(value: unknown): ConnectorReport | null {
+    try {
+      return validateConnectorReport(value);
+    } catch {
+      throw new QueueError('连接器版本格式不正确。');
+    }
+  }
+  private recordConnector(id: string, value: unknown) {
+    const report = this.connector(value);
+    if (report)
+      this.db
+        .prepare(
+          'UPDATE devices SET version=?,protocol=?,versionSeen=? WHERE id=?',
+        )
+        .run(report.version, report.protocol, this.now(), id);
+    return report;
+  }
+  redeem(code: string, name: string, connector?: unknown) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const pair = this.db
@@ -263,6 +305,7 @@ export class QueueStore {
           hash(secret),
           this.now(),
         );
+      this.recordConnector(id, connector);
       this.db.exec('COMMIT');
       return { id, token: secret };
     } catch (e) {
@@ -283,7 +326,7 @@ export class QueueStore {
     return (
       this.db
         .prepare(
-          'SELECT id,name,seen,ready FROM devices WHERE user=? AND revoked=0',
+          'SELECT id,name,seen,ready,version,protocol,versionSeen FROM devices WHERE user=? AND revoked=0',
         )
         .all(user) as Row[]
     ).map((row) => ({
@@ -292,10 +335,25 @@ export class QueueStore {
       lastSeen: row.seen,
       online: Number(row.seen) > this.now() - 45000,
       ready: !!row.ready,
+      version: row.version ? String(row.version) : null,
+      protocol: row.protocol === null ? null : Number(row.protocol),
+      versionSeen: row.versionSeen === null ? null : Number(row.versionSeen),
+      updateState: connectorUpdateState(
+        row.version ? String(row.version) : null,
+        row.protocol === null ? null : Number(row.protocol),
+      ),
+      supportsOutline: connectorSupportsOutline(
+        row.protocol === null ? null : Number(row.protocol),
+      ),
     }));
   }
-  syncArtifacts(secret: string, values: unknown): WorkSampleReference[] {
+  syncArtifacts(
+    secret: string,
+    values: unknown,
+    connector?: unknown,
+  ): WorkSampleReference[] {
     const device = this.device(secret);
+    this.recordConnector(device.id, connector);
     if (!Array.isArray(values) || values.length > 100)
       throw new QueueError('作品清单超过限制。');
     const artifacts = values.map((value) => {
@@ -412,7 +470,12 @@ export class QueueStore {
       throw new QueueError('任务标识无效。');
     if (scope && !/^[a-zA-Z0-9-]{8,100}$/.test(scope))
       throw new QueueError('任务范围无效。');
-    if (scope && kind !== 'resume' && kind !== 'work-sample')
+    if (
+      scope &&
+      kind !== 'resume' &&
+      kind !== 'work-sample' &&
+      kind !== 'outline'
+    )
       throw new QueueError('该任务类型不支持任务范围。');
     const validatedInput =
         kind === 'resume'
@@ -421,14 +484,28 @@ export class QueueStore {
             ? validateWrittenTestSupplementInput(value)
             : kind === 'work-sample'
               ? validateWorkSampleInput(value)
-              : kind === 'interview'
-                ? validateInput(value)
-                : (() => {
-                    throw new QueueError('作品评估任务尚未包含有效输入。');
-                  })(),
+              : kind === 'outline'
+                ? validateOutlineRegenerationInput(value)
+                : kind === 'interview'
+                  ? validateInput(value)
+                  : (() => {
+                      throw new QueueError('作品评估任务尚未包含有效输入。');
+                    })(),
       input = JSON.stringify(validatedInput),
       digest = hash(kind + (scope ? '\n' + scope + '\n' : '') + input),
       safeLabel = label.slice(0, 100) || '未命名面试';
+    if (
+      kind === 'outline' &&
+      !this.db
+        .prepare(
+          'SELECT 1 FROM devices WHERE user=? AND revoked=0 AND protocol>=? LIMIT 1',
+        )
+        .get(user, OUTLINE_CONNECTOR_PROTOCOL)
+    )
+      throw new QueueError(
+        '当前连接器不支持重新生成提纲，请先下载并启动新版连接器。',
+        409,
+      );
     const workSample: WorkSampleReference | undefined =
       (kind === 'resume' || kind === 'work-sample') &&
       'workSample' in validatedInput
@@ -645,9 +722,15 @@ export class QueueStore {
   cancel(user: string, id: string) {
     return this.action(user, id, 'stop');
   }
-  claim(secret: string, ready: boolean, kinds: JobKind[] = ['interview']) {
+  claim(
+    secret: string,
+    ready: boolean,
+    kinds: JobKind[] = ['interview'],
+    connector?: unknown,
+  ) {
     this.sweep();
     const device = this.device(secret);
+    const release = this.recordConnector(device.id, connector);
     this.db
       .prepare('UPDATE devices SET seen=?,ready=? WHERE id=?')
       .run(this.now(), ready ? 1 : 0, device.id);
@@ -655,7 +738,7 @@ export class QueueStore {
     const lease = token();
     const row = this.db
       .prepare(
-        `UPDATE jobs SET state='running',device=?,lease=?,until=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY CASE WHEN kind IN ('resume','written-test','work-sample') THEN 0 ELSE 1 END,queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId`,
+        `UPDATE jobs SET state='running',device=?,lease=?,until=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1) OR (kind='outline' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY CASE WHEN kind IN ('resume','written-test','work-sample','outline') THEN 0 ELSE 1 END,queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId`,
       )
       .get(
         device.id,
@@ -668,6 +751,9 @@ export class QueueStore {
         kinds.includes('resume') ? 1 : 0,
         kinds.includes('written-test') ? 1 : 0,
         kinds.includes('work-sample') ? 1 : 0,
+        kinds.includes('outline') && connectorSupportsOutline(release?.protocol)
+          ? 1
+          : 0,
         device.id,
       ) as Row | undefined;
     return row
@@ -680,9 +766,10 @@ export class QueueStore {
         }
       : null;
   }
-  heartbeat(secret: string, id: string, lease: string) {
+  heartbeat(secret: string, id: string, lease: string, connector?: unknown) {
     this.sweep();
     const device = this.device(secret);
+    this.recordConnector(device.id, connector);
     this.db
       .prepare('UPDATE devices SET seen=?,ready=1 WHERE id=?')
       .run(this.now(), device.id);
@@ -724,7 +811,7 @@ export class QueueStore {
           '本地笔试作品已发生变化，请刷新作品清单后重新选择。',
         'artifact-invalid':
           '笔试作品 ZIP 无法安全读取，请检查文件内容后重新提交。',
-        validation: '作品评估的引用或结构校验失败，请重新提交。',
+        validation: 'Codex 输出的引用或结构校验失败，请重新提交。',
         timeout:
           '本地 Codex 作品分析超时。较大的作品可能需要更久，请保持连接器运行后重新提交。',
         network: '本地 Codex 作品分析时网络连接中断，请确认网络后重新提交。',
@@ -740,11 +827,14 @@ export class QueueStore {
         const storedInput = JSON.parse(String(job.input)) as unknown;
         report = JSON.stringify(
           job.kind === 'resume'
-            ? validateResumeReading(result, validateResumeInput(storedInput))
+            ? validateResumeReading(result, validateResumeInput(storedInput), {
+                conciseQuestions: true,
+              })
             : job.kind === 'written-test'
               ? validateWrittenTestSupplement(
                   result,
                   validateWrittenTestSupplementInput(storedInput),
+                  { conciseQuestions: true },
                 )
               : job.kind === 'work-sample'
                 ? validateWorkSampleAssessment(result, {
@@ -754,8 +844,14 @@ export class QueueStore {
                     questionCount: 3,
                     existingQuestions:
                       validateWorkSampleInput(storedInput).existingQuestions,
+                    conciseQuestions: true,
                   })
-                : validateReport(result, validateInput(storedInput)),
+                : job.kind === 'outline'
+                  ? validateOutlineRegenerationResult(
+                      result,
+                      validateOutlineRegenerationInput(storedInput),
+                    )
+                  : validateReport(result, validateInput(storedInput)),
         );
       } catch {
         error = '评估引用或结构校验失败，请核实后重新提交。';

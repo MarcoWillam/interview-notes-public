@@ -14,6 +14,10 @@ import {
   validateServer,
   type Credentials,
 } from './queue/connector-client.ts';
+import {
+  CONNECTOR_VERSION,
+  connectorRelease,
+} from '../lib/connector-release.ts';
 const { values } = parseArgs({
   options: {
     server: { type: 'string' },
@@ -30,6 +34,7 @@ try {
     const data = await connectorRequest(server, '/api/pair/redeem', {
       code: values.pair,
       name: hostname().slice(0, 80),
+      connector: connectorRelease,
     });
     if (typeof data.token !== 'string' || typeof data.id !== 'string')
       throw new Error('配对响应无效。');
@@ -59,6 +64,7 @@ try {
   process.on('SIGTERM', () => controller.abort());
   const workSampleInbox = await ensureWorkSampleInbox();
   await cleanupStaleWorkSampleDirectories();
+  console.log(`连接器版本：${CONNECTOR_VERSION}`);
   console.log(`本地作品箱：${workSampleInbox}`);
   console.log('连接器已启动，等待属于此账号的面试评估任务。');
   await runConnector(credentials, controller.signal, {

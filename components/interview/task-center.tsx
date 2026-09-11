@@ -14,6 +14,7 @@ import {
   type WorkSampleAssessment,
 } from '../../lib/work-sample';
 import { groupAssessmentDimensions } from '../../lib/assessment-groups';
+import type { OutlineRegenerationResult } from '../../lib/outline-regeneration';
 import {
   controlRemoteJob,
   remoteRequest,
@@ -37,7 +38,11 @@ import {
 } from './task-center-view';
 
 type Job = RemoteJob<
-  Report | ResumeReading | WrittenTestSupplementResult | WorkSampleAssessment
+  | Report
+  | ResumeReading
+  | WrittenTestSupplementResult
+  | WorkSampleAssessment
+  | OutlineRegenerationResult
 >;
 
 function downloadReport(job: Job) {
@@ -78,6 +83,56 @@ function downloadReport(job: Job) {
   anchor.href = url;
   anchor.download =
     job.label.replace(/[\\/:*?"<>|\r\n]/g, '_').slice(0, 60) + '-辅助评估.md';
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function downloadOutline(value: OutlineRegenerationResult) {
+  const questions = [
+    ...value.interviewQuestions,
+    ...(value.writtenTestSupplement || []),
+    ...(value.workSampleQuestions || []).filter(
+      (item) =>
+        !value.interviewQuestions.some(
+          (question) => question.question === item.question,
+        ),
+    ),
+  ];
+  const markdown = [
+    '# 重新生成的面试提纲',
+    '',
+    ...questions.flatMap((question, index) => [
+      `## ${index + 1}. ${question.question}`,
+      '',
+      `来源：${question.questionSource}`,
+      '',
+      `考察维度：${question.dimensions.join('、')}`,
+      '',
+      `提问理由：${question.reason}`,
+      '',
+      ...(question.resumeEvidence
+        ? [`简历依据：${question.resumeEvidence}`, '']
+        : []),
+      ...(question.workSampleEvidence
+        ? [
+            `作品依据：${question.workSampleEvidence.path} · ${question.workSampleEvidence.excerpt}`,
+            '',
+          ]
+        : []),
+      '观察点：',
+      ...question.listenFor.map((item) => `- ${item}`),
+      '',
+      '追问：',
+      ...question.probes.map((item) => `- ${item}`),
+      '',
+    ]),
+  ].join('\n');
+  const url = URL.createObjectURL(
+    new Blob([markdown], { type: 'text/markdown;charset=utf-8' }),
+  );
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = '重新生成的面试提纲.md';
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -282,6 +337,11 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
           <WorkSampleTaskResult value={job.report as WorkSampleAssessment} />
         )}
       {job.report &&
+        job.kind === 'outline' &&
+        'interviewQuestions' in job.report && (
+          <OutlineTaskResult value={job.report as OutlineRegenerationResult} />
+        )}
+      {job.report &&
         job.kind !== 'work-sample' &&
         'dimensions' in job.report &&
         'followUps' in job.report && (
@@ -352,6 +412,35 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
           </>
         )}
     </div>
+  );
+}
+
+function OutlineTaskResult({ value }: { value: OutlineRegenerationResult }) {
+  const questions = [
+    ...value.interviewQuestions,
+    ...(value.writtenTestSupplement || []),
+    ...(value.workSampleQuestions || []).filter(
+      (item) =>
+        !value.interviewQuestions.some(
+          (question) => question.question === item.question,
+        ),
+    ),
+  ];
+  return (
+    <section>
+      <h4>重新生成的面试提纲</h4>
+      <ol>
+        {questions.map((question, index) => (
+          <li key={`${question.questionSource}-${index}`}>
+            {question.question}
+          </li>
+        ))}
+      </ol>
+      <p className="small-note">请回到对应面试记录确认已自动应用。</p>
+      <button className="primary-button" onClick={() => downloadOutline(value)}>
+        <Download size={16} /> 下载提纲 Markdown
+      </button>
+    </section>
   );
 }
 

@@ -202,6 +202,7 @@ export function validateWorkSampleAssessment(
     questionCount: number;
     existingQuestions: InterviewQuestion[];
     allowLegacy?: boolean;
+    conciseQuestions?: boolean;
   },
 ): WorkSampleAssessment {
   if (!value || typeof value !== 'object')
@@ -262,6 +263,7 @@ export function validateWorkSampleAssessment(
     allowedDimensions: legacyDimensions,
     allowedSources: new Set(['work-sample']),
     resumeText: '',
+    conciseQuestions: options.conciseQuestions,
   });
   const existing = new Set(
     options.existingQuestions.map((question) => question.question.trim()),
@@ -399,7 +401,7 @@ export const workSampleInstructions = [
   `rubricVersion 必须返回 ${AI_PM_WORK_SAMPLE_RUBRIC_VERSION}。dimensions 必须恰好包含上述六个同名维度并保持顺序。`,
   '源码只能作为产品方案是否可验证的辅助证据，不能按工程岗位标准评分。不得根据作品推断作者身份、个人贡献、录用结论或人格；自驱力、学习力、挑战力、韧性、团队精神和沟通协作只能转化为面试核实线索，不能成为作品评分维度。',
   '每个有事实判断的维度应引用允许读取的 UTF-8 文本或源码中的相对路径和逐字连续 excerpt；不得使用绝对路径，不得编造引用。材料部分不可读时在 coverage、risks 和相关维度说明证据缺口。',
-  'questions 必须恰好三道且不与 existingQuestions 重复，均为 questionSource=work-sample、resumeEvidence=null，且每题提供文件依据。第 1 题核实用户问题、关键产品决策、范围取舍和放弃方向；第 2 题核实 AI 核心价值、责任边界、失败或纠正机制，并加入一个与作品有关的约束变化；第 3 题核实判断依据、验证方法、下一步关键假设和产品化方向。问题必须基于作品中的具体内容，不能使用任何作品都适用的通用问法。dimensions 仍只能使用输入岗位 dimensionText 中的一至两个原名。',
+  'questions 必须恰好三道且不与 existingQuestions 重复，均为 questionSource=work-sample、resumeEvidence=null，且每题提供文件依据。每题 question 必须是可直接念出的 12–30 字短句，只核实一个核心判断，最多一个问号；作品背景与核实细节拆入 reason、listenFor 与 probes。第 1 题核实用户问题、关键产品决策、范围取舍和放弃方向；第 2 题核实 AI 核心价值、责任边界、失败或纠正机制，并加入一个与作品有关的约束变化；第 3 题核实判断依据、验证方法、下一步关键假设和产品化方向。问题必须基于作品中的具体内容，不能使用任何作品都适用的通用问法。dimensions 仍只能使用输入岗位 dimensionText 中的一至两个原名。',
   '只返回符合结构的 JSON，不作录用建议。',
 ].join('\n');
 

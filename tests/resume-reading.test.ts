@@ -555,6 +555,23 @@ void test('reading view shows six core questions with evidence and native collap
   );
 });
 
+void test('reading view exposes one outline regeneration action and its consumed state', async () => {
+  const available = await renderReading(structuredResult, {
+    canRegenerate: true,
+    regenerationBusy: false,
+    onRegenerate: () => {},
+  });
+  assert.match(available, />重新生成提纲</);
+  assert.doesNotMatch(available, /已重新生成/);
+
+  const consumed = await renderReading(structuredResult, {
+    canRegenerate: false,
+    regenerationUsed: true,
+  });
+  assert.doesNotMatch(consumed, />重新生成提纲</);
+  assert.match(consumed, /已重新生成/);
+});
+
 void test('written-test reading labels the guide and review questions explicitly', async () => {
   const value = {
     ...structuredResult,

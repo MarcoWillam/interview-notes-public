@@ -2,6 +2,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { zipSync, strToU8 } from 'fflate';
 import { connectorPackageFiles } from './connector-package-files.mjs';
+import { CONNECTOR_VERSION } from '../lib/connector-release.ts';
 
 const root = resolve(import.meta.dirname, '..');
 const archive = {};
@@ -19,7 +20,7 @@ archive['interview-connector/package.json'] = strToU8(
   JSON.stringify(
     {
       name: 'interview-codex-connector',
-      version: '0.1.0',
+      version: CONNECTOR_VERSION,
       private: true,
       type: 'module',
       engines: { node: '>=24.0.0' },
@@ -32,7 +33,7 @@ archive['interview-connector/package.json'] = strToU8(
   ) + '\n',
 );
 archive['interview-connector/使用说明.txt'] =
-  strToU8(`面试工作台本地 Codex 连接器
+  strToU8(`面试工作台本地 Codex 连接器 ${CONNECTOR_VERSION}
 
 准备：
 1. 安装 Node.js 24 或更高版本。
@@ -52,6 +53,11 @@ archive['interview-connector/使用说明.txt'] =
 
 若 npm 报错找不到 /Users/用户名/package.json，说明终端没有进入本文件夹。
 配对码 10 分钟有效且只能使用一次，过期后请在网页重新生成。
+
+更新：
+1. 关闭旧连接器终端，在原连接器目录替换程序文件。
+2. 必须保留 .local/connector.json 和 works，无需重新配对。
+3. 回到原目录运行 npm run connector，网页会显示新的版本状态。
 `);
 
 const output = join(root, 'public/downloads');

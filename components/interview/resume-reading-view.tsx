@@ -98,6 +98,10 @@ export function ResumeReadingView({
   canSubmitWork = false,
   workBusy = false,
   onSubmitWork,
+  canRegenerate = false,
+  regenerationUsed = false,
+  regenerationBusy = false,
+  onRegenerate,
 }: {
   value: ResumeReading;
   canSupplement?: boolean;
@@ -106,6 +110,10 @@ export function ResumeReadingView({
   canSubmitWork?: boolean;
   workBusy?: boolean;
   onSubmitWork?: () => void;
+  canRegenerate?: boolean;
+  regenerationUsed?: boolean;
+  regenerationBusy?: boolean;
+  onRegenerate?: () => void;
 }) {
   function download() {
     const url = URL.createObjectURL(
@@ -134,10 +142,25 @@ export function ResumeReadingView({
     <div className="remote-result resume-reading">
       <div className="remote-section-label">
         <h3>Codex 面试准备</h3>
-        <button type="button" className="text-button" onClick={download}>
-          <Download size={15} />
-          下载完整要点
-        </button>
+        <div className="resume-reading-heading-actions">
+          {canRegenerate && (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={regenerationBusy}
+              onClick={onRegenerate}
+            >
+              {regenerationBusy ? '正在重新生成…' : '重新生成提纲'}
+            </button>
+          )}
+          {regenerationUsed && (
+            <span className="outline-regenerated-state">已重新生成</span>
+          )}
+          <button type="button" className="text-button" onClick={download}>
+            <Download size={15} />
+            下载完整要点
+          </button>
+        </div>
       </div>
       {!!questions.length && (
         <section className="interview-guide">

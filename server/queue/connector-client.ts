@@ -12,7 +12,13 @@ import {
   codexStatus,
   generateWrittenTestSupplementWithCodex,
   readResumeWithCodex,
+  regenerateOutlineWithCodex,
 } from '../codex.ts';
+import {
+  validateOutlineRegenerationInput,
+  validateOutlineRegenerationResult,
+} from '../../lib/outline-regeneration.ts';
+import { connectorRelease } from '../../lib/connector-release.ts';
 import type { WorkSampleReference } from '../../lib/work-sample.ts';
 import { validateWorkSampleInput } from '../../lib/work-sample.ts';
 import {
@@ -132,6 +138,7 @@ export async function runConnector(
     status: typeof codexStatus;
     readResume?: typeof readResumeWithCodex;
     writeTest?: typeof generateWrittenTestSupplementWithCodex;
+    regenerateOutline?: typeof regenerateOutlineWithCodex;
     readResumeWork?: typeof readResumeAndWorkSampleWithCodex;
     analyzeWorkSample?: typeof analyzeWorkSampleWithCodex;
     workSamples?: () => Promise<{
@@ -166,10 +173,12 @@ export async function runConnector(
         '/api/worker/claim',
         {
           ready,
+          connector: connectorRelease,
           kinds: [
             'interview',
             'resume',
             'written-test',
+            'outline',
             ...(dependencies.workSamples ? ['work-sample'] : []),
           ],
           ...(dependencies.workSamples
@@ -204,7 +213,7 @@ export async function runConnector(
           void connectorRequest(
             server,
             '/api/worker/heartbeat',
-            { id: job.id, lease: job.lease },
+            { id: job.id, lease: job.lease, connector: connectorRelease },
             credentials.token,
             taskSignal,
           )
@@ -240,13 +249,17 @@ export async function runConnector(
                     input,
                     taskSignal,
                   );
-              report = validateResumeReading(reading, input);
+              report = validateResumeReading(reading, input, {
+                conciseQuestions: true,
+              });
             } else if (job.kind === 'written-test') {
               const input = validateWrittenTestSupplementInput(job.input);
               const supplement = await (
                 dependencies.writeTest || generateWrittenTestSupplementWithCodex
               )(input, taskSignal);
-              report = validateWrittenTestSupplement(supplement, input);
+              report = validateWrittenTestSupplement(supplement, input, {
+                conciseQuestions: true,
+              });
             } else if (job.kind === 'work-sample') {
               const input = validateWorkSampleInput(job.input);
               const artifactPath = inventory?.files.get(input.workSample.id);
@@ -254,6 +267,12 @@ export async function runConnector(
               report = await (
                 dependencies.analyzeWorkSample || analyzeWorkSampleWithCodex
               )(input, artifactPath, taskSignal);
+            } else if (job.kind === 'outline') {
+              const input = validateOutlineRegenerationInput(job.input);
+              const result = await (
+                dependencies.regenerateOutline || regenerateOutlineWithCodex
+              )(input, taskSignal);
+              report = validateOutlineRegenerationResult(result, input);
             } else {
               report = await dependencies.analyze(
                 validateInput(job.input),
@@ -262,13 +281,14 @@ export async function runConnector(
             }
           } catch (error) {
             failed = true;
-            const usesWorkSample =
+            const needsStructuredFailure =
+              job.kind === 'outline' ||
               job.kind === 'work-sample' ||
               (job.kind === 'resume' &&
                 !!job.input &&
                 typeof job.input === 'object' &&
                 'workSample' in job.input);
-            failure = usesWorkSample ? workFailure(error) : 'codex';
+            failure = needsStructuredFailure ? workFailure(error) : 'codex';
           }
           if (!taskSignal.aborted) {
             for (

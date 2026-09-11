@@ -16,10 +16,23 @@ export type InterviewQuestion = {
   probes: string[];
 };
 
+export const MIN_MAIN_QUESTION_LENGTH = 12;
+export const MAX_MAIN_QUESTION_LENGTH = 30;
+
 function boundedText(value: unknown, max: number): string {
   if (typeof value !== 'string' || value.length > max || !value.trim())
     throw new Error('面试问题内容为空或超过长度限制。');
   return value.trim();
+}
+
+export function conciseQuestion(value: unknown): string {
+  const result = boundedText(value, 1000);
+  const length = Array.from(result).length;
+  if (length < MIN_MAIN_QUESTION_LENGTH || length > MAX_MAIN_QUESTION_LENGTH)
+    throw new Error('面试主问题必须为 12–30 个字符。');
+  if ((result.match(/[?？]/g) || []).length > 1)
+    throw new Error('面试主问题只能包含一个问点。');
+  return result;
 }
 
 function stringList(
@@ -61,6 +74,7 @@ export function validateQuestionItems(
     allowedDimensions: Set<string>;
     allowedSources: Set<QuestionSource>;
     resumeText: string;
+    conciseQuestions?: boolean;
   },
 ): InterviewQuestion[] {
   if (!Array.isArray(value) || value.length !== options.expectedCount)
@@ -99,7 +113,9 @@ export function validateQuestionItems(
     if (questionSource !== 'work-sample' && workSampleEvidence)
       throw new Error('非作品题不能引用作品文件。');
     return {
-      question: boundedText(question.question, 1000),
+      question: options.conciseQuestions
+        ? conciseQuestion(question.question)
+        : boundedText(question.question, 1000),
       questionSource,
       dimensions,
       reason: boundedText(question.reason, 2000),
@@ -131,7 +147,11 @@ export const interviewQuestionSchema = {
     'probes',
   ],
   properties: {
-    question: { type: 'string', minLength: 1, maxLength: 1000 },
+    question: {
+      type: 'string',
+      minLength: MIN_MAIN_QUESTION_LENGTH,
+      maxLength: MAX_MAIN_QUESTION_LENGTH,
+    },
     questionSource: {
       type: 'string',
       enum: ['resume', 'written-test', 'work-sample', 'role'],

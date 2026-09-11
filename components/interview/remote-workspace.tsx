@@ -25,6 +25,23 @@ type Device = {
   online: boolean;
   ready: boolean;
   lastSeen: number;
+  version: string | null;
+  protocol: number | null;
+  versionSeen: number | null;
+  updateState: 'current' | 'update-available' | 'update-required';
+  supportsOutline: boolean;
+};
+type ConnectorReleaseInfo = {
+  latestVersion: string;
+  latestProtocol: number;
+  minimumProtocol: number;
+  outlineProtocol: number;
+  notes: string;
+  downloadUrl: string;
+};
+type DeviceResponse = {
+  devices: Device[];
+  connectorRelease: ConnectorReleaseInfo;
 };
 export function RemoteWorkspace() {
   const [session, setSession] = useState<Session | null>(null),
@@ -32,6 +49,8 @@ export function RemoteWorkspace() {
     [pending, setPending] = useState(false);
   const [panel, setPanel] = useState<'devices' | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [deviceStatus, setDeviceStatus] = useState<DeviceResponse | null>(null);
+  const [dismissedRelease, setDismissedRelease] = useState('');
   async function loadSession() {
     try {
       const value = await remoteRequest<Session>('/api/session');
@@ -49,6 +68,24 @@ export function RemoteWorkspace() {
     // oxlint-disable-next-line react/react-compiler -- State is updated after the session HTTP request resolves.
     void loadSession();
   }, []);
+  useEffect(() => {
+    if (!session?.user || session.preview) return;
+    let disposed = false;
+    const refresh = async () => {
+      try {
+        const value = await remoteRequest<DeviceResponse>('/api/devices');
+        if (!disposed) setDeviceStatus(value);
+      } catch {
+        // The device dialog reports actionable connection errors when opened.
+      }
+    };
+    void refresh();
+    const timer = setInterval(() => void refresh(), 15000);
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+    };
+  }, [session]);
   async function login(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -142,6 +179,34 @@ export function RemoteWorkspace() {
           onOpenAccount: () => setAccountOpen(true),
           onLogout: () => void logout(),
         }}
+        connectorUpdate={(() => {
+          if (!deviceStatus?.devices.length) return undefined;
+          const required = deviceStatus.devices.some(
+            (device) => device.updateState === 'update-required',
+          );
+          const available = deviceStatus.devices.some(
+            (device) => device.updateState === 'update-available',
+          );
+          if (
+            !required &&
+            (!available ||
+              dismissedRelease === deviceStatus.connectorRelease.latestVersion)
+          )
+            return undefined;
+          return {
+            required,
+            latestVersion: deviceStatus.connectorRelease.latestVersion,
+            notes: deviceStatus.connectorRelease.notes,
+            downloadUrl: deviceStatus.connectorRelease.downloadUrl,
+            onOpenDevices: () => setPanel('devices'),
+            onDismiss: required
+              ? undefined
+              : () =>
+                  setDismissedRelease(
+                    deviceStatus.connectorRelease.latestVersion,
+                  ),
+          };
+        })()}
       />
       <RemotePanel
         panel={panel}
@@ -279,6 +344,7 @@ function RemotePanel({
   preview: boolean;
 }) {
   const [devices, setDevices] = useState<Device[]>([]);
+  const [release, setRelease] = useState<ConnectorReleaseInfo | null>(null);
   const [artifacts, setArtifacts] = useState<RemoteArtifact[]>([]);
   const [pair, setPair] = useState<{ code: string; expiresAt: number } | null>(
       null,
@@ -290,10 +356,11 @@ function RemotePanel({
     try {
       if (target === 'devices') {
         const [data, workSamples] = await Promise.all([
-          remoteRequest<{ devices: Device[] }>('/api/devices'),
+          remoteRequest<DeviceResponse>('/api/devices'),
           listRemoteArtifacts(),
         ]);
         setDevices(data.devices);
+        setRelease(data.connectorRelease);
         setArtifacts(workSamples);
       }
       setLoaded(true);
@@ -393,6 +460,16 @@ function RemotePanel({
                       : '在线 · Codex 需登录'
                     : '离线 · 等待连接'}
                 </span>
+                <span className="remote-device-version">
+                  连接器 {device.version || '旧版（未报告版本）'}
+                  {device.updateState !== 'current' && (
+                    <em className={device.updateState}>
+                      {device.updateState === 'update-required'
+                        ? '必须更新'
+                        : '有新版本'}
+                    </em>
+                  )}
+                </span>
               </div>
               <button
                 disabled={pending}
@@ -410,6 +487,27 @@ function RemotePanel({
               </button>
             </div>
           ))}
+          {release &&
+            devices.some((device) => device.updateState !== 'current') && (
+              <div className="remote-update-guide">
+                <strong>最新版 {release.latestVersion}</strong>
+                <span>{release.notes}</span>
+                <p>
+                  下载新版 ZIP，解压后运行 <code>npm run connector</code>
+                  。如果覆盖原目录，请保留 <code>
+                    .local/connector.json
+                  </code> 与{' '}
+                  <code>works/</code>，无需重新配对。
+                </p>
+                <a
+                  className="secondary-button remote-connector-download"
+                  href={release.downloadUrl}
+                  download
+                >
+                  <Download size={16} /> 下载新版连接器
+                </a>
+              </div>
+            )}
           <div className="remote-section-label remote-artifact-heading">
             <div>
               <h3>本地笔试作品</h3>

@@ -68,6 +68,7 @@ export function validateWrittenTestSupplementInput(
 export function validateWrittenTestSupplement(
   value: unknown,
   input: WrittenTestSupplementInput,
+  options: { conciseQuestions?: boolean } = {},
 ): WrittenTestSupplementResult {
   if (!value || typeof value !== 'object')
     throw new Error('笔试复盘结果格式不正确。');
@@ -78,6 +79,7 @@ export function validateWrittenTestSupplement(
       allowedDimensions: dimensions(input),
       allowedSources: new Set(['written-test']),
       resumeText: input.resumeText,
+      conciseQuestions: options.conciseQuestions,
     },
   );
   const existing = new Set(
@@ -95,7 +97,7 @@ export function validateWrittenTestSupplement(
 }
 
 export const writtenTestSupplementInstructions =
-  '你是 AI 产品经理校招面试准备助手。请基于输入的岗位标准和既有笔试考量框架，只补充三道笔试复盘面试题。三题需共同覆盖问题定义与用户理解、方案范围与取舍、AI 核心价值、人与 AI 的责任边界、用户控制、失败降级和验证假设，要求候选人复述自己的判断、取舍与验证方法。你没有看到候选人的实际答卷，不得声称已经阅读答卷或知道其答案，不得编造答卷细节。新问题不得与 existingQuestions 中的六道题重复。questionSource 必须为 written-test，resumeEvidence 和 workSampleEvidence 必须为 null；dimensions 只能使用输入 dimensionText 中的一至两个原名。每题提供提问理由、一至三个观察点和一至两个追问。不评分、不推荐录用，只返回符合结构的 JSON。';
+  '你是 AI 产品经理校招面试准备助手。请基于输入的岗位标准和既有笔试考量框架，只补充三道笔试复盘面试题。三题需共同覆盖问题定义与用户理解、方案范围与取舍、AI 核心价值、人与 AI 的责任边界、用户控制、失败降级和验证假设，要求候选人复述自己的判断、取舍与验证方法。你没有看到候选人的实际答卷，不得声称已经阅读答卷或知道其答案，不得编造答卷细节。新问题不得与 existingQuestions 中的六道题重复。每题 question 必须是可直接念出的 12–30 字短句，只核实一个核心判断，最多一个问号；背景和细节拆入 reason、listenFor 与 probes。questionSource 必须为 written-test，resumeEvidence 和 workSampleEvidence 必须为 null；dimensions 只能使用输入 dimensionText 中的一至两个原名。每题提供提问理由、一至三个观察点和一至两个追问。不评分、不推荐录用，只返回符合结构的 JSON。';
 
 export const writtenTestSupplementSchema = {
   type: 'object',

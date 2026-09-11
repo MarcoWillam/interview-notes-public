@@ -186,6 +186,7 @@ export async function readResumeAndWorkSampleWithCodex(
       const reading = validateResumeReading(
         replaceCoverage(raw, manifest, true),
         input,
+        { conciseQuestions: true },
       );
       if (!reading.workSample) throw new Error('作品评估结果缺失。');
       await validateWorkSampleEvidenceFiles(
@@ -228,6 +229,7 @@ export async function analyzeWorkSampleWithCodex(
           dimensionText: input.dimensionText,
           questionCount: 3,
           existingQuestions: input.existingQuestions,
+          conciseQuestions: true,
         },
       );
       await validateWorkSampleEvidenceFiles(

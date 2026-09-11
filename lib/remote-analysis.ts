@@ -24,6 +24,12 @@ import {
   type WorkSampleInput,
   type WorkSampleReference,
 } from './work-sample.ts';
+import {
+  validateOutlineRegenerationInput,
+  validateOutlineRegenerationResult,
+  type OutlineRegenerationInput,
+  type OutlineRegenerationResult,
+} from './outline-regeneration.ts';
 let account: string | null = null;
 export function configureRemoteAccount(value: string) {
   account = value;
@@ -37,7 +43,7 @@ class RemoteError extends Error {
   }
 }
 export type RemoteJob<T = Report> = {
-  kind?: 'interview' | 'resume' | 'written-test' | 'work-sample';
+  kind?: 'interview' | 'resume' | 'written-test' | 'work-sample' | 'outline';
   id: string;
   label: string;
   state: 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
@@ -100,8 +106,9 @@ async function submitRemoteTask<T>(
     | InterviewInput
     | ResumeInput
     | WrittenTestSupplementInput
-    | WorkSampleInput,
-  kind: 'interview' | 'resume' | 'written-test' | 'work-sample',
+    | WorkSampleInput
+    | OutlineRegenerationInput,
+  kind: 'interview' | 'resume' | 'written-test' | 'work-sample' | 'outline',
   validateResult: (value: unknown) => T,
   label: string,
   signal: AbortSignal,
@@ -280,7 +287,8 @@ export function submitRemoteResume(
   return submitRemoteTask(
     normalized,
     'resume',
-    (value) => validateResumeReading(value, normalized),
+    (value) =>
+      validateResumeReading(value, normalized, { conciseQuestions: true }),
     label,
     signal,
     onProgress,
@@ -299,7 +307,10 @@ export function submitRemoteWrittenTest(
   return submitRemoteTask(
     normalized,
     'written-test',
-    (value) => validateWrittenTestSupplement(value, normalized),
+    (value) =>
+      validateWrittenTestSupplement(value, normalized, {
+        conciseQuestions: true,
+      }),
     label,
     signal,
     onProgress,
@@ -328,7 +339,31 @@ export function submitRemoteWorkSample(
         dimensionText: normalized.dimensionText,
         questionCount: 3,
         existingQuestions: normalized.existingQuestions,
+        conciseQuestions: true,
       }),
+    label,
+    signal,
+    onProgress,
+    dependencies,
+  );
+}
+
+export function submitRemoteOutline(
+  input: OutlineRegenerationInput,
+  label: string,
+  signal: AbortSignal,
+  onProgress: (job: RemoteJob<OutlineRegenerationResult>) => void,
+  dependencies: {
+    fetcher: typeof fetch;
+    pollMs: number;
+    scope?: string;
+  } = { fetcher: fetch, pollMs: 2000 },
+): Promise<OutlineRegenerationResult> {
+  const normalized = validateOutlineRegenerationInput(input);
+  return submitRemoteTask(
+    normalized,
+    'outline',
+    (value) => validateOutlineRegenerationResult(value, normalized),
     label,
     signal,
     onProgress,
