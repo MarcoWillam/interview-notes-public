@@ -490,20 +490,36 @@ export default function Home({
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const recover = async () => {
+      let job: RemoteJob<WorkSampleAssessment>;
       try {
-        const job = await remoteRequest<RemoteJob<WorkSampleAssessment>>(
+        job = await remoteRequest<RemoteJob<WorkSampleAssessment>>(
           '/api/jobs/' + encodeURIComponent(workSampleJobId),
         );
+      } catch (reason) {
         if (disposed) return;
-        if (job.state === 'completed' && job.report) {
+        if ((reason as { status?: number }).status === 404) {
+          setWorkSampleJobId(undefined);
+          setError('作品分析任务已过期，可以再次提交。');
+          return;
+        }
+        setError('暂时无法获取作品分析进度，系统会继续重试。');
+        timer = setTimeout(() => void recover(), 5000);
+        return;
+      }
+      if (disposed) return;
+      if (job.state === 'completed' && job.report) {
+        try {
           const artifacts = await listRemoteArtifacts();
+          if (disposed) return;
           const reference = artifacts.find(
             (artifact) => artifact.id === job.artifactId,
           );
-          if (!reference)
+          if (!reference) {
+            setWorkSampleJobId(undefined);
             throw new Error(
               '已完成的作品文件信息已过期，请从任务中心查看结果。',
             );
+          }
           const result = validateWorkSampleAssessment(job.report, {
             reference,
             dimensionText,
@@ -532,20 +548,32 @@ export default function Home({
           setWrittenTestConfirmed(true);
           setNotice('已恢复完成的作品分析，并追加 3 道作品复盘题。');
           return;
-        }
-        if (job.state === 'failed' || job.state === 'cancelled') {
+        } catch (reason) {
+          if (disposed) return;
+          const status = (reason as { status?: number }).status;
+          if (
+            status === 401 ||
+            (typeof status === 'number' && status >= 500) ||
+            reason instanceof TypeError
+          ) {
+            setError('暂时无法恢复作品分析结果，系统会继续重试。');
+            timer = setTimeout(() => void recover(), 5000);
+            return;
+          }
           setWorkSampleJobId(undefined);
-          setError(job.error || '作品分析未完成，可以重新提交。');
-          return;
-        }
-        setRemoteJob({ ...job, report: null });
-        timer = setTimeout(() => void recover(), 3000);
-      } catch (reason) {
-        if (!disposed)
           setError(
             reason instanceof Error ? reason.message : '作品任务恢复失败。',
           );
+          return;
+        }
       }
+      if (job.state === 'failed' || job.state === 'cancelled') {
+        setWorkSampleJobId(undefined);
+        setError(job.error || '作品分析未完成，可以重新提交。');
+        return;
+      }
+      setRemoteJob({ ...job, report: null });
+      timer = setTimeout(() => void recover(), 3000);
     };
     void recover();
     return () => {
@@ -1246,6 +1274,7 @@ export default function Home({
   async function runLateWorkSample() {
     const reading = resumeReading;
     const artifact = lateWorkSampleArtifact;
+    let submittedJobId: string | undefined;
     if (
       busyRef.current ||
       !reading?.interviewQuestions ||
@@ -1295,6 +1324,7 @@ export default function Home({
             analysisController.current === controller &&
             !controller.signal.aborted
           ) {
+            submittedJobId = job.id;
             setWorkSampleJobId(job.id);
             setRemoteJob({ ...job, report: null });
           }
@@ -1329,15 +1359,20 @@ export default function Home({
       setTab('resume');
     } catch (reason) {
       if (analysisController.current !== controller) return;
-      setWorkSampleJobId(undefined);
+      const message =
+        reason instanceof Error ? reason.message : '笔试作品分析失败。';
+      const stillRemote =
+        !!submittedJobId &&
+        !cancelledRemotely.current &&
+        (/任务已提交|无法获取进度/.test(message) ||
+          (controller.signal.aborted && !cancelledRemotely.current));
+      if (!stillRemote) setWorkSampleJobId(undefined);
       setError(
         controller.signal.aborted
           ? cancelledRemotely.current
             ? '作品分析任务已取消，原提纲保留。'
             : '已停止等待，可在任务中心查看结果。'
-          : reason instanceof Error
-            ? reason.message
-            : '笔试作品分析失败。',
+          : message,
       );
     } finally {
       if (analysisController.current === controller) {

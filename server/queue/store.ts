@@ -886,6 +886,10 @@ export class QueueStore {
         error = '评估引用或结构校验失败，请核实后重新提交。';
       }
     }
+    if (!error && job.kind === 'outline' && !job.scope) {
+      report = null;
+      error = '旧版提纲任务缺少面试记录范围，请重新提交。';
+    }
     this.db.exec('BEGIN IMMEDIATE');
     try {
       if (!error && job.kind === 'outline')
