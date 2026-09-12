@@ -20,6 +20,11 @@ import {
   type WorkSampleAssessment,
   type WorkSampleReference,
 } from './work-sample.ts';
+import {
+  validateInterviewOutlineV2,
+  type InterviewOutlineV2,
+} from './interview-outline-v2.ts';
+import { builtInRoleTemplates } from './default-role-templates.ts';
 
 export type {
   InterviewQuestion,
@@ -29,12 +34,14 @@ export type {
 export type ResumeInput = InterviewStandards & {
   resumeText: string;
   hasWrittenTest: boolean;
+  outlineVersion?: 1 | 2;
   workSample?: WorkSampleReference;
 };
 export type ResumeReading = {
   candidateName?: string | null;
   candidateNameEvidence?: string | null;
   interviewQuestions?: InterviewQuestion[];
+  outline?: InterviewOutlineV2;
   writtenTestSupplement?: InterviewQuestion[];
   workSample?: WorkSampleAssessment;
   summary: string;
@@ -53,6 +60,26 @@ export function validateResumeInput(value: unknown): ResumeInput {
   const v = value as Record<string, unknown>;
   const standards = normalizeStandards(v);
   validateStandards(standards, false);
+  const outlineVersion = v.outlineVersion === undefined ? 1 : v.outlineVersion;
+  if (outlineVersion !== 1 && outlineVersion !== 2)
+    throw new Error('面试提纲版本不正确。');
+  if (outlineVersion === 2) {
+    const fields = [
+      'role',
+      'requirements',
+      'dimensionText',
+      'focus',
+      'scoringGuidance',
+      'reportRequirements',
+    ] as const;
+    const eligible = builtInRoleTemplates
+      .slice(0, 2)
+      .some((template) =>
+        fields.every((field) => standards[field] === template[field]),
+      );
+    if (!eligible)
+      throw new Error('V2 面试提纲仅支持未修改的内置岗位模板。');
+  }
   const workSample =
     v.workSample === undefined
       ? undefined
@@ -63,6 +90,7 @@ export function validateResumeInput(value: unknown): ResumeInput {
     ...standards,
     resumeText: text(v.resumeText, 30000),
     hasWrittenTest: v.hasWrittenTest === true,
+    outlineVersion,
     ...(workSample ? { workSample } : {}),
   };
 }
@@ -134,6 +162,7 @@ export function validateResumeReading(
   input: ResumeInput,
   options: { conciseQuestions?: boolean } = {},
 ): ResumeReading {
+  const normalizedInput = validateResumeInput(input);
   if (!value || typeof value !== 'object')
     throw new Error('简历阅读格式不正确。');
   const v = value as Record<string, unknown>;
@@ -152,7 +181,7 @@ export function validateResumeReading(
         throw new Error('简历要点格式错误。');
       const i = item as Record<string, unknown>;
       const evidence = text(i.evidence, 2000);
-      if (!input.resumeText.includes(evidence))
+      if (!normalizedInput.resumeText.includes(evidence))
         throw new Error('简历引用无法在原文中找到。');
       return { text: text(i.text, 1000), evidence };
     });
@@ -166,46 +195,68 @@ export function validateResumeReading(
     !!v.candidateName.trim() &&
     v.candidateName.length <= 80 &&
     typeof v.candidateNameEvidence === 'string' &&
-    input.resumeText.includes(v.candidateNameEvidence) &&
+    normalizedInput.resumeText.includes(v.candidateNameEvidence) &&
     v.candidateNameEvidence.includes(v.candidateName);
   // A completed supplement flips the record status to “has written test”, while
   // the locked six-question guide remains the regular guide generated earlier.
   const originalQuestionInput =
     v.writtenTestSupplement === undefined
-      ? input
-      : { ...input, hasWrittenTest: false };
-  const interviewQuestions =
-    v.interviewQuestions === undefined
-      ? undefined
-      : validateQuestions(
-          v.interviewQuestions,
-          originalQuestionInput,
-          options.conciseQuestions,
-        );
-  const writtenTestSupplement =
-    v.writtenTestSupplement === undefined
-      ? undefined
-      : validateWrittenTestSupplement(
-          { questions: v.writtenTestSupplement },
-          {
-            role: input.role,
-            requirements: input.requirements,
-            dimensionText: input.dimensionText,
-            focus: input.focus,
-            scoringGuidance: input.scoringGuidance,
-            reportRequirements: input.reportRequirements,
-            resumeText: input.resumeText,
-            existingQuestions: interviewQuestions || [],
-          },
-          { conciseQuestions: options.conciseQuestions },
-        ).questions;
+      ? normalizedInput
+      : { ...normalizedInput, hasWrittenTest: false };
+  let interviewQuestions: InterviewQuestion[] | undefined;
+  let writtenTestSupplement: InterviewQuestion[] | undefined;
+  let outline: InterviewOutlineV2 | undefined;
+  if (normalizedInput.outlineVersion === 2) {
+    if (v.interviewQuestions !== undefined)
+      throw new Error('V2 结果不能包含旧版提纲。');
+    if (v.writtenTestSupplement !== undefined)
+      throw new Error('V2 结果不能包含旧版笔试补充题。');
+    if (v.outline === undefined) throw new Error('V2 面试提纲缺失。');
+    outline = validateInterviewOutlineV2(v.outline, {
+      role: normalizedInput.role,
+      dimensions: normalizedInput.dimensionText
+        .split(/[、,，\n]/)
+        .map((dimension) => dimension.trim())
+        .filter(Boolean),
+      resumeText: normalizedInput.resumeText,
+      requireProductCore: true,
+    });
+  } else {
+    if (v.outline !== undefined)
+      throw new Error('旧版结果不能包含 V2 提纲。');
+    interviewQuestions =
+      v.interviewQuestions === undefined
+        ? undefined
+        : validateQuestions(
+            v.interviewQuestions,
+            originalQuestionInput,
+            options.conciseQuestions,
+          );
+    writtenTestSupplement =
+      v.writtenTestSupplement === undefined
+        ? undefined
+        : validateWrittenTestSupplement(
+            { questions: v.writtenTestSupplement },
+            {
+              role: normalizedInput.role,
+              requirements: normalizedInput.requirements,
+              dimensionText: normalizedInput.dimensionText,
+              focus: normalizedInput.focus,
+              scoringGuidance: normalizedInput.scoringGuidance,
+              reportRequirements: normalizedInput.reportRequirements,
+              resumeText: normalizedInput.resumeText,
+              existingQuestions: interviewQuestions || [],
+            },
+            { conciseQuestions: options.conciseQuestions },
+          ).questions;
+  }
   const workSample =
     v.workSample === undefined
       ? undefined
-      : input.workSample
+      : normalizedInput.workSample
         ? validateWorkSampleAssessment(v.workSample, {
-            reference: input.workSample,
-            dimensionText: input.dimensionText,
+            reference: normalizedInput.workSample,
+            dimensionText: normalizedInput.dimensionText,
             questionCount: 3,
             existingQuestions: [],
             conciseQuestions: options.conciseQuestions,
@@ -231,6 +282,7 @@ export function validateResumeReading(
     sections,
     followUps: v.followUps.map((q) => text(q, 1000)),
     ...(interviewQuestions ? { interviewQuestions } : {}),
+    ...(outline ? { outline } : {}),
     ...(writtenTestSupplement ? { writtenTestSupplement } : {}),
     ...(workSample ? { workSample } : {}),
   };

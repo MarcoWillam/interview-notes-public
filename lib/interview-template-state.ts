@@ -119,6 +119,17 @@ export function supportsWrittenTest(
   return sourceTemplateId === BUILTIN_TEMPLATE_IDS.aiProductManager;
 }
 
+export function outlineVersionForTemplate(
+  sourceTemplateId: string | null | undefined,
+  templateModified: boolean,
+): 1 | 2 {
+  if (templateModified) return 1;
+  return sourceTemplateId === BUILTIN_TEMPLATE_IDS.aiProductManager ||
+    sourceTemplateId === BUILTIN_TEMPLATE_IDS.productOperations
+    ? 2
+    : 1;
+}
+
 export function writtenTestDecision(
   sourceTemplateId: string | null | undefined,
   confirmed: boolean,

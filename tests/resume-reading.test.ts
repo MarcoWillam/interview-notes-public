@@ -11,6 +11,15 @@ import {
   resumeSchema,
   type ResumeReading,
 } from '../lib/resume-reading.ts';
+import {
+  calculateOutlineCoverage,
+  type InterviewOutlineV2,
+  type InterviewQuestionV2,
+} from '../lib/interview-outline-v2.ts';
+import {
+  BUILTIN_TEMPLATE_IDS,
+  builtInRoleTemplates,
+} from '../lib/default-role-templates.ts';
 const input = {
   resumeText: '姓名：张晓明\n毕业于示例大学。曾负责用户访谈，访谈了五位用户。',
   role: '产品经理',
@@ -40,7 +49,7 @@ const result = {
   followUps: ['请说明访谈后的决策。'],
 };
 void test('resume reading accepts bounded self-reported facts and literal resume references', () => {
-  assert.deepEqual(validateResumeInput(input), input);
+  assert.deepEqual(validateResumeInput(input), { ...input, outlineVersion: 1 });
   assert.deepEqual(validateResumeReading(result, input), {
     ...result,
     candidateName: null,
@@ -98,8 +107,66 @@ const workSampleReference = {
   modifiedAt: 2,
 };
 
+function v2Input() {
+  const template = builtInRoleTemplates.find(
+    ({ id }) => id === BUILTIN_TEMPLATE_IDS.aiProductManager,
+  )!;
+  return {
+    role: template.role,
+    requirements: template.requirements,
+    dimensionText: template.dimensionText,
+    focus: template.focus,
+    scoringGuidance: template.scoringGuidance,
+    reportRequirements: template.reportRequirements,
+    resumeText: input.resumeText,
+    hasWrittenTest: false,
+    outlineVersion: 2 as const,
+  };
+}
+
+function v2Outline(): InterviewOutlineV2 {
+  const dimensionNames = v2Input().dimensionText.split('、');
+  const texts = [
+    '讲讲你主动推动问题落地的经历',
+    '你怎样识别用户的真实问题',
+    '你如何决定产品范围取舍',
+    '你如何判断任务是否适合使用AI',
+    '你怎样验证方案是否真正有效',
+    '你快速掌握新领域的方法是什么',
+    '最困难的一次项目挑战是什么',
+    '你如何推动团队形成一致决定',
+  ];
+  const order = [4, 0, 1, 2, 3, 5, 6, 7];
+  const questions: InterviewQuestionV2[] = texts.map((question, index) => ({
+    id: `v2-question-${index + 1}`,
+    question,
+    required: index < 5,
+    estimatedMinutes: index < 5 ? 6 : 4,
+    primaryDimension: dimensionNames[order[index]],
+    secondaryDimensions: [],
+    source: index === 1 ? 'resume' : 'role',
+    goal: '核实具体行动和结果',
+    resumeEvidence:
+      index === 1 ? '曾负责用户访谈，访谈了五位用户。' : null,
+    workSampleEvidence: null,
+    listenFor: ['个人行动'],
+    riskSignals: ['只描述团队成果'],
+    probes: [{ condition: '行动不清楚', question: '你具体做了什么？' }],
+  }));
+  const requiredQuestions = questions.slice(0, 5);
+  const reserveQuestions = questions.slice(5);
+  return {
+    version: 2,
+    estimatedMinutes: 30,
+    requiredQuestions,
+    reserveQuestions,
+    archivedReserveQuestions: [],
+    coverage: calculateOutlineCoverage(questions, dimensionNames),
+  };
+}
+
 void test('complete standards and six grounded interview questions survive validation', () => {
-  assert.deepEqual(validateResumeInput(input), input);
+  assert.deepEqual(validateResumeInput(input), { ...input, outlineVersion: 1 });
   assert.equal(
     new Set(structuredResult.interviewQuestions.map((q) => q.question)).size,
     6,
@@ -107,6 +174,62 @@ void test('complete standards and six grounded interview questions survive valid
   assert.deepEqual(
     validateResumeReading(structuredResult, input),
     structuredResult,
+  );
+});
+
+void test('resume input defaults to V1 and accepts V2 only for untouched built-in product standards', () => {
+  assert.equal(validateResumeInput(input).outlineVersion, 1);
+  assert.equal(validateResumeInput(v2Input()).outlineVersion, 2);
+  assert.throws(
+    () => validateResumeInput({ ...v2Input(), outlineVersion: 3 }),
+    /提纲版本/,
+  );
+  assert.throws(
+    () =>
+      validateResumeInput({
+        ...v2Input(),
+        requirements: v2Input().requirements + '临时修改',
+      }),
+    /内置岗位模板/,
+  );
+  const engineering = builtInRoleTemplates.find(
+    ({ id }) => id === BUILTIN_TEMPLATE_IDS.aiEngineering,
+  )!;
+  assert.throws(
+    () =>
+      validateResumeInput({
+        ...engineering,
+        resumeText: input.resumeText,
+        hasWrittenTest: false,
+        outlineVersion: 2,
+      }),
+    /内置岗位模板/,
+  );
+});
+
+void test('V2 resume reading requires a V2 outline and rejects V1 questions', () => {
+  const value = {
+    ...result,
+    candidateName: '张晓明',
+    candidateNameEvidence: '姓名：张晓明',
+    outline: v2Outline(),
+  };
+  assert.deepEqual(validateResumeReading(value, v2Input()), value);
+  assert.throws(
+    () => validateResumeReading({ ...value, outline: undefined }, v2Input()),
+    /V2 面试提纲/,
+  );
+  assert.throws(
+    () =>
+      validateResumeReading(
+        { ...value, interviewQuestions: structuredResult.interviewQuestions },
+        v2Input(),
+      ),
+    /V2 结果不能包含旧版提纲/,
+  );
+  assert.throws(
+    () => validateResumeReading({ ...structuredResult, outline: v2Outline() }, input),
+    /旧版结果不能包含 V2 提纲/,
   );
 });
 
@@ -159,7 +282,10 @@ void test('an attached work sample grounds questions two through four', () => {
       }),
     ),
   };
-  assert.deepEqual(validateResumeInput(workInput), workInput);
+  assert.deepEqual(validateResumeInput(workInput), {
+    ...workInput,
+    outlineVersion: 1,
+  });
   const validated = validateResumeReading(workGuide, workInput);
   assert.equal(validated.interviewQuestions?.[1].questionSource, 'work-sample');
   assert.throws(() => validateResumeReading(structuredResult, workInput));
