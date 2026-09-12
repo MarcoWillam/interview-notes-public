@@ -1,6 +1,7 @@
 import {
-  resumeInstructions,
-  resumeSchema,
+  resumeInstructionsFor,
+  resumeOutputSchema,
+  validateResumeInput,
   type ResumeInput,
 } from '../lib/resume-reading.ts';
 import {
@@ -327,7 +328,14 @@ export async function readResumeWithCodex(
   input: ResumeInput,
   signal: AbortSignal,
 ): Promise<unknown> {
-  return runStructuredCodex(input, signal, resumeInstructions, resumeSchema);
+  const normalized = validateResumeInput(input);
+  const version = normalized.outlineVersion ?? 1;
+  return runStructuredCodex(
+    normalized,
+    signal,
+    resumeInstructionsFor(version),
+    resumeOutputSchema(version),
+  );
 }
 export async function generateWrittenTestSupplementWithCodex(
   input: WrittenTestSupplementInput,

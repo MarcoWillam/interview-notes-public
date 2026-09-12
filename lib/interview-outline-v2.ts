@@ -41,6 +41,8 @@ export type OutlineV2Context = {
   dimensions: string[];
   resumeText: string;
   requireProductCore: boolean;
+  hasWrittenTest?: boolean;
+  hasWorkSample?: boolean;
 };
 
 const sources = new Set<InterviewQuestionV2['source']>([
@@ -71,10 +73,7 @@ function stringList(
 function mainQuestion(value: unknown) {
   const result = boundedText(value, 1000, '面试主问题');
   const length = Array.from(result).length;
-  if (
-    length < V2_MIN_QUESTION_LENGTH ||
-    length > V2_MAX_QUESTION_LENGTH
-  )
+  if (length < V2_MIN_QUESTION_LENGTH || length > V2_MAX_QUESTION_LENGTH)
     throw new Error('面试主问题必须为 8–24 个字符。');
   if ((result.match(/[?？]/g) || []).length > 1)
     throw new Error('面试主问题只能包含一个问点。');
@@ -111,7 +110,9 @@ function validateQuestion(
     throw new Error('V2 面试问题格式不正确。');
   const raw = value as Record<string, unknown>;
   if (raw.required !== expectedRequired)
-    throw new Error(expectedRequired ? '必问题标记不正确。' : '候选题标记不正确。');
+    throw new Error(
+      expectedRequired ? '必问题标记不正确。' : '候选题标记不正确。',
+    );
   if (
     !Number.isSafeInteger(raw.estimatedMinutes) ||
     Number(raw.estimatedMinutes) < 3 ||
@@ -158,7 +159,11 @@ function validateQuestion(
   } else if (raw.workSampleEvidence !== null) {
     throw new Error('非作品题不能引用作品文件。');
   }
-  if (!Array.isArray(raw.probes) || raw.probes.length < 1 || raw.probes.length > 2)
+  if (
+    !Array.isArray(raw.probes) ||
+    raw.probes.length < 1 ||
+    raw.probes.length > 2
+  )
     throw new Error('条件追问数量不正确。');
   const probes = raw.probes.map((value) => {
     if (!value || typeof value !== 'object')
@@ -242,15 +247,75 @@ export function validateInterviewOutlineV2(
   const reserveQuestions = raw.reserveQuestions.map((question) =>
     validateQuestion(question, false, context),
   );
-  const archivedReserveQuestions = raw.archivedReserveQuestions.map((question) =>
-    validateQuestion(question, false, context),
+  const archivedReserveQuestions = raw.archivedReserveQuestions.map(
+    (question) => validateQuestion(question, false, context),
   );
   const activeQuestions = [...requiredQuestions, ...reserveQuestions];
   const allQuestions = [...activeQuestions, ...archivedReserveQuestions];
-  if (new Set(allQuestions.map((question) => question.id)).size !== allQuestions.length)
+  if (
+    new Set(allQuestions.map((question) => question.id)).size !==
+    allQuestions.length
+  )
     throw new Error('面试问题编号不能重复。');
-  if (new Set(activeQuestions.map((question) => question.question)).size !== activeQuestions.length)
+  if (
+    new Set(activeQuestions.map((question) => question.question)).size !==
+    activeQuestions.length
+  )
     throw new Error('面试问题不能重复。');
+  const requiredSources = requiredQuestions.map((question) => question.source);
+  const expectedReviewSource = context.hasWorkSample
+    ? 'work-sample'
+    : context.hasWrittenTest
+      ? 'written-test'
+      : undefined;
+  if (context.role === '产品运营（校招）') {
+    if (
+      allQuestions.some(
+        (question) =>
+          question.source === 'written-test' ||
+          question.source === 'work-sample',
+      )
+    )
+      throw new Error('产品运营提纲不能包含笔试或作品复盘题。');
+  } else if (context.role === 'AI 产品经理（校招）') {
+    if (
+      expectedReviewSource &&
+      requiredSources
+        .slice(1, 4)
+        .some((source) => source !== expectedReviewSource)
+    )
+      throw new Error(
+        `第 2–4 题必须为${expectedReviewSource === 'work-sample' ? '作品' : '笔试'}复盘题。`,
+      );
+    if (
+      expectedReviewSource &&
+      allQuestions.some(
+        (question, index) =>
+          question.source === expectedReviewSource &&
+          !(index >= 1 && index <= 3),
+      )
+    )
+      throw new Error(
+        `只有第 2–4 题可以是${expectedReviewSource === 'work-sample' ? '作品' : '笔试'}复盘题。`,
+      );
+    if (
+      allQuestions.some((question) =>
+        context.hasWorkSample
+          ? question.source === 'written-test'
+          : question.source === 'work-sample',
+      )
+    )
+      throw new Error('提纲问题来源与当前作品状态不一致。');
+    if (
+      !expectedReviewSource &&
+      allQuestions.some(
+        (question) =>
+          question.source === 'written-test' ||
+          question.source === 'work-sample',
+      )
+    )
+      throw new Error('无笔试或作品时不能生成复盘题。');
+  }
   const estimatedMinutes = requiredQuestions.reduce(
     (total, question) => total + question.estimatedMinutes,
     0,
@@ -266,10 +331,15 @@ export function validateInterviewOutlineV2(
     throw new Error('自驱力必须由必问题主验证。');
   if (
     context.requireProductCore &&
-    context.dimensions.slice(0, 4).some((dimension) => !requiredPrimary.has(dimension))
+    context.dimensions
+      .slice(0, 4)
+      .some((dimension) => !requiredPrimary.has(dimension))
   )
     throw new Error('四项岗位专业能力必须由必问题主验证。');
-  const coverage = calculateOutlineCoverage(activeQuestions, context.dimensions);
+  const coverage = calculateOutlineCoverage(
+    activeQuestions,
+    context.dimensions,
+  );
   if (coverage.some((item) => item.status === 'uncovered'))
     throw new Error('岗位评估维度没有全部覆盖。');
   if (JSON.stringify(raw.coverage) !== JSON.stringify(coverage))

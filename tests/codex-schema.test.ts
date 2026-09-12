@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { reportSchema } from '../lib/assessment.ts';
-import { resumeSchema } from '../lib/resume-reading.ts';
+import { resumeOutputSchema, resumeSchema } from '../lib/resume-reading.ts';
 import { workSampleSchema } from '../lib/work-sample.ts';
 import { writtenTestSupplementSchema } from '../lib/written-test-supplement.ts';
 
@@ -29,8 +29,18 @@ void test('every Codex output schema satisfies strict required-property rules', 
   for (const [name, schema] of Object.entries({
     reportSchema,
     resumeSchema,
+    resumeSchemaV2: resumeOutputSchema(2),
     writtenTestSupplementSchema,
     workSampleSchema,
   }))
     assertStrictObjectSchemas(schema, name);
+});
+
+void test('resume output schema selects exactly one outline contract', () => {
+  const v1 = resumeOutputSchema(1);
+  const v2 = resumeOutputSchema(2);
+  assert.ok(v1.required.includes('interviewQuestions'));
+  assert.ok(!('outline' in v1.properties));
+  assert.ok(v2.required.includes('outline'));
+  assert.ok(!('interviewQuestions' in v2.properties));
 });

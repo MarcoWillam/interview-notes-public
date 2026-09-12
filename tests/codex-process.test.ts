@@ -15,6 +15,7 @@ import {
   findReadyCodexCommand,
 } from '../server/codex.ts';
 import { workFailure } from '../server/queue/connector-client.ts';
+import { resumeInstructionsFor } from '../lib/resume-reading.ts';
 void test('Codex environment never inherits API keys or application secrets', () => {
   assert.deepEqual(
     codexEnvironment({
@@ -173,4 +174,21 @@ void test('explicit Codex binary remains authoritative', () => {
     ),
     ['/opt/company/codex'],
   );
+});
+
+void test('resume prompt selects an unambiguous outline version', () => {
+  const v1 = resumeInstructionsFor(1);
+  const v2 = resumeInstructionsFor(2);
+  assert.match(v1, /恰好六道/);
+  assert.doesNotMatch(v1, /五道必问题/);
+  assert.match(v2, /五道必问题/);
+  assert.match(v2, /最多三道候选题/);
+  assert.match(v2, /8–24/);
+  assert.match(v2, /3–7 分钟/);
+  assert.match(v2, /不能超过 32 分钟/);
+  assert.match(v2, /一个主评估维度/);
+  assert.match(v2, /最多两个辅助评估维度/);
+  assert.match(v2, /八个维度/);
+  assert.match(v2, /自驱力与结果闭环/);
+  assert.doesNotMatch(v2, /恰好六道/);
 });
