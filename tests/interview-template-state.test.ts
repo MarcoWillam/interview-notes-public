@@ -9,6 +9,7 @@ import {
   inferTemplateSource,
   markTemplateModified,
   normalizeInterviewTemplateState,
+  outlineVersionForTemplate,
   resolveTemplateSelection,
   resolveResumeOutlinePreflight,
   resolveResumeOutlineSetup,
@@ -135,6 +136,26 @@ void test('written-test support belongs only to the built-in AI PM source', () =
   );
   assert.equal(supportsWrittenTest(BUILTIN_TEMPLATE_IDS.aiEngineering), false);
   assert.equal(supportsWrittenTest(COMMON_TEMPLATE_ID), false);
+});
+
+void test('only untouched built-in product roles use outline V2', () => {
+  assert.equal(
+    outlineVersionForTemplate(BUILTIN_TEMPLATE_IDS.aiProductManager, false),
+    2,
+  );
+  assert.equal(
+    outlineVersionForTemplate(BUILTIN_TEMPLATE_IDS.productOperations, false),
+    2,
+  );
+  assert.equal(
+    outlineVersionForTemplate(BUILTIN_TEMPLATE_IDS.aiEngineering, false),
+    1,
+  );
+  assert.equal(
+    outlineVersionForTemplate(BUILTIN_TEMPLATE_IDS.aiProductManager, true),
+    1,
+  );
+  assert.equal(outlineVersionForTemplate('custom-role', false), 1);
 });
 
 void test('template transitions require a fresh AI PM written-test confirmation', () => {
