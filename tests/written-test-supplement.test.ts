@@ -199,5 +199,6 @@ void test('V2 written-test supplement uses the current outline and a separate st
   assert.ok(writtenTestSupplementOutputSchema(2).required.includes('version'));
   assert.ok(!('outline' in writtenTestSupplementOutputSchema(2).properties));
   assert.match(writtenTestSupplementInstructionsFor(2), /候选题/);
+  assert.match(writtenTestSupplementInstructionsFor(2), /八项维度全部覆盖/);
   assert.doesNotMatch(writtenTestSupplementInstructionsFor(2), /六道题/);
 });

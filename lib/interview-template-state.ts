@@ -1,4 +1,7 @@
-import { BUILTIN_TEMPLATE_IDS } from './default-role-templates.ts';
+import {
+  BUILTIN_TEMPLATE_IDS,
+  builtInRoleTemplates,
+} from './default-role-templates.ts';
 import { normalizeStandards, type InterviewStandards } from './standards.ts';
 import type { ResumeReading } from './resume-reading.ts';
 import type { WrittenTestSupplementResult } from './written-test-supplement.ts';
@@ -128,6 +131,18 @@ export function outlineVersionForTemplate(
   return sourceTemplateId === BUILTIN_TEMPLATE_IDS.aiProductManager ||
     sourceTemplateId === BUILTIN_TEMPLATE_IDS.productOperations
     ? 2
+    : 1;
+}
+
+export function outlineVersionForStandards(
+  sourceTemplateId: string | null | undefined,
+  standards: Partial<InterviewStandards>,
+): 1 | 2 {
+  const canonical = builtInRoleTemplates.find(
+    (template) => template.id === sourceTemplateId,
+  );
+  return canonical && standardsEqual(standards, canonical)
+    ? outlineVersionForTemplate(sourceTemplateId, false)
     : 1;
 }
 

@@ -19,6 +19,7 @@ import {
   type InterviewOutlineV2,
   type InterviewQuestionV2,
 } from '../lib/interview-outline-v2.ts';
+import { validateWorkSampleInput } from '../lib/work-sample.ts';
 
 const standards = {
   role: 'AI 产品经理（校招）',
@@ -363,7 +364,7 @@ void test('later V2 work analysis returns assessment plus a file-matched reserve
     const work = assessment(f.reference);
     work.questions = work.questions.map((item, index) => ({
       ...item,
-      dimensions: [dimensions[index]],
+      dimensions: [dimensions[index + 5]],
     }));
     const order = [4, 0, 1, 2, 3, 5, 6, 7];
     const all: InterviewQuestionV2[] = order.map((dimensionIndex, index) => ({
@@ -394,7 +395,7 @@ void test('later V2 work analysis returns assessment plus a file-matched reserve
       question: item.question,
       required: false,
       estimatedMinutes: 4,
-      primaryDimension: dimensions[index],
+      primaryDimension: dimensions[index + 5],
       secondaryDimensions: [],
       source: 'work-sample' as const,
       goal: '核实作品中的判断',
@@ -435,6 +436,7 @@ void test('later V2 work analysis returns assessment plus a file-matched reserve
             'outlineSupplement',
           ]);
           assert.match(instructions, /outlineSupplement/);
+          assert.match(instructions, /八项维度全部覆盖/);
           return raw;
         },
       },
@@ -444,6 +446,46 @@ void test('later V2 work analysis returns assessment plus a file-matched reserve
   } finally {
     await f.cleanup();
   }
+});
+
+void test('late V2 work accepts an outline that already contains written-test review questions', () => {
+  const template = builtInRoleTemplates[0];
+  const dimensions = template.dimensionText.split('、');
+  const order = [4, 0, 1, 2, 3, 5, 6, 7];
+  const all: InterviewQuestionV2[] = order.map((dimensionIndex, index) => ({
+    id: `written-existing-${index + 1}`,
+    question: `请说明笔试判断${index + 1}的依据`,
+    required: index < 5,
+    estimatedMinutes: index < 5 ? 6 : 4,
+    primaryDimension: dimensions[dimensionIndex],
+    secondaryDimensions: [],
+    source:
+      index >= 1 && index <= 3 ? ('written-test' as const) : ('role' as const),
+    goal: '核实具体判断',
+    resumeEvidence: null,
+    workSampleEvidence: null,
+    listenFor: ['判断依据'],
+    riskSignals: ['缺少个人行动'],
+    probes: [{ condition: '依据不清楚', question: '你怎样验证？' }],
+  }));
+  const outline: InterviewOutlineV2 = {
+    version: 2,
+    estimatedMinutes: 30,
+    requiredQuestions: all.slice(0, 5),
+    reserveQuestions: all.slice(5),
+    archivedReserveQuestions: [],
+    coverage: calculateOutlineCoverage(all, dimensions),
+  };
+  assert.equal(
+    validateWorkSampleInput({
+      ...template,
+      resumeText,
+      workSample: { ...artifactBase, sha256: 'a'.repeat(64) },
+      outlineVersion: 2,
+      outline,
+    }).outlineVersion,
+    2,
+  );
 });
 
 void test('changed work sample fails before Codex is called', async () => {

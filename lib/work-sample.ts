@@ -171,6 +171,7 @@ export function validateWorkSampleInput(value: unknown): WorkSampleInput {
       requireProductCore: true,
       hasWrittenTest: false,
       hasWorkSample: false,
+      allowExistingReviewSources: true,
     });
     return {
       ...standards,
@@ -527,7 +528,7 @@ export const workSampleInstructions = [
 
 export function workSampleInstructionsFor(version: 1 | 2) {
   if (version === 1) return workSampleInstructions;
-  return `${workSampleInstructions}\nV2 输出必须包装为 version=2、workSample 和 outlineSupplement。workSample 保持上述六维作品评估结构；outlineSupplement 必须包含 version=2、kind=work-sample 和三道 required=false 的 V2 候选题。两处三道问题的问题文本、作品相对路径和逐字引用必须逐题完全一致。V2 候选题主问题为 8–24 个字符，每题一个主维度、最多两个辅助维度，并提供 goal、listenFor、riskSignals 和条件 probes。编号和问题不得与 outline.requiredQuestions 重复。`;
+  return `${workSampleInstructions}\nV2 输出必须包装为 version=2、workSample 和 outlineSupplement。workSample 保持上述六维作品评估结构；outlineSupplement 必须包含 version=2、kind=work-sample 和三道 required=false 的 V2 候选题。两处三道问题的问题文本、作品相对路径和逐字引用必须逐题完全一致。V2 候选题主问题为 8–24 个字符，每题一个主维度、最多两个辅助维度，并提供 goal、listenFor、riskSignals 和条件 probes。替换后，五道必问题与三道新候选题必须让岗位八项维度全部覆盖；优先把当前必问题尚未覆盖的维度设为新题主维度。编号不得与 outline 中任何当前或历史问题重复，问题不得与五道必问题或彼此重复。`;
 }
 
 export function exportWorkSampleAssessment(

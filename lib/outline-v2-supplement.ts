@@ -39,9 +39,12 @@ export function validateOutlineV2Supplement(
   );
   if (questions.some((question) => question.source !== input.kind))
     throw new Error('V2 补充题来源与任务类型不一致。');
-  const requiredIds = new Set(
-    input.outline.requiredQuestions.map((question) => question.id),
-  );
+  const existingQuestions = [
+    ...input.outline.requiredQuestions,
+    ...input.outline.reserveQuestions,
+    ...input.outline.archivedReserveQuestions,
+  ];
+  const existingIds = new Set(existingQuestions.map((question) => question.id));
   const requiredText = new Set(
     input.outline.requiredQuestions.map((question) => question.question),
   );
@@ -52,10 +55,16 @@ export function validateOutlineV2Supplement(
       questions.length ||
     questions.some(
       (question) =>
-        requiredIds.has(question.id) || requiredText.has(question.question),
+        existingIds.has(question.id) || requiredText.has(question.question),
     )
   )
-    throw new Error('V2 补充题不能与必问题或彼此重复。');
+    throw new Error('V2 补充题不能与现有问题或彼此重复。');
+  const coverage = calculateOutlineCoverage(
+    [...input.outline.requiredQuestions, ...questions],
+    input.dimensions,
+  );
+  if (coverage.some((item) => item.status === 'uncovered'))
+    throw new Error('V2 补充题替换候选区后必须保持八项维度全部覆盖。');
   return { version: 2, kind: input.kind, questions };
 }
 
@@ -63,6 +72,26 @@ export function applyOutlineV2Supplement(
   outline: InterviewOutlineV2,
   result: OutlineV2SupplementResult,
 ): InterviewOutlineV2 {
+  const existingQuestions = [
+    ...outline.requiredQuestions,
+    ...outline.reserveQuestions,
+    ...outline.archivedReserveQuestions,
+  ];
+  const existingIds = new Set(existingQuestions.map(({ id }) => id));
+  const requiredText = new Set(
+    outline.requiredQuestions.map(({ question }) => question),
+  );
+  if (
+    new Set(result.questions.map(({ id }) => id)).size !==
+      result.questions.length ||
+    new Set(result.questions.map(({ question }) => question)).size !==
+      result.questions.length ||
+    result.questions.some(
+      (question) =>
+        existingIds.has(question.id) || requiredText.has(question.question),
+    )
+  )
+    throw new Error('V2 补充题不能与现有问题或彼此重复。');
   const archivedById = new Map(
     [...outline.archivedReserveQuestions, ...outline.reserveQuestions].map(
       (question) => [question.id, question],
@@ -71,6 +100,13 @@ export function applyOutlineV2Supplement(
   const reserveQuestions = result.questions.map((question) => ({
     ...question,
   }));
+  const dimensions = outline.coverage.map(({ dimension }) => dimension);
+  const coverage = calculateOutlineCoverage(
+    [...outline.requiredQuestions, ...reserveQuestions],
+    dimensions,
+  );
+  if (coverage.some((item) => item.status === 'uncovered'))
+    throw new Error('V2 补充题替换候选区后必须保持八项维度全部覆盖。');
   return {
     ...outline,
     requiredQuestions: outline.requiredQuestions.map((question) => ({
@@ -78,10 +114,7 @@ export function applyOutlineV2Supplement(
     })),
     reserveQuestions,
     archivedReserveQuestions: [...archivedById.values()],
-    coverage: calculateOutlineCoverage(
-      [...outline.requiredQuestions, ...reserveQuestions],
-      outline.coverage.map(({ dimension }) => dimension),
-    ),
+    coverage,
   };
 }
 

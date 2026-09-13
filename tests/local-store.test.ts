@@ -201,7 +201,7 @@ void test('resume outline generation has one preflight entry and no repeat-readi
   assert.match(page, /提纲已生成/);
   assert.match(page, /确认提纲生成条件/);
   assert.doesNotMatch(page, /重新阅读简历|替换并自动阅读/);
-  assert.match(page, /outlineVersionForTemplate/);
+  assert.match(page, /outlineVersionForStandards/);
   assert.match(page, /outlineVersion:\s*context\.outlineVersion/);
   assert.match(page, /reading\.outline/);
 });

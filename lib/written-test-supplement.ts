@@ -179,7 +179,7 @@ export const writtenTestSupplementSchema = {
 };
 
 const writtenTestSupplementV2Instructions =
-  '你是 AI 产品经理校招面试准备助手。请基于输入的岗位标准和现有 V2 提纲，只生成三道笔试复盘候选题，用于替换现有候选题，五道必问题保持不变。你没有看到候选人的实际答卷，不得声称已经阅读答卷或知道其答案。三题共同覆盖统一笔试目的中的问题定义、用户理解、方案范围与取舍、AI 核心价值、人与 AI 责任、用户控制、失败降级和验证假设，并核实候选人自己的判断。每题 required=false、source=written-test、resumeEvidence=null、workSampleEvidence=null；主问题为 8–24 个字符且只含一个问点；预计 3–7 分钟；使用一个主维度和最多两个辅助维度；提供验证目标、观察点、风险信号与条件追问。编号和问题不得与 outline.requiredQuestions 重复。version 返回 2，kind 返回 written-test，只返回符合结构的 JSON。';
+  '你是 AI 产品经理校招面试准备助手。请基于输入的岗位标准和现有 V2 提纲，只生成三道笔试复盘候选题，用于替换现有候选题，五道必问题保持不变。你没有看到候选人的实际答卷，不得声称已经阅读答卷或知道其答案。三题共同覆盖统一笔试目的中的问题定义、用户理解、方案范围与取舍、AI 核心价值、人与 AI 责任、用户控制、失败降级和验证假设，并核实候选人自己的判断。替换后，五道必问题与三道新候选题必须让岗位八项维度全部覆盖；优先把当前必问题尚未覆盖的维度设为新题主维度。每题 required=false、source=written-test、resumeEvidence=null、workSampleEvidence=null；主问题为 8–24 个字符且只含一个问点；预计 3–7 分钟；使用一个主维度和最多两个辅助维度；提供验证目标、观察点、风险信号与条件追问。编号不得与 outline 中任何当前或历史问题重复，问题不得与五道必问题或彼此重复。version 返回 2，kind 返回 written-test，只返回符合结构的 JSON。';
 
 export function writtenTestSupplementInstructionsFor(version: 1 | 2) {
   return version === 2
