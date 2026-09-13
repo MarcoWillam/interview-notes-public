@@ -11,6 +11,7 @@ import {
   normalizeInterviewTemplateState,
   normalizeOutlineVersion,
   outlineVersionForTemplate,
+  outlineVersionForStandards,
   resolveTemplateSelection,
   resolveResumeOutlinePreflight,
   resolveResumeOutlineSetup,
@@ -18,7 +19,10 @@ import {
   supportsWrittenTest,
   writtenTestDecision,
 } from '../lib/interview-template-state.ts';
-import { BUILTIN_TEMPLATE_IDS } from '../lib/default-role-templates.ts';
+import {
+  BUILTIN_TEMPLATE_IDS,
+  builtInRoleTemplates,
+} from '../lib/default-role-templates.ts';
 
 const common = {
   role: '',
@@ -157,6 +161,18 @@ void test('only untouched built-in product roles use outline V2', () => {
     1,
   );
   assert.equal(outlineVersionForTemplate('custom-role', false), 1);
+});
+
+void test('V2 requires the canonical built-in standards snapshot, not only its id', () => {
+  const builtIn = builtInRoleTemplates[0];
+  assert.equal(outlineVersionForStandards(builtIn.id, builtIn), 2);
+  assert.equal(
+    outlineVersionForStandards(builtIn.id, {
+      ...builtIn,
+      requirements: `${builtIn.requirements}\n本地追加要求`,
+    }),
+    1,
+  );
 });
 
 void test('restored records infer outline version from saved reading before template metadata', () => {

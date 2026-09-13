@@ -81,7 +81,7 @@ import {
   applyWrittenTestSupplement,
   appliedTemplateState,
   canGenerateWrittenTestSupplement,
-  outlineVersionForTemplate,
+  outlineVersionForStandards,
   resolveResumeOutlinePreflight,
   resolveResumeOutlineSetup,
   resolveTemplateSelection,
@@ -1093,9 +1093,9 @@ export default function Home({
       return;
     }
     const nextStandards = resolved.standards;
-    const nextOutlineVersion = outlineVersionForTemplate(
+    const nextOutlineVersion = outlineVersionForStandards(
       resolved.templateId,
-      false,
+      nextStandards,
     );
     invalidate();
     setRole(nextStandards.role);
@@ -1780,7 +1780,9 @@ export default function Home({
     setStandards(seed.standards);
     setSourceTemplateId(seed.sourceTemplateId);
     setTemplateModified(false);
-    setOutlineVersion(outlineVersionForTemplate(seed.sourceTemplateId, false));
+    setOutlineVersion(
+      outlineVersionForStandards(seed.sourceTemplateId, seed.standards),
+    );
     setHasWrittenTest(false);
     setWrittenTestConfirmed(false);
     setCandidate('');
@@ -1858,11 +1860,12 @@ export default function Home({
       );
       if (selected) {
         invalidate();
-        setStandards(normalizeStandards(selected));
+        const selectedStandards = normalizeStandards(selected);
+        setStandards(selectedStandards);
         const next = appliedTemplateState(id);
         setSourceTemplateId(next.sourceTemplateId);
         setTemplateModified(next.templateModified);
-        setOutlineVersion(outlineVersionForTemplate(id, false));
+        setOutlineVersion(outlineVersionForStandards(id, selectedStandards));
         setHasWrittenTest(next.hasWrittenTest);
         setWrittenTestConfirmed(next.writtenTestConfirmed);
         setWorkSample(null);
@@ -2863,8 +2866,9 @@ export default function Home({
             <AlertDialogContent className="written-test-supplement-dialog">
               <AlertDialogTitle>补充笔试复盘题</AlertDialogTitle>
               <AlertDialogDescription>
-                Codex 将额外生成 3 道笔试复盘题，追加在原有 6
-                道提纲下方，不修改原提纲。成功后笔试情况会同步为“有笔试”，且不能再次生成。
+                {outlineVersion === 2
+                  ? 'Codex 将生成 3 道笔试复盘候选题，替换当前候选区并归档此前候选题。5 道必问题保持不变；成功后笔试情况会同步为“有笔试”，且不能再次生成。'
+                  : 'Codex 将额外生成 3 道笔试复盘题，追加在原有 6 道提纲下方，不修改原提纲。成功后笔试情况会同步为“有笔试”，且不能再次生成。'}
               </AlertDialogDescription>
               <AlertDialogFooter>
                 <AlertDialogCancel>取消</AlertDialogCancel>
@@ -2886,8 +2890,9 @@ export default function Home({
             <AlertDialogContent className="work-sample-confirmation-dialog">
               <AlertDialogTitle>补交笔试作品</AlertDialogTitle>
               <AlertDialogDescription>
-                选择保存在已配对电脑 works/ 目录中的 ZIP。Codex
-                将从产品经理视角只读分析；原提纲保留，追加三题，成功后不能再次分析作品。
+                {outlineVersion === 2
+                  ? '选择保存在已配对电脑 works/ 目录中的 ZIP。Codex 将从产品经理视角只读分析；生成的 3 道作品复盘候选题会替换当前候选区并归档此前候选题，5 道必问题保持不变。成功后不能再次分析作品。'
+                  : '选择保存在已配对电脑 works/ 目录中的 ZIP。Codex 将从产品经理视角只读分析；原提纲保留，追加三题，成功后不能再次分析作品。'}
               </AlertDialogDescription>
               <WorkSamplePicker
                 artifacts={workSampleArtifacts}

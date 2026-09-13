@@ -48,3 +48,12 @@ void test('V2 outline keeps details collapsed and has responsive coverage styles
   assert.match(reading, /<InterviewOutlineV2View outline=\{value\.outline\}/);
   assert.match(reading, /更新候选题/);
 });
+
+void test('V2 supplement confirmations describe reserve replacement and history', async () => {
+  const source = await readFile(
+    new URL('../app/page.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /替换当前候选区并归档此前候选题/);
+  assert.match(source, /5 道必问题保持不变/);
+});

@@ -117,6 +117,53 @@ void test('V2 补充拒绝错误题量、标记、来源、维度和重复主问
     );
 });
 
+void test('V2 补充题不能复用当前或历史候选题编号', () => {
+  const outline = currentOutline();
+  outline.archivedReserveQuestions = [
+    question('历史候选题-1', dimensions[5], false),
+  ];
+  const currentCollision = supplementQuestions('written-test');
+  currentCollision[0] = {
+    ...currentCollision[0],
+    id: outline.reserveQuestions[0].id,
+  };
+  const archivedCollision = supplementQuestions('written-test');
+  archivedCollision[0] = {
+    ...archivedCollision[0],
+    id: outline.archivedReserveQuestions[0].id,
+  };
+  for (const questions of [currentCollision, archivedCollision])
+    assert.throws(
+      () =>
+        validateOutlineV2Supplement(
+          { version: 2, kind: 'written-test', questions },
+          { kind: 'written-test', outline, dimensions },
+        ),
+      /重复/,
+    );
+});
+
+void test('V2 补充题替换候选区后仍须覆盖全部八项维度', () => {
+  const outline = currentOutline();
+  const questions = supplementQuestions('written-test').map(
+    (item, index) => ({
+      ...item,
+      id: `coverage-gap-${index + 1}`,
+      question: `请说明验证方案${index + 1}的关键判断`,
+      primaryDimension: dimensions[5],
+      secondaryDimensions: [],
+    }),
+  );
+  assert.throws(
+    () =>
+      validateOutlineV2Supplement(
+        { version: 2, kind: 'written-test', questions },
+        { kind: 'written-test', outline, dimensions },
+      ),
+    /全部覆盖/,
+  );
+});
+
 void test('V2 作品补充要求安全相对路径和逐字文件依据', () => {
   const outline = currentOutline();
   const valid = supplementQuestions('work-sample');
