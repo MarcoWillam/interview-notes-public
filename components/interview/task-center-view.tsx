@@ -11,6 +11,7 @@ export type TaskCenterJob = {
   error?: string | null;
   targetDeviceName?: string | null;
   waitingForDevice?: boolean;
+  requiredProtocol?: number;
 };
 
 export type TaskAction = 'pause' | 'resume' | 'stop';
@@ -78,12 +79,14 @@ export function TaskCenterView({
   jobs,
   now,
   pendingId,
+  maximumOnlineProtocol = null,
   onAction,
   onResult,
 }: {
   jobs: readonly TaskCenterJob[];
   now: number;
   pendingId: string | null;
+  maximumOnlineProtocol?: number | null;
   onAction: (job: TaskCenterJob, action: TaskAction) => void;
   onResult: (job: TaskCenterJob) => void;
 }) {
@@ -141,6 +144,11 @@ export function TaskCenterView({
                     job.state === 'queued' && <em>准备优先</em>}
                 </div>
                 {job.error && <p className="task-error">{job.error}</p>}
+                {activeStates.has(job.state) &&
+                  maximumOnlineProtocol !== null &&
+                  (job.requiredProtocol || 1) > maximumOnlineProtocol && (
+                    <p className="task-protocol-warning">需要升级连接器</p>
+                  )}
                 <div className="task-actions">
                   {(job.state === 'queued' || job.state === 'running') && (
                     <button

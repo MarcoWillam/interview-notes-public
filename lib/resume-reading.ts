@@ -21,6 +21,7 @@ import {
   type WorkSampleReference,
 } from './work-sample.ts';
 import {
+  exportInterviewOutlineV2,
   interviewOutlineV2Schema,
   validateInterviewOutlineV2,
   type InterviewOutlineV2,
@@ -459,6 +460,7 @@ export function exportResumeReading(reading: ResumeReading): string {
           ]),
         ]
       : []),
+    ...(reading.outline ? ['', exportInterviewOutlineV2(reading.outline)] : []),
     ...(reading.writtenTestSupplement?.length
       ? ['', exportWrittenTestSupplement(reading.writtenTestSupplement)]
       : []),
@@ -468,7 +470,11 @@ export function exportResumeReading(reading: ResumeReading): string {
           exportWorkSampleAssessment(
             reading.workSample,
             !reading.workSample.questions.every((workQuestion) =>
-              (reading.interviewQuestions || []).some(
+              [
+                ...(reading.interviewQuestions || []),
+                ...(reading.outline?.requiredQuestions || []),
+                ...(reading.outline?.reserveQuestions || []),
+              ].some(
                 (question) => question.question === workQuestion.question,
               ),
             ),
@@ -476,7 +482,11 @@ export function exportResumeReading(reading: ResumeReading): string {
         ]
       : []),
     '',
-    reading.interviewQuestions?.length ? '## 其他建议追问' : '## 建议追问',
+    reading.outline
+      ? '## 其他待核实项'
+      : reading.interviewQuestions?.length
+        ? '## 其他建议追问'
+        : '## 建议追问',
     ...reading.followUps.map((q) => '- ' + q),
   ].join('\n');
 }
