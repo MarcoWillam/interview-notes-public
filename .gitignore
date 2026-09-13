@@ -41,6 +41,7 @@ next-env.d.ts
 *.tsbuildinfo
 
 /.local/
+/.worktrees/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
