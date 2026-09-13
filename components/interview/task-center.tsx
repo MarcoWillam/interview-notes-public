@@ -328,7 +328,8 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
       )}
       {job.report &&
         job.kind === 'written-test' &&
-        'questions' in job.report && (
+        'questions' in job.report &&
+        !('version' in job.report) && (
           <WrittenTestSupplementView questions={job.report.questions} />
         )}
       {job.report &&

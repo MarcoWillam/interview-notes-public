@@ -5,8 +5,9 @@ import {
   type ResumeInput,
 } from '../lib/resume-reading.ts';
 import {
-  writtenTestSupplementInstructions,
-  writtenTestSupplementSchema,
+  writtenTestSupplementInstructionsFor,
+  writtenTestSupplementOutputSchema,
+  validateWrittenTestSupplementInput,
   type WrittenTestSupplementInput,
 } from '../lib/written-test-supplement.ts';
 import { Buffer } from 'node:buffer';
@@ -341,11 +342,13 @@ export async function generateWrittenTestSupplementWithCodex(
   input: WrittenTestSupplementInput,
   signal: AbortSignal,
 ): Promise<unknown> {
+  const normalized = validateWrittenTestSupplementInput(input);
+  const version = normalized.outlineVersion === 2 ? 2 : 1;
   return runStructuredCodex(
-    input,
+    normalized,
     signal,
-    writtenTestSupplementInstructions,
-    writtenTestSupplementSchema,
+    writtenTestSupplementInstructionsFor(version),
+    writtenTestSupplementOutputSchema(version),
   );
 }
 export async function regenerateOutlineWithCodex(

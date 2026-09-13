@@ -13,6 +13,12 @@ import {
   AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
   aiPmWorkSampleRubric,
 } from '../lib/work-sample-rubric.ts';
+import { builtInRoleTemplates } from '../lib/default-role-templates.ts';
+import {
+  calculateOutlineCoverage,
+  type InterviewOutlineV2,
+  type InterviewQuestionV2,
+} from '../lib/interview-outline-v2.ts';
 
 const standards = {
   role: 'AI 产品经理（校招）',
@@ -168,6 +174,134 @@ void test('initial analysis combines resume reading with three file-backed quest
   }
 });
 
+void test('initial V2 analysis returns one outline contract and binds work evidence to questions two through four', async () => {
+  const f = await fixture();
+  try {
+    const template = builtInRoleTemplates[0];
+    const dimensions = template.dimensionText.split('、');
+    const work = assessment(f.reference);
+    work.questions = work.questions.map((item, index) => ({
+      ...item,
+      dimensions: [dimensions[index]],
+    }));
+    const primaryOrder = [4, 0, 1, 2, 3, 5, 6, 7];
+    const all: InterviewQuestionV2[] = primaryOrder.map(
+      (dimensionIndex, index) => ({
+        id: `outline-${index + 1}`,
+        question:
+          index >= 1 && index <= 3
+            ? work.questions[index - 1].question
+            : `请说明经历${index + 1}的关键判断`,
+        required: index < 5,
+        estimatedMinutes: index < 5 ? 6 : 4,
+        primaryDimension: dimensions[dimensionIndex],
+        secondaryDimensions: [],
+        source:
+          index >= 1 && index <= 3
+            ? ('work-sample' as const)
+            : ('role' as const),
+        goal: '核实具体判断和行动',
+        resumeEvidence: null,
+        workSampleEvidence:
+          index >= 1 && index <= 3
+            ? work.questions[index - 1].workSampleEvidence!
+            : null,
+        listenFor: ['个人判断依据'],
+        riskSignals: ['只描述团队结论'],
+        probes: [{ condition: '依据不清楚', question: '你怎样验证？' }],
+      }),
+    );
+    const outline: InterviewOutlineV2 = {
+      version: 2,
+      estimatedMinutes: 30,
+      requiredQuestions: all.slice(0, 5),
+      reserveQuestions: all.slice(5),
+      archivedReserveQuestions: [],
+      coverage: calculateOutlineCoverage(all, dimensions),
+    };
+    const report = {
+      candidateName: '张三',
+      candidateNameEvidence: '姓名：张三。',
+      summary: '候选人简历自述与作品均待面试核实。',
+      sections: ['教育背景', '工作经历', '项目经验', '技能'].map((name) => ({
+        name,
+        items: [],
+      })),
+      outline,
+      followUps: [],
+      workSample: work,
+    };
+    const result = await readResumeAndWorkSampleWithCodex(
+      {
+        ...template,
+        resumeText,
+        hasWrittenTest: true,
+        outlineVersion: 2,
+        workSample: f.reference,
+      },
+      f.zip,
+      new AbortController().signal,
+      {
+        runStructured: async (_input, _signal, instructions, schema) => {
+          const contract = schema as {
+            required: string[];
+            properties: Record<string, unknown>;
+          };
+          assert.ok(contract.required.includes('outline'));
+          assert.ok(contract.required.includes('workSample'));
+          assert.equal('interviewQuestions' in contract.properties, false);
+          assert.match(instructions, /五道必问题/);
+          assert.doesNotMatch(instructions, /恰好六道/);
+          return report;
+        },
+      },
+    );
+    assert.deepEqual(result.outline, outline);
+    assert.deepEqual(
+      result.outline?.requiredQuestions
+        .slice(1, 4)
+        .map((item) => item.workSampleEvidence),
+      work.questions.map((item) => item.workSampleEvidence),
+    );
+    await assert.rejects(
+      readResumeAndWorkSampleWithCodex(
+        {
+          ...template,
+          resumeText,
+          hasWrittenTest: true,
+          outlineVersion: 2,
+          workSample: f.reference,
+        },
+        f.zip,
+        new AbortController().signal,
+        {
+          runStructured: async () => ({
+            ...report,
+            outline: {
+              ...outline,
+              requiredQuestions: outline.requiredQuestions.map(
+                (item, index) =>
+                  index === 1
+                    ? {
+                        ...item,
+                        workSampleEvidence: {
+                          ...item.workSampleEvidence!,
+                          excerpt: '另一段引用',
+                        },
+                      }
+                    : item,
+              ),
+            },
+          }),
+        },
+      ),
+      /文件依据不一致/,
+    );
+  } finally {
+    await f.cleanup();
+  }
+});
+
 void test('later analysis returns three grounded questions and rejects fabricated citations', async () => {
   const f = await fixture();
   try {
@@ -217,6 +351,97 @@ void test('later analysis returns three grounded questions and rejects fabricate
       }),
       /引用无法在本地文件中找到/,
     );
+  } finally {
+    await f.cleanup();
+  }
+});
+
+void test('later V2 work analysis returns assessment plus a file-matched reserve supplement', async () => {
+  const f = await fixture();
+  try {
+    const template = builtInRoleTemplates[0];
+    const dimensions = template.dimensionText.split('、');
+    const work = assessment(f.reference);
+    work.questions = work.questions.map((item, index) => ({
+      ...item,
+      dimensions: [dimensions[index]],
+    }));
+    const order = [4, 0, 1, 2, 3, 5, 6, 7];
+    const all: InterviewQuestionV2[] = order.map((dimensionIndex, index) => ({
+      id: `existing-${index + 1}`,
+      question: `请说明经历${index + 1}的关键判断`,
+      required: index < 5,
+      estimatedMinutes: index < 5 ? 6 : 4,
+      primaryDimension: dimensions[dimensionIndex],
+      secondaryDimensions: [],
+      source: 'role',
+      goal: '核实具体行动',
+      resumeEvidence: null,
+      workSampleEvidence: null,
+      listenFor: ['判断依据'],
+      riskSignals: ['缺少个人行动'],
+      probes: [{ condition: '依据不清楚', question: '你怎样验证？' }],
+    }));
+    const outline: InterviewOutlineV2 = {
+      version: 2,
+      estimatedMinutes: 30,
+      requiredQuestions: all.slice(0, 5),
+      reserveQuestions: all.slice(5),
+      archivedReserveQuestions: [],
+      coverage: calculateOutlineCoverage(all, dimensions),
+    };
+    const supplementQuestions = work.questions.map((item, index) => ({
+      id: `work-late-${index + 1}`,
+      question: item.question,
+      required: false,
+      estimatedMinutes: 4,
+      primaryDimension: dimensions[index],
+      secondaryDimensions: [],
+      source: 'work-sample' as const,
+      goal: '核实作品中的判断',
+      resumeEvidence: null,
+      workSampleEvidence: item.workSampleEvidence!,
+      listenFor: ['判断依据'],
+      riskSignals: ['无法说明取舍'],
+      probes: [{ condition: '依据不清楚', question: '你怎样验证？' }],
+    }));
+    const raw = {
+      version: 2 as const,
+      workSample: work,
+      outlineSupplement: {
+        version: 2 as const,
+        kind: 'work-sample' as const,
+        questions: supplementQuestions,
+      },
+    };
+    const result = await analyzeWorkSampleWithCodex(
+      {
+        ...template,
+        resumeText,
+        workSample: f.reference,
+        outlineVersion: 2,
+        outline,
+      },
+      f.zip,
+      new AbortController().signal,
+      {
+        runStructured: async (_input, _signal, instructions, schema) => {
+          const contract = schema as {
+            required: string[];
+            properties: Record<string, unknown>;
+          };
+          assert.deepEqual(contract.required, [
+            'version',
+            'workSample',
+            'outlineSupplement',
+          ]);
+          assert.match(instructions, /outlineSupplement/);
+          return raw;
+        },
+      },
+    );
+    assert.equal(result.version, 2);
+    assert.deepEqual(result.outlineSupplement.questions, supplementQuestions);
   } finally {
     await f.cleanup();
   }

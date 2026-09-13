@@ -17,11 +17,15 @@ import {
   type WrittenTestSupplementResult,
 } from './written-test-supplement.ts';
 import {
-  validateWorkSampleAssessment,
+  validateWorkSampleAnalysisResult,
   validateWorkSampleInput,
   validateWorkSampleReference,
   type WorkSampleAssessment,
+  type WorkSampleAnalysisResult,
+  type WorkSampleAnalysisV2,
   type WorkSampleInput,
+  type WorkSampleInputV1,
+  type WorkSampleInputV2,
   type WorkSampleReference,
 } from './work-sample.ts';
 import {
@@ -323,31 +327,49 @@ export function submitRemoteWrittenTest(
 }
 
 export function submitRemoteWorkSample(
-  input: WorkSampleInput,
+  input: WorkSampleInputV1,
   label: string,
   signal: AbortSignal,
   onProgress: (job: RemoteJob<WorkSampleAssessment>) => void,
+  dependencies?: {
+    fetcher: typeof fetch;
+    pollMs: number;
+    scope?: string;
+  },
+): Promise<WorkSampleAssessment>;
+export function submitRemoteWorkSample(
+  input: WorkSampleInputV2,
+  label: string,
+  signal: AbortSignal,
+  onProgress: (job: RemoteJob<WorkSampleAnalysisV2>) => void,
+  dependencies?: {
+    fetcher: typeof fetch;
+    pollMs: number;
+    scope?: string;
+  },
+): Promise<WorkSampleAnalysisV2>;
+export function submitRemoteWorkSample(
+  input: WorkSampleInput,
+  label: string,
+  signal: AbortSignal,
+  onProgress: (job: RemoteJob<never>) => void,
   dependencies: {
     fetcher: typeof fetch;
     pollMs: number;
     scope?: string;
   } = { fetcher: fetch, pollMs: 2000 },
-): Promise<WorkSampleAssessment> {
+): Promise<WorkSampleAnalysisResult> {
   const normalized = validateWorkSampleInput(input);
   return submitRemoteTask(
     normalized,
     'work-sample',
     (value) =>
-      validateWorkSampleAssessment(value, {
-        reference: normalized.workSample,
-        dimensionText: normalized.dimensionText,
-        questionCount: 3,
-        existingQuestions: normalized.existingQuestions,
+      validateWorkSampleAnalysisResult(value, normalized, {
         conciseQuestions: true,
       }),
     label,
     signal,
-    onProgress,
+    onProgress as (job: RemoteJob<WorkSampleAnalysisResult>) => void,
     dependencies,
   );
 }

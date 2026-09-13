@@ -2,6 +2,7 @@ import { BUILTIN_TEMPLATE_IDS } from './default-role-templates.ts';
 import { normalizeStandards, type InterviewStandards } from './standards.ts';
 import type { ResumeReading } from './resume-reading.ts';
 import type { WrittenTestSupplementResult } from './written-test-supplement.ts';
+import { applyOutlineV2Supplement } from './outline-v2-supplement.ts';
 
 export const COMMON_TEMPLATE_ID = '__common__';
 export const TEMPLATE_STATUS_VALUE = '__template_status__';
@@ -191,6 +192,13 @@ export function applyWrittenTestSupplement(
   reading: ResumeReading,
   result: WrittenTestSupplementResult,
 ): ResumeReading {
+  if ('version' in result) {
+    if (!reading.outline) throw new Error('V2 面试提纲不存在。');
+    return {
+      ...reading,
+      outline: applyOutlineV2Supplement(reading.outline, result),
+    };
+  }
   return { ...reading, writtenTestSupplement: result.questions };
 }
 

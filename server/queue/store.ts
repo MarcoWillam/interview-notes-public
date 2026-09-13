@@ -17,7 +17,7 @@ import {
   validateWrittenTestSupplementInput,
 } from '../../lib/written-test-supplement.ts';
 import {
-  validateWorkSampleAssessment,
+  validateWorkSampleAnalysisResult,
   validateWorkSampleInput,
   validateWorkSampleReference,
   type WorkSampleReference,
@@ -53,6 +53,12 @@ const hash = (value: string) =>
 type Row = Record<string, string | number | null>;
 const PREPARATION_PRIORITY =
   "CASE WHEN kind IN ('resume','written-test','work-sample','outline') THEN 0 ELSE 1 END";
+function validateStoredWorkSampleResult(result: unknown, storedInput: unknown) {
+  const input = validateWorkSampleInput(storedInput);
+  return validateWorkSampleAnalysisResult(result, input, {
+    conciseQuestions: true,
+  });
+}
 export class QueueStore {
   db: DatabaseSync;
   now: () => number;
@@ -906,15 +912,7 @@ export class QueueStore {
                   { conciseQuestions: true },
                 )
               : job.kind === 'work-sample'
-                ? validateWorkSampleAssessment(result, {
-                    reference: validateWorkSampleInput(storedInput).workSample,
-                    dimensionText:
-                      validateWorkSampleInput(storedInput).dimensionText,
-                    questionCount: 3,
-                    existingQuestions:
-                      validateWorkSampleInput(storedInput).existingQuestions,
-                    conciseQuestions: true,
-                  })
+                ? validateStoredWorkSampleResult(result, storedInput)
                 : job.kind === 'outline'
                   ? validateOutlineRegenerationResult(
                       result,

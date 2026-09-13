@@ -1,6 +1,10 @@
 import { BUILTIN_TEMPLATE_IDS } from './default-role-templates.ts';
 import type { ResumeReading } from './resume-reading.ts';
-import type { WorkSampleAssessment } from './work-sample.ts';
+import type {
+  WorkSampleAnalysisResult,
+  WorkSampleAssessment,
+} from './work-sample.ts';
+import { applyOutlineV2Supplement } from './outline-v2-supplement.ts';
 
 export type WorkSampleWorkflowState = {
   sourceTemplateId?: string | null;
@@ -13,7 +17,8 @@ export type WorkSampleWorkflowState = {
 export function canSubmitWorkSample(value: WorkSampleWorkflowState) {
   return (
     value.sourceTemplateId === BUILTIN_TEMPLATE_IDS.aiProductManager &&
-    (value.resumeReading?.interviewQuestions?.length || 0) >= 6 &&
+    ((value.resumeReading?.interviewQuestions?.length || 0) >= 6 ||
+      value.resumeReading?.outline?.version === 2) &&
     !value.workSample &&
     !value.resumeReading?.workSample &&
     !value.workSampleJobId
@@ -46,7 +51,7 @@ export function applyInitialWorkSample<T extends WorkSampleWorkflowState>(
 
 export function applyLateWorkSample<T extends WorkSampleWorkflowState>(
   value: T,
-  result: WorkSampleAssessment,
+  result: WorkSampleAnalysisResult,
 ): Omit<
   T,
   'hasWrittenTest' | 'resumeReading' | 'workSample' | 'workSampleJobId'
@@ -58,14 +63,33 @@ export function applyLateWorkSample<T extends WorkSampleWorkflowState>(
 } {
   if (value.workSample || value.resumeReading?.workSample)
     throw new Error('本场面试的作品只能成功分析一次。');
-  if (!value.resumeReading?.interviewQuestions?.length)
+  if (
+    !value.resumeReading?.interviewQuestions?.length &&
+    !value.resumeReading?.outline
+  )
     throw new Error('请先生成面试提纲。');
+  const workSample = 'version' in result ? result.workSample : result;
+  const reading =
+    'version' in result
+      ? value.resumeReading.outline
+        ? {
+            ...value.resumeReading,
+            outline: applyOutlineV2Supplement(
+              value.resumeReading.outline,
+              result.outlineSupplement,
+            ),
+            workSample,
+          }
+        : (() => {
+            throw new Error('V2 面试提纲不存在。');
+          })()
+      : { ...value.resumeReading, workSample };
   return {
     ...value,
     hasWrittenTest: true,
-    workSample: result,
+    workSample,
     workSampleJobId: undefined,
-    resumeReading: { ...value.resumeReading, workSample: result },
+    resumeReading: reading,
   };
 }
 
