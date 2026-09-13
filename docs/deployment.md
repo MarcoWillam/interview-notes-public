@@ -5,7 +5,7 @@
 ## 当前云服务器
 
 - 网站：`https://your-server-ip`，初始账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。其他面试官账号通过下述服务器命令创建。
-- 代码：当前版本为 `/opt/interview-notes/releases/20260911-4`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一稳定版本 `20260911-3` 保留用于回滚；`20260909-19` 为桌面工具显示修正前的中间版本，不作为回滚目标。
+- 代码：当前版本为 `/opt/interview-notes/releases/20260913-1`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一稳定版本 `20260911-4` 保留用于回滚；更早版本继续保留但不作为首选回滚目标。
 - 数据：`/var/lib/interview-notes/queue.sqlite`；环境配置：`/etc/interview-notes/server.env`；运行时：`/opt/node-v24.13.0-linux-x64/bin/node`。服务器只需已构建的 `dist/web` 和队列服务源码，无需安装模型或上传电脑上的 Codex 登录信息。
 - Nginx：`/etc/nginx/conf.d/interview-notes.conf`，对应仓库 `deploy/nginx-ip.conf`，HTTP 自动跳转 HTTPS，80 端口保留 ACME 验证路径。
 - 证书：Let's Encrypt IP 证书，由 acme.sh 3.1.2 的 `shortlived` profile 签发。使用 `--days 3`，`interview-cert-renew.timer` 每天两次检查续期；续期成功自动安装到 `/etc/nginx/ssl/interview/` 并检查、重载 Nginx。不要关闭公网 80 端口，否则续期验证会失败。
@@ -186,4 +186,4 @@ AI 产品经理在最初确认“无笔试”且已有 V2 提纲时，可发起�
 
 `20260913-1` 将未修改的内置 AI 产品经理和产品运营模板升级为版本化五加三提纲：5 道必问题主覆盖自驱力和四项专业能力，最多 3 道候选题补齐八维覆盖，主问题限制为 8–24 个字符且只有一个问点。后补笔试或作品时保留必问题、替换候选区并累计归档此前候选题；重新生成、浏览器恢复、任务中心和 Markdown 导出均保留版本与归档。AI 研发、自定义模板和历史六题记录继续走 V1。队列数据库新增每项任务的最低协议，V2 要求协议 3，旧连接器可继续处理兼容任务。连接器版本为 `2026.9.13-1`。
 
-本地自动验证为 343 项测试，并通过类型检查、代码检查、生产构建和差异检查。浏览器在笔记本及窄屏断点验证固定候选人状态条、5 道必问、折叠候选题、8 行覆盖矩阵和任务中心，无横向溢出；虚构 AI 产品经理与产品运营材料均由真实本地 Codex 完成并通过服务端严格校验。发布候选包 SHA-256 为 `b571e40b36c995039724cdc283f446c71706241f4f79a9077d1003b95d77105c`，连接器包 SHA-256 为 `1ea0e652b0e48acc46b2d8d3c53a6dac4d10fb6891206d9bbf7ed4ab39f12786`。生产回滚目标为 `20260911-4`；部署后还需记录公网 HTTPS、Nginx、应用服务、SQLite 和最终 `current` 指向检查结果。
+本地自动验证为 343 项测试，并通过类型检查、代码检查、生产构建和差异检查。浏览器在笔记本及窄屏断点验证固定候选人状态条、5 道必问、折叠候选题、8 行覆盖矩阵和任务中心，无横向溢出；虚构 AI 产品经理与产品运营材料均由真实本地 Codex 完成并通过服务端严格校验。发布包 SHA-256 为 `b571e40b36c995039724cdc283f446c71706241f4f79a9077d1003b95d77105c`，连接器包 SHA-256 为 `1ea0e652b0e48acc46b2d8d3c53a6dac4d10fb6891206d9bbf7ed4ab39f12786`。生产已原子切换到 `20260913-1`；`interview-notes`、Nginx 和证书续期定时器均为 active，Nginx 配置、SQLite quick check、公网 TLS、HTTPS 会话接口、HTTP 308 跳转、实际资源 `index-BB1DbUBq.js` / `index-D9MSVLS3.css` 及线上连接器下载哈希均通过检查。生产回滚目标为 `20260911-4`。
