@@ -1,0 +1,11 @@
+{
+  "name": "产品运营校招",
+  "templateId": "builtin-campus-product-operations",
+  "resumeText": "姓名：许向阳。许向阳主动建立社群用户分层表，并推动三次召回实验和效果复盘。",
+  "hasWrittenTest": false,
+  "workSample": null,
+  "expected": {
+    "reviewSource": null,
+    "reviewPositions": []
+  }
+}

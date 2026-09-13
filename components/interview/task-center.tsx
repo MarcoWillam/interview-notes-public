@@ -11,8 +11,10 @@ import type { ResumeReading } from '../../lib/resume-reading';
 import type { WrittenTestSupplementResult } from '../../lib/written-test-supplement';
 import {
   workSampleRubricLabel,
+  type WorkSampleAnalysisV2,
   type WorkSampleAssessment,
 } from '../../lib/work-sample';
+import type { OutlineV2SupplementResult } from '../../lib/outline-v2-supplement';
 import { groupAssessmentDimensions } from '../../lib/assessment-groups';
 import type { OutlineRegenerationResult } from '../../lib/outline-regeneration';
 import { exportInterviewOutlineV2 } from '../../lib/interview-outline-v2';
@@ -44,6 +46,7 @@ type Job = RemoteJob<
   | ResumeReading
   | WrittenTestSupplementResult
   | WorkSampleAssessment
+  | WorkSampleAnalysisV2
   | OutlineRegenerationResult
 >;
 
@@ -367,9 +370,26 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
           <WrittenTestSupplementView questions={job.report.questions} />
         )}
       {job.report &&
+        job.kind === 'written-test' &&
+        'questions' in job.report &&
+        'version' in job.report && (
+          <OutlineV2SupplementTaskResult value={job.report} />
+        )}
+      {job.report &&
         job.kind === 'work-sample' &&
         'dimensions' in job.report && (
           <WorkSampleTaskResult value={job.report as WorkSampleAssessment} />
+        )}
+      {job.report &&
+        job.kind === 'work-sample' &&
+        'workSample' in job.report &&
+        'outlineSupplement' in job.report && (
+          <>
+            <WorkSampleTaskResult value={job.report.workSample} />
+            <OutlineV2SupplementTaskResult
+              value={job.report.outlineSupplement}
+            />
+          </>
         )}
       {job.report &&
         job.kind === 'outline' &&
@@ -450,6 +470,29 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
   );
 }
 
+function OutlineV2SupplementTaskResult({
+  value,
+}: {
+  value: OutlineV2SupplementResult;
+}) {
+  return (
+    <section>
+      <h4>
+        {value.kind === 'work-sample' ? '作品复盘候选题' : '笔试复盘候选题'}
+      </h4>
+      <p className="small-note">已更新对应面试记录的候选区。</p>
+      <ol>
+        {value.questions.map((question) => (
+          <li key={question.id}>
+            <strong>{question.question}</strong>
+            <span>{question.primaryDimension}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 function OutlineTaskResult({ value }: { value: OutlineRegenerationResult }) {
   if ('outline' in value)
     return (
@@ -457,7 +500,10 @@ function OutlineTaskResult({ value }: { value: OutlineRegenerationResult }) {
         <h4>重新生成的面试提纲</h4>
         <InterviewOutlineV2View outline={value.outline} />
         <p className="small-note">请回到对应面试记录确认已自动应用。</p>
-        <button className="primary-button" onClick={() => downloadOutline(value)}>
+        <button
+          className="primary-button"
+          onClick={() => downloadOutline(value)}
+        >
           <Download size={16} /> 下载提纲 Markdown
         </button>
       </section>

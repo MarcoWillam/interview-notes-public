@@ -1,0 +1,11 @@
+{
+  "name": "AI 产品经理有笔试无作品",
+  "templateId": "builtin-campus-ai-product-manager",
+  "resumeText": "姓名：周知行。周知行主动发起校园问答助手调研，并根据反馈推动团队调整首版范围。",
+  "hasWrittenTest": true,
+  "workSample": null,
+  "expected": {
+    "reviewSource": "written-test",
+    "reviewPositions": [2, 3, 4]
+  }
+}

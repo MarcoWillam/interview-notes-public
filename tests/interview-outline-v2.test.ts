@@ -68,12 +68,7 @@ function validOutline(): InterviewOutlineV2 {
       true,
       'resume',
     ),
-    question(
-      'required-scope',
-      '你如何决定产品范围取舍',
-      dimensions[1],
-      true,
-    ),
+    question('required-scope', '你如何决定产品范围取舍', dimensions[1], true),
     question(
       'required-ai',
       '你如何判断任务是否适合使用AI',
@@ -152,7 +147,12 @@ void test('V2 提纲拒绝错误题量和错误必问标记', () => {
           ...outline,
           reserveQuestions: [
             ...outline.reserveQuestions,
-            question('reserve-extra', '你如何复盘一次失败的尝试', dimensions[5], false),
+            question(
+              'reserve-extra',
+              '你如何复盘一次失败的尝试',
+              dimensions[5],
+              false,
+            ),
           ],
         },
         context(),

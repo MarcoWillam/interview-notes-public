@@ -140,8 +140,7 @@ export function ResumeReadingView({
     ) ||
     outlineQuestions.some(
       (question) =>
-        question.source === 'written-test' ||
-        question.source === 'work-sample',
+        question.source === 'written-test' || question.source === 'work-sample',
     ) ||
     !!value.workSample;
   const itemCount = value.sections.reduce(

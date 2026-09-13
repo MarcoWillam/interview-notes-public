@@ -4,7 +4,10 @@ import { readFile } from 'node:fs/promises';
 
 void test('V2 outline separates required, reserve, archived and coverage views', async () => {
   const source = await readFile(
-    new URL('../components/interview/interview-outline-v2-view.tsx', import.meta.url),
+    new URL(
+      '../components/interview/interview-outline-v2-view.tsx',
+      import.meta.url,
+    ),
     'utf8',
   );
   assert.match(source, /必问题 · 5 道/);
@@ -22,12 +25,18 @@ void test('V2 outline separates required, reserve, archived and coverage views',
 void test('V2 outline keeps details collapsed and has responsive coverage styles', async () => {
   const [source, css, reading] = await Promise.all([
     readFile(
-      new URL('../components/interview/interview-outline-v2-view.tsx', import.meta.url),
+      new URL(
+        '../components/interview/interview-outline-v2-view.tsx',
+        import.meta.url,
+      ),
       'utf8',
     ),
     readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
     readFile(
-      new URL('../components/interview/resume-reading-view.tsx', import.meta.url),
+      new URL(
+        '../components/interview/resume-reading-view.tsx',
+        import.meta.url,
+      ),
       'utf8',
     ),
   ]);
