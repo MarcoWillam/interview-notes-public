@@ -5,7 +5,9 @@ import {
   CONNECTOR_VERSION,
   compareConnectorVersions,
   connectorSupportsOutline,
+  connectorSupportsOutlineV2,
   connectorUpdateState,
+  OUTLINE_V2_CONNECTOR_PROTOCOL,
   validateConnectorReport,
 } from '../lib/connector-release.ts';
 
@@ -28,11 +30,14 @@ void test('connector release accepts current reports and identifies update state
     'update-available',
   );
   assert.equal(connectorUpdateState('0.1.0', 0), 'update-required');
-  assert.equal(connectorUpdateState('2026.9.11-5', 2), 'current');
+  assert.equal(connectorUpdateState('2026.9.11-5', 2), 'update-available');
   assert.equal(compareConnectorVersions('2026.9.11-3', CONNECTOR_VERSION), -1);
-  assert.equal(compareConnectorVersions('2026.9.11-5', CONNECTOR_VERSION), 1);
+  assert.equal(compareConnectorVersions('2026.9.14-1', CONNECTOR_VERSION), 1);
   assert.equal(connectorSupportsOutline(CONNECTOR_PROTOCOL), true);
   assert.equal(connectorSupportsOutline(1), false);
+  assert.equal(OUTLINE_V2_CONNECTOR_PROTOCOL, 3);
+  assert.equal(connectorSupportsOutlineV2(CONNECTOR_PROTOCOL), true);
+  assert.equal(connectorSupportsOutlineV2(2), false);
 });
 
 void test('connector release rejects malformed reports', () => {

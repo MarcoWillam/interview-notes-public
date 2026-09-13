@@ -61,6 +61,7 @@ export type RemoteJob<T = Report> = {
   artifactId?: string | null;
   targetDeviceName?: string | null;
   waitingForDevice?: boolean;
+  requiredProtocol?: number;
 };
 export type RemoteArtifact = WorkSampleReference & {
   deviceName: string;
