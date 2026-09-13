@@ -29,6 +29,7 @@ import {
 import {
   CONNECTOR_VERSION,
   OUTLINE_CONNECTOR_PROTOCOL,
+  OUTLINE_V2_CONNECTOR_PROTOCOL,
   connectorSupportsOutline,
   connectorUpdateState,
   validateConnectorReport,
@@ -71,7 +72,7 @@ export class QueueStore {
       CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,user TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS pairs(hash TEXT PRIMARY KEY,user TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,user TEXT NOT NULL,name TEXT NOT NULL,hash TEXT UNIQUE NOT NULL,seen INTEGER NOT NULL,ready INTEGER NOT NULL DEFAULT 0,revoked INTEGER NOT NULL DEFAULT 0,version TEXT,protocol INTEGER,versionSeen INTEGER);
-      CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,kind TEXT NOT NULL DEFAULT 'interview',queued INTEGER,started INTEGER,scope TEXT,UNIQUE(user,client));
+      CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,kind TEXT NOT NULL DEFAULT 'interview',queued INTEGER,started INTEGER,scope TEXT,requiredProtocol INTEGER NOT NULL DEFAULT 1,UNIQUE(user,client));
       CREATE TABLE IF NOT EXISTS outline_completions(user TEXT NOT NULL,scope TEXT NOT NULL,job TEXT NOT NULL,inputHash TEXT NOT NULL,completed INTEGER NOT NULL,PRIMARY KEY(user,scope));
       CREATE TABLE IF NOT EXISTS artifacts(user TEXT NOT NULL,device TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,sha256 TEXT NOT NULL,bytes INTEGER NOT NULL,modified INTEGER NOT NULL,seen INTEGER NOT NULL,PRIMARY KEY(device,id));
       CREATE INDEX IF NOT EXISTS jobs_owner_created ON jobs(user,created);
@@ -103,6 +104,10 @@ export class QueueStore {
       this.db.exec('ALTER TABLE jobs ADD COLUMN artifactId TEXT');
     if (!jobColumns.some((column) => column.name === 'scope'))
       this.db.exec('ALTER TABLE jobs ADD COLUMN scope TEXT');
+    if (!jobColumns.some((column) => column.name === 'requiredProtocol'))
+      this.db.exec(
+        'ALTER TABLE jobs ADD COLUMN requiredProtocol INTEGER NOT NULL DEFAULT 1',
+      );
     this.db
       .prepare(
         "UPDATE jobs SET state='failed',input=NULL,report=NULL,error='旧版提纲任务缺少面试记录范围，请重新提交。',updated=? WHERE kind='outline' AND scope IS NULL AND state IN ('queued','running','paused','completed')",
@@ -525,14 +530,19 @@ export class QueueStore {
                     })(),
       input = JSON.stringify(validatedInput),
       digest = hash(kind + (scope ? '\n' + scope + '\n' : '') + input),
-      safeLabel = label.slice(0, 100) || '未命名面试';
+      safeLabel = label.slice(0, 100) || '未命名面试',
+      requiredProtocol =
+        'outlineVersion' in validatedInput &&
+        validatedInput.outlineVersion === 2
+          ? OUTLINE_V2_CONNECTOR_PROTOCOL
+          : 1;
     if (
       kind === 'outline' &&
       !this.db
         .prepare(
           'SELECT 1 FROM devices WHERE user=? AND revoked=0 AND protocol>=? LIMIT 1',
         )
-        .get(user, OUTLINE_CONNECTOR_PROTOCOL)
+        .get(user, Math.max(OUTLINE_CONNECTOR_PROTOCOL, requiredProtocol))
     )
       throw new QueueError(
         '当前连接器不支持重新生成提纲，请先下载并启动新版连接器。',
@@ -630,7 +640,7 @@ export class QueueStore {
     try {
       this.db
         .prepare(
-          "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued,targetDevice,artifactId,scope) VALUES(?,?,?,?,?,'queued',?,?,?,?,?,?,?,?)",
+          "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued,targetDevice,artifactId,scope,requiredProtocol) VALUES(?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?)",
         )
         .run(
           id,
@@ -646,6 +656,7 @@ export class QueueStore {
           targetDevice,
           artifactId,
           scope || null,
+          requiredProtocol,
         );
     } catch (insertError) {
       if (kind === 'outline')
@@ -661,7 +672,7 @@ export class QueueStore {
     this.sweep();
     const row = this.db
       .prepare(
-        'SELECT id,label,kind,state,report,error,created,updated,queued,started,targetDevice,artifactId FROM jobs WHERE user=? AND id=?',
+        'SELECT id,label,kind,state,report,error,created,updated,queued,started,targetDevice,artifactId,requiredProtocol FROM jobs WHERE user=? AND id=?',
       )
       .get(user, id) as Row | undefined;
     if (!row) throw new QueueError('任务不存在。', 404);
@@ -696,6 +707,7 @@ export class QueueStore {
           !!target.revoked ||
           !target.ready ||
           Number(target.seen) <= this.now() - 45000),
+      requiredProtocol: Number(row.requiredProtocol),
     };
   }
   private queuePosition(user: string, id: string) {
@@ -712,7 +724,7 @@ export class QueueStore {
     return (
       this.db
         .prepare(
-          'SELECT id,label,kind,state,error,created,updated,queued,started,targetDevice,artifactId FROM jobs WHERE user=? ORDER BY created DESC LIMIT 100',
+          'SELECT id,label,kind,state,error,created,updated,queued,started,targetDevice,artifactId,requiredProtocol FROM jobs WHERE user=? ORDER BY created DESC LIMIT 100',
         )
         .all(user) as Row[]
     ).map((row) => {
@@ -746,6 +758,7 @@ export class QueueStore {
             !!target.revoked ||
             !target.ready ||
             Number(target.seen) <= this.now() - 45000),
+        requiredProtocol: Number(row.requiredProtocol),
       };
     });
   }
@@ -806,6 +819,12 @@ export class QueueStore {
     this.sweep();
     const device = this.device(secret);
     const release = this.recordConnector(device.id, connector);
+    const storedProtocol = this.db
+      .prepare('SELECT protocol FROM devices WHERE id=?')
+      .get(device.id) as Row | undefined;
+    const connectorProtocol = Number(
+      release?.protocol || storedProtocol?.protocol || 1,
+    );
     this.db
       .prepare('UPDATE devices SET seen=?,ready=? WHERE id=?')
       .run(this.now(), ready ? 1 : 0, device.id);
@@ -813,7 +832,7 @@ export class QueueStore {
     const lease = token();
     const row = this.db
       .prepare(
-        `UPDATE jobs SET state='running',device=?,lease=?,until=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1) OR (kind='outline' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY ${PREPARATION_PRIORITY},queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId`,
+        `UPDATE jobs SET state='running',device=?,lease=?,until=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND requiredProtocol<=? AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1) OR (kind='outline' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY ${PREPARATION_PRIORITY},queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId`,
       )
       .get(
         device.id,
@@ -822,6 +841,7 @@ export class QueueStore {
         this.now(),
         this.now(),
         device.user,
+        connectorProtocol,
         device.id,
         kinds.includes('resume') ? 1 : 0,
         kinds.includes('written-test') ? 1 : 0,

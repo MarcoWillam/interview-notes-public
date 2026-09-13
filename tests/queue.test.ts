@@ -15,6 +15,7 @@ import {
   CONNECTOR_PROTOCOL,
   CONNECTOR_VERSION,
 } from '../lib/connector-release.ts';
+import { builtInRoleTemplates } from '../lib/default-role-templates.ts';
 const resumeInput = {
   role: '产品经理',
   requirements: '用户研究与需求分析',
@@ -216,6 +217,61 @@ void test('outline regeneration requires a current connector and reports its ver
         ),
       /已经成功重新生成过/,
     );
+  } finally {
+    s.close();
+  }
+});
+
+void test('V2 preparation waits for protocol 3 while V1 remains claimable', () => {
+  const { s, a } = setup();
+  try {
+    const protocol2 = s.redeem(s.pairing(a).code, '协议二电脑', {
+      version: '2026.9.11-4',
+      protocol: 2,
+    });
+    const protocol3 = s.redeem(s.pairing(a).code, '协议三电脑', {
+      version: CONNECTOR_VERSION,
+      protocol: CONNECTOR_PROTOCOL,
+    });
+    const template = builtInRoleTemplates[0];
+    const v2 = s.submit(
+      a,
+      'resume-v2-protocol',
+      'V2 简历阅读',
+      {
+        ...template,
+        resumeText: resumeInput.resumeText,
+        hasWrittenTest: false,
+        outlineVersion: 2,
+      },
+      'resume',
+      'record-v2-protocol',
+    );
+    assert.equal(v2.requiredProtocol, 3);
+    assert.equal(
+      s.claim(protocol2.token, true, ['resume'], {
+        version: '2026.9.11-4',
+        protocol: 2,
+      }),
+      null,
+    );
+    assert.equal(
+      s.claim(protocol3.token, true, ['resume'], {
+        version: CONNECTOR_VERSION,
+        protocol: CONNECTOR_PROTOCOL,
+      })?.id,
+      v2.id,
+    );
+    const v1 = s.submit(
+      a,
+      'resume-v1-protocol',
+      'V1 简历阅读',
+      resumeInput,
+      'resume',
+      'record-v1-protocol',
+    );
+    assert.equal(v1.requiredProtocol, 1);
+    assert.equal(s.claim(protocol2.token, true, ['resume'])?.id, v1.id);
   } finally {
     s.close();
   }
@@ -524,6 +580,13 @@ void test('legacy job databases gain artifact binding columns without losing wor
     assert.ok(columns.some((column) => column.name === 'targetDevice'));
     assert.ok(columns.some((column) => column.name === 'artifactId'));
     assert.ok(columns.some((column) => column.name === 'scope'));
+    assert.ok(columns.some((column) => column.name === 'requiredProtocol'));
+    assert.equal(
+      migrated.db
+        .prepare('SELECT requiredProtocol FROM jobs WHERE id=?')
+        .get('job')?.requiredProtocol,
+      1,
+    );
     assert.equal(
       migrated.db.prepare('SELECT label FROM jobs WHERE id=?').get('job')
         ?.label,

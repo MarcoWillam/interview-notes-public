@@ -39,6 +39,7 @@ type ConnectorReleaseInfo = {
   latestProtocol: number;
   minimumProtocol: number;
   outlineProtocol: number;
+  outlineV2Protocol: number;
   notes: string;
   downloadUrl: string;
 };
