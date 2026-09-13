@@ -13,6 +13,12 @@ import {
   AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
   aiPmWorkSampleRubric,
 } from '../lib/work-sample-rubric.ts';
+import { builtInRoleTemplates } from '../lib/default-role-templates.ts';
+import {
+  calculateOutlineCoverage,
+  type InterviewOutlineV2,
+  type InterviewQuestionV2,
+} from '../lib/interview-outline-v2.ts';
 const resumeInput = {
   role: '产品经理',
   requirements: '用户研究与需求分析',
@@ -147,6 +153,34 @@ const report = {
   ],
   followUps: [],
 };
+
+function v2Outline(): InterviewOutlineV2 {
+  const dimensions = builtInRoleTemplates[0].dimensionText.split('、');
+  const order = [4, 0, 1, 2, 3, 5, 6, 7];
+  const all: InterviewQuestionV2[] = order.map((dimensionIndex, index) => ({
+    id: `remote-v2-${index + 1}`,
+    question: `请说明经历${index + 1}的关键判断`,
+    required: index < 5,
+    estimatedMinutes: index < 5 ? 6 : 4,
+    primaryDimension: dimensions[dimensionIndex],
+    secondaryDimensions: [],
+    source: 'role',
+    goal: '核实具体行动',
+    resumeEvidence: null,
+    workSampleEvidence: null,
+    listenFor: ['判断依据'],
+    riskSignals: ['缺少个人行动'],
+    probes: [{ condition: '依据不清楚', question: '你怎样验证？' }],
+  }));
+  return {
+    version: 2,
+    estimatedMinutes: 30,
+    requiredQuestions: all.slice(0, 5),
+    reserveQuestions: all.slice(5),
+    archivedReserveQuestions: [],
+    coverage: calculateOutlineCoverage(all, dimensions),
+  };
+}
 void test('remote submission waits for queued and running jobs, then validates the report', async () => {
   const calls: string[] = [];
   const states: string[] = [];
@@ -251,7 +285,7 @@ void test('resume task is sent with its own kind and returns an unscored reading
       scope?: string;
     };
     assert.equal(body.kind, 'resume');
-    assert.deepEqual(body.input, input);
+    assert.deepEqual(body.input, { ...input, outlineVersion: 1 });
     assert.equal(body.scope, 'interview-record-a');
     return Response.json({
       id: 'reading',
@@ -277,7 +311,7 @@ void test('resume result validation uses the normalized submission snapshot', as
   const input = { ...resumeInput, resumeText: `  ${resumeInput.resumeText}  ` };
   const fetcher: typeof fetch = async (_url, options) => {
     const body = JSON.parse(options?.body as string) as { input: unknown };
-    assert.deepEqual(body.input, resumeInput);
+    assert.deepEqual(body.input, { ...resumeInput, outlineVersion: 1 });
     input.resumeText = '调用者已经替换了简历';
     input.dimensionText = '其他维度';
     return Response.json({
@@ -295,6 +329,50 @@ void test('resume result validation uses the normalized submission snapshot', as
       { fetcher, pollMs: 0 },
     ),
     reading,
+  );
+});
+
+void test('V2 resume submission keeps the version in its fingerprinted payload', async () => {
+  const { submitRemoteResume } = await import('../lib/remote-analysis.ts');
+  const template = builtInRoleTemplates[0];
+  const outline = v2Outline();
+  const input = {
+    ...template,
+    resumeText: resumeInput.resumeText,
+    hasWrittenTest: false,
+    outlineVersion: 2 as const,
+  };
+  const result = {
+    candidateName: '张三',
+    candidateNameEvidence: '姓名：张三。',
+    summary: '候选人自述待核实。',
+    sections: ['教育背景', '工作经历', '项目经验', '技能'].map((name) => ({
+      name,
+      items: [],
+    })),
+    followUps: [],
+    outline,
+  };
+  const fetcher: typeof fetch = async (_url, options) => {
+    const body = JSON.parse(options?.body as string) as {
+      input: { outlineVersion: number };
+    };
+    assert.equal(body.input.outlineVersion, 2);
+    return Response.json({
+      id: 'resume-v2',
+      state: 'completed',
+      report: result,
+    });
+  };
+  assert.deepEqual(
+    await submitRemoteResume(
+      input,
+      'V2 简历',
+      new AbortController().signal,
+      () => {},
+      { fetcher, pollMs: 0 },
+    ),
+    result,
   );
 });
 
@@ -324,6 +402,57 @@ void test('written-test supplement uses its own kind and validates the completed
       { fetcher, pollMs: 0, scope: 'interview-record-123' },
     ),
     writtenTestResult,
+  );
+});
+
+void test('V2 written-test submission preserves its outline discriminant and validates the reserve result', async () => {
+  const template = builtInRoleTemplates[0];
+  const outline = v2Outline();
+  const dimensions = template.dimensionText.split('、');
+  const result = {
+    version: 2 as const,
+    kind: 'written-test' as const,
+    questions: dimensions.slice(5).map((primaryDimension, index) => ({
+      id: `remote-written-${index + 1}`,
+      question: `请复述笔试${index + 1}的关键取舍`,
+      required: false,
+      estimatedMinutes: 4,
+      primaryDimension,
+      secondaryDimensions: [],
+      source: 'written-test' as const,
+      goal: '核实候选人自己的判断',
+      resumeEvidence: null,
+      workSampleEvidence: null,
+      listenFor: ['判断依据'],
+      riskSignals: ['无法说明取舍'],
+      probes: [{ condition: '依据不清楚', question: '你为何这样选择？' }],
+    })),
+  };
+  const fetcher: typeof fetch = async (_url, options) => {
+    const body = JSON.parse(options?.body as string) as {
+      input: { outlineVersion: number };
+    };
+    assert.equal(body.input.outlineVersion, 2);
+    return Response.json({
+      id: 'written-v2',
+      state: 'completed',
+      report: result,
+    });
+  };
+  assert.deepEqual(
+    await submitRemoteWrittenTest(
+      {
+        ...template,
+        resumeText: resumeInput.resumeText,
+        outlineVersion: 2,
+        outline,
+      },
+      'V2 笔试补充',
+      new AbortController().signal,
+      () => {},
+      { fetcher, pollMs: 0 },
+    ),
+    result,
   );
 });
 

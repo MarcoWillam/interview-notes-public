@@ -131,6 +131,25 @@ export function outlineVersionForTemplate(
     : 1;
 }
 
+export function normalizeOutlineVersion(value: {
+  outlineVersion?: unknown;
+  sourceTemplateId?: string | null;
+  templateModified?: boolean;
+  resumeReading?: {
+    outline?: { version?: unknown } | null;
+    interviewQuestions?: unknown[];
+  } | null;
+}): 1 | 2 {
+  if (value.resumeReading?.outline?.version === 2) return 2;
+  if (value.resumeReading?.interviewQuestions?.length) return 1;
+  if (value.outlineVersion === 1 || value.outlineVersion === 2)
+    return value.outlineVersion;
+  return outlineVersionForTemplate(
+    value.sourceTemplateId,
+    value.templateModified === true,
+  );
+}
+
 export function writtenTestDecision(
   sourceTemplateId: string | null | undefined,
   confirmed: boolean,

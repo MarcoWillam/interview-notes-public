@@ -14,7 +14,10 @@ import {
   normalizeStandards,
   type GlobalSettings,
 } from '@/lib/standards';
-import { normalizeInterviewTemplateState } from '@/lib/interview-template-state';
+import {
+  normalizeInterviewTemplateState,
+  normalizeOutlineVersion,
+} from '@/lib/interview-template-state';
 import { BUILTIN_TEMPLATE_IDS } from '@/lib/default-role-templates';
 import { updateInterviewSummary } from '@/lib/interview-sidebar';
 export type Draft = Omit<SavedInterview, 'id' | 'createdAt' | 'updatedAt'>;
@@ -62,6 +65,7 @@ export function useInterviewLibrary(
         templates,
         settings?.defaults || defaultStandards,
       ),
+      outlineVersion: normalizeOutlineVersion(session),
     };
   }
   useEffect(() => {
