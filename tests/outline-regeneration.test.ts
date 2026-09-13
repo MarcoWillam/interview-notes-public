@@ -8,6 +8,12 @@ import {
 } from '../lib/outline-regeneration.ts';
 import type { InterviewQuestion } from '../lib/interview-questions.ts';
 import type { ResumeReading } from '../lib/resume-reading.ts';
+import {
+  calculateOutlineCoverage,
+  type InterviewOutlineV2,
+  type InterviewQuestionV2,
+} from '../lib/interview-outline-v2.ts';
+import { builtInRoleTemplates } from '../lib/default-role-templates.ts';
 
 const standards = {
   role: 'AI 产品经理（校招）',
@@ -47,6 +53,7 @@ const input = validateOutlineRegenerationInput({
   writtenTestSupplement: null,
   workSample: null,
 });
+if (input.outlineVersion === 2) throw new Error('expected V1 fixture');
 
 void test('outline regeneration preserves counts and source positions', () => {
   const result = validateOutlineRegenerationResult(
@@ -187,5 +194,108 @@ void test('initially embedded work-sample questions stay identical in both views
         workInput,
       ),
     /保持一致/,
+  );
+});
+
+function v2Outline(): InterviewOutlineV2 {
+  const dimensions = builtInRoleTemplates[0].dimensionText.split('、');
+  const order = [4, 0, 1, 2, 3, 5, 6, 7];
+  const all: InterviewQuestionV2[] = order.map((dimensionIndex, index) => ({
+    id: `v2-${index + 1}`,
+    question: `请说明经历${index + 1}的关键判断`,
+    required: index < 5,
+    estimatedMinutes: index < 5 ? 6 : 4,
+    primaryDimension: dimensions[dimensionIndex],
+    secondaryDimensions: [],
+    source: 'role',
+    goal: '核实具体判断与行动',
+    resumeEvidence: null,
+    workSampleEvidence: null,
+    listenFor: ['个人判断依据'],
+    riskSignals: ['只描述团队结论'],
+    probes: [{ condition: '依据不清楚', question: '你怎样验证？' }],
+  }));
+  return {
+    version: 2,
+    estimatedMinutes: 30,
+    requiredQuestions: all.slice(0, 5),
+    reserveQuestions: all.slice(5),
+    archivedReserveQuestions: [],
+    coverage: calculateOutlineCoverage(all, dimensions),
+  };
+}
+
+void test('V2 regeneration replaces only the outline under the current revision', async () => {
+  const template = builtInRoleTemplates[0];
+  const outline = v2Outline();
+  const v2Reading: ResumeReading = {
+    ...reading,
+    interviewQuestions: undefined,
+    outline,
+  };
+  const v2Revision = await outlineRevision({
+    resumeText,
+    standards: template,
+    reading: v2Reading,
+  });
+  const v2Input = validateOutlineRegenerationInput({
+    ...template,
+    resumeText,
+    revision: v2Revision,
+    outlineVersion: 2,
+    outline,
+    workSample: null,
+  });
+  assert.equal(v2Input.outlineVersion, 2);
+  const replacement: InterviewOutlineV2 = {
+    ...outline,
+    requiredQuestions: outline.requiredQuestions.map((item, index) => ({
+      ...item,
+      question: `请说明决策${index + 1}的核心依据`,
+    })),
+    reserveQuestions: outline.reserveQuestions.map((item, index) => ({
+      ...item,
+      question: `请说明挑战${index + 1}的应对方法`,
+    })),
+  };
+  const result = validateOutlineRegenerationResult(
+    {
+      outlineVersion: 2,
+      revision: v2Revision,
+      outline: replacement,
+    },
+    v2Input,
+  );
+  const next = applyOutlineRegeneration(v2Reading, result);
+  assert.deepEqual(next.outline, replacement);
+  assert.equal(next.summary, v2Reading.summary);
+  assert.equal(next.interviewQuestions, undefined);
+  assert.throws(
+    () =>
+      validateOutlineRegenerationResult(
+        { outlineVersion: 2, revision: 'outline-stale', outline: replacement },
+        v2Input,
+      ),
+    /记录已变化/,
+  );
+  assert.throws(
+    () =>
+      validateOutlineRegenerationResult(
+        {
+          outlineVersion: 2,
+          revision: v2Revision,
+          outline: {
+            ...replacement,
+            requiredQuestions: replacement.requiredQuestions.map(
+              (item, index) =>
+                index === 1
+                  ? { ...item, source: 'written-test', resumeEvidence: null }
+                  : item,
+            ),
+          },
+        },
+        v2Input,
+      ),
+    /来源顺序/,
   );
 });

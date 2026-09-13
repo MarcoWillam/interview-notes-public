@@ -43,6 +43,7 @@ export type OutlineV2Context = {
   requireProductCore: boolean;
   hasWrittenTest?: boolean;
   hasWorkSample?: boolean;
+  allowExistingReviewSources?: boolean;
 };
 
 const sources = new Set<InterviewQuestionV2['source']>([
@@ -277,7 +278,10 @@ export function validateInterviewOutlineV2(
       )
     )
       throw new Error('产品运营提纲不能包含笔试或作品复盘题。');
-  } else if (context.role === 'AI 产品经理（校招）') {
+  } else if (
+    context.role === 'AI 产品经理（校招）' &&
+    !context.allowExistingReviewSources
+  ) {
     if (
       expectedReviewSource &&
       requiredSources

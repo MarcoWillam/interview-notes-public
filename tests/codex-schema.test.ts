@@ -8,6 +8,7 @@ import {
 } from '../lib/work-sample.ts';
 import { writtenTestSupplementSchema } from '../lib/written-test-supplement.ts';
 import { outlineV2SupplementSchema } from '../lib/outline-v2-supplement.ts';
+import { outlineRegenerationOutputSchema } from '../lib/outline-regeneration.ts';
 
 function assertStrictObjectSchemas(value: unknown, path = 'root') {
   if (!value || typeof value !== 'object') return;
@@ -38,6 +39,7 @@ void test('every Codex output schema satisfies strict required-property rules', 
     writtenTestSupplementSchemaV2: outlineV2SupplementSchema('written-test'),
     workSampleSchema,
     workSampleAnalysisV2Schema,
+    outlineRegenerationSchemaV2: outlineRegenerationOutputSchema(2),
   }))
     assertStrictObjectSchemas(schema, name);
 });
