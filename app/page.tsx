@@ -276,6 +276,12 @@ export default function Home({
   const effectiveWrittenTestConfirmed =
     supportsWrittenTest(sourceTemplateId) && writtenTestConfirmed;
   const outlineLocked = resumeOutlineLocked(resumeReading);
+  const writtenTestSupplemented = !!(
+    resumeReading?.writtenTestSupplement?.length ||
+    resumeReading?.outline?.reserveQuestions.some(
+      (question) => question.source === 'written-test',
+    )
+  );
   const writtenTestSupplementEligible = canGenerateWrittenTestSupplement({
     sourceTemplateId,
     writtenTestConfirmed: effectiveWrittenTestConfirmed,
@@ -283,12 +289,7 @@ export default function Home({
     hasResumeReading: !!(
       resumeReading?.interviewQuestions || resumeReading?.outline
     ),
-    hasSupplement: !!(
-      resumeReading?.writtenTestSupplement?.length ||
-      resumeReading?.outline?.reserveQuestions.some(
-        (question) => question.source === 'written-test',
-      )
-    ),
+    hasSupplement: writtenTestSupplemented,
   });
   const workSampleEligible = canSubmitWorkSample({
     sourceTemplateId,
@@ -1842,7 +1843,7 @@ export default function Home({
     hasWrittenTest: effectiveHasWrittenTest,
     writtenTestConfirmed: effectiveWrittenTestConfirmed,
     writtenTestSupported: supportsWrittenTest(sourceTemplateId),
-    writtenTestSupplemented: !!resumeReading?.writtenTestSupplement?.length,
+    writtenTestSupplemented,
     workSampleAnalyzed: !!workSample,
     onStandardsOpenChange: setStandardsOpen,
     onCandidateChange: (value: string) => {
@@ -2138,9 +2139,7 @@ export default function Home({
               writtenTestSupported={supportsWrittenTest(sourceTemplateId)}
               writtenTestConfirmed={effectiveWrittenTestConfirmed}
               hasWrittenTest={effectiveHasWrittenTest}
-              writtenTestSupplemented={
-                !!resumeReading?.writtenTestSupplement?.length
-              }
+              writtenTestSupplemented={writtenTestSupplemented}
               workSampleAnalyzed={!!workSample}
               outlineLocked={outlineLocked}
               disabled={!!busy || outlineTaskActive}

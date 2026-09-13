@@ -2264,6 +2264,124 @@ fieldset label:last-of-type {
   color: #075e55;
   font-size: 16px;
 }
+.outline-v2 {
+  background: #eef8f4;
+}
+.outline-v2-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.outline-v2-heading h4 {
+  margin: 0;
+  color: #075e55;
+  font-size: 16px;
+}
+.outline-v2-heading > span {
+  color: #4e7166;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.outline-v2-question-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.outline-v2-question-heading .question-source-badge {
+  margin: 0;
+}
+.outline-v2-question-heading > span:last-child {
+  color: #6a7d76;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.outline-v2-question .dimension-badge.secondary {
+  background: #f3f5f4;
+  color: #64736e;
+}
+.outline-v2-question blockquote strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #49685f;
+  font-size: 11px;
+}
+.outline-v2-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #c9ddd5;
+}
+.outline-v2-section > summary {
+  cursor: pointer;
+  color: #245c50;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.8;
+}
+.outline-v2-section > summary:focus-visible {
+  outline: 2px solid #087d70;
+  outline-offset: 4px;
+  border-radius: 3px;
+}
+.outline-v2-section-note {
+  margin: 8px 0 10px;
+  color: #647970;
+  font-size: 12px;
+}
+.outline-v2-coverage-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 0;
+}
+.outline-v2-coverage-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #d7e6df;
+  border-radius: 7px;
+  background: #fff;
+}
+.outline-v2-coverage-list dt {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #29463e;
+  font-size: 13px;
+}
+.outline-v2-coverage-list dd {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+}
+.outline-v2-coverage-list .coverage-covered dd {
+  color: #1f765d;
+}
+.outline-v2-coverage-list .coverage-weak dd {
+  color: #9a6800;
+}
+.outline-v2-coverage-list .coverage-uncovered dd {
+  color: #a44242;
+}
+.outline-v2-archived .interview-question-card {
+  background: #f7f9f8;
+  opacity: 0.82;
+}
+@media (max-width: 720px) {
+  .outline-v2-coverage-list {
+    grid-template-columns: 1fr;
+  }
+  .outline-v2-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
 
 .written-test-supplement {
   min-width: 0;
