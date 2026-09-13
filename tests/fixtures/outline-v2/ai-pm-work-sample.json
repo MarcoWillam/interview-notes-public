@@ -1,0 +1,14 @@
+{
+  "name": "AI 产品经理有笔试作品",
+  "templateId": "builtin-campus-ai-product-manager",
+  "resumeText": "姓名：陈一帆。陈一帆主动推进社团工具改版，访谈八名成员后完成需求优先级调整。",
+  "hasWrittenTest": true,
+  "workSample": {
+    "path": "docs/product-brief.md",
+    "excerpt": "先验证高频任务，再决定是否扩展自动化范围。"
+  },
+  "expected": {
+    "reviewSource": "work-sample",
+    "reviewPositions": [2, 3, 4]
+  }
+}

@@ -279,17 +279,16 @@ void test('initial V2 analysis returns one outline contract and binds work evide
             ...report,
             outline: {
               ...outline,
-              requiredQuestions: outline.requiredQuestions.map(
-                (item, index) =>
-                  index === 1
-                    ? {
-                        ...item,
-                        workSampleEvidence: {
-                          ...item.workSampleEvidence!,
-                          excerpt: '另一段引用',
-                        },
-                      }
-                    : item,
+              requiredQuestions: outline.requiredQuestions.map((item, index) =>
+                index === 1
+                  ? {
+                      ...item,
+                      workSampleEvidence: {
+                        ...item.workSampleEvidence!,
+                        excerpt: '另一段引用',
+                      },
+                    }
+                  : item,
               ),
             },
           }),

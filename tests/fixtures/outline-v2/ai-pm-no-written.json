@@ -1,0 +1,11 @@
+{
+  "name": "AI 产品经理无笔试",
+  "templateId": "builtin-campus-ai-product-manager",
+  "resumeText": "姓名：林小满。林小满在校园项目中主动组织六次用户访谈，并推动团队完成两轮方案验证。",
+  "hasWrittenTest": false,
+  "workSample": null,
+  "expected": {
+    "reviewSource": null,
+    "reviewPositions": []
+  }
+}

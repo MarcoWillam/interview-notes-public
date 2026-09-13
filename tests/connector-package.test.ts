@@ -8,6 +8,15 @@ import { unzipSync } from 'fflate';
 
 const root = resolve(import.meta.dirname, '..');
 
+void test('connector package includes the outline V2 runtime modules', () => {
+  for (const file of [
+    'lib/interview-outline-v2.ts',
+    'lib/interview-outline-v2-prompt.ts',
+    'lib/outline-v2-supplement.ts',
+  ])
+    assert.ok(connectorPackageFiles.includes(file), `${file} must be packaged`);
+});
+
 void test('connector package contains every local TypeScript dependency', async () => {
   const packaged = new Set(connectorPackageFiles);
   for (const file of connectorPackageFiles) {
@@ -40,4 +49,20 @@ void test('connector package carries the ZIP reader and its license without inst
   assert.match(instructions, /作品原件.*不会上传服务器/);
   assert.match(instructions, /\.local\/connector\.json/);
   assert.match(instructions, /无需重新配对/);
+});
+
+void test('connector archive excludes private files and unsafe paths', async () => {
+  const archive = await readFile('public/downloads/interview-connector.zip');
+  const names = Object.keys(unzipSync(new Uint8Array(archive)));
+  for (const name of names) {
+    assert.ok(name.startsWith('interview-connector/'));
+    assert.ok(!name.startsWith('/'));
+    assert.ok(!name.split('/').includes('..'));
+    assert.doesNotMatch(name, /(?:^|\/)\.env(?:\.|$)/);
+    assert.doesNotMatch(name, /(?:^|\/)\.local(?:\/|$)/);
+    assert.doesNotMatch(
+      name,
+      /(?:^|\/)(?:resumes?|简历|credentials?)(?:\/|$)/i,
+    );
+  }
 });

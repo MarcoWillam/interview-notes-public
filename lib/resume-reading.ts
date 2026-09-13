@@ -474,9 +474,7 @@ export function exportResumeReading(reading: ResumeReading): string {
                 ...(reading.interviewQuestions || []),
                 ...(reading.outline?.requiredQuestions || []),
                 ...(reading.outline?.reserveQuestions || []),
-              ].some(
-                (question) => question.question === workQuestion.question,
-              ),
+              ].some((question) => question.question === workQuestion.question),
             ),
           ),
         ]

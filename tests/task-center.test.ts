@@ -231,6 +231,16 @@ void test('task center V2 regeneration uses the shared markdown exporter', async
   assert.match(source, /下载提纲 Markdown/);
 });
 
+void test('task center renders V2 written-test and work-sample supplements', async () => {
+  const source = await readFile(
+    new URL('../components/interview/task-center.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /OutlineV2SupplementTaskResult/);
+  assert.match(source, /job\.report\.outlineSupplement/);
+  assert.match(source, /已更新对应面试记录的候选区/);
+});
+
 void test('completed interview tasks separate work-sample verification in results and exports', async () => {
   const source = await readFile(
     new URL('../components/interview/task-center.tsx', import.meta.url),
