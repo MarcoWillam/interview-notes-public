@@ -19,7 +19,10 @@ import {
   validateOutlineRegenerationResult,
 } from '../../lib/outline-regeneration.ts';
 import { connectorRelease } from '../../lib/connector-release.ts';
-import type { WorkSampleReference } from '../../lib/work-sample.ts';
+import type {
+  WorkSampleInput,
+  WorkSampleReference,
+} from '../../lib/work-sample.ts';
 import { validateWorkSampleInput } from '../../lib/work-sample.ts';
 import {
   analyzeWorkSampleWithCodex,
@@ -140,7 +143,11 @@ export async function runConnector(
     writeTest?: typeof generateWrittenTestSupplementWithCodex;
     regenerateOutline?: typeof regenerateOutlineWithCodex;
     readResumeWork?: typeof readResumeAndWorkSampleWithCodex;
-    analyzeWorkSample?: typeof analyzeWorkSampleWithCodex;
+    analyzeWorkSample?: (
+      input: WorkSampleInput,
+      path: string,
+      signal: AbortSignal,
+    ) => Promise<unknown>;
     workSamples?: () => Promise<{
       artifacts: WorkSampleReference[];
       files: Map<string, string>;

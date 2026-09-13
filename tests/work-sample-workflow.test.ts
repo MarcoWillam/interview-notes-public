@@ -8,6 +8,11 @@ import {
 } from '../lib/work-sample-workflow.ts';
 import type { ResumeReading } from '../lib/resume-reading.ts';
 import type { WorkSampleAssessment } from '../lib/work-sample.ts';
+import {
+  calculateOutlineCoverage,
+  type InterviewOutlineV2,
+  type InterviewQuestionV2,
+} from '../lib/interview-outline-v2.ts';
 
 const question = (index: number, source: 'role' | 'work-sample' = 'role') => ({
   question: `${source === 'work-sample' ? '作品' : '原提纲'}问题 ${index + 1}`,
@@ -112,4 +117,81 @@ void test('initial success takes the combined reading result and clears its acti
   assert.equal(next.workSample?.artifact.id, workSample.artifact.id);
   assert.equal(next.workSampleJobId, undefined);
   assert.deepEqual(next.resumeReading, combined);
+});
+
+const v2Dimensions = [
+  '用户洞察与问题定义',
+  '产品方案与范围取舍',
+  'AI 理解与产品化判断',
+  '数据验证与迭代意识',
+  '自驱力与结果闭环',
+  '学习力',
+  '挑战力与韧性',
+  '团队精神与沟通协作',
+];
+
+function v2Question(index: number, required: boolean): InterviewQuestionV2 {
+  return {
+    id: `v2-${index + 1}`,
+    question: `请说明经历${index + 1}的关键判断`,
+    required,
+    estimatedMinutes: required ? 6 : 4,
+    primaryDimension: v2Dimensions[[4, 0, 1, 2, 3, 5, 6, 7][index]],
+    secondaryDimensions: [],
+    source: 'role',
+    goal: '核实具体判断',
+    resumeEvidence: null,
+    workSampleEvidence: null,
+    listenFor: ['判断依据'],
+    riskSignals: ['缺少个人行动'],
+    probes: [{ condition: '依据不清楚', question: '你怎样验证？' }],
+  };
+}
+
+void test('late V2 work replaces reserve questions while preserving required questions', () => {
+  const all = Array.from({ length: 8 }, (_, index) =>
+    v2Question(index, index < 5),
+  );
+  const outline: InterviewOutlineV2 = {
+    version: 2,
+    estimatedMinutes: 30,
+    requiredQuestions: all.slice(0, 5),
+    reserveQuestions: all.slice(5),
+    archivedReserveQuestions: [],
+    coverage: calculateOutlineCoverage(all, v2Dimensions),
+  };
+  const supplementQuestions = workSample.questions.map((item, index) => ({
+    ...v2Question(index + 5, false),
+    id: `work-${index + 1}`,
+    question: item.question,
+    source: 'work-sample' as const,
+    workSampleEvidence: item.workSampleEvidence!,
+  }));
+  const v2State = {
+    ...state,
+    resumeReading: { ...reading, interviewQuestions: undefined, outline },
+  };
+  assert.equal(canSubmitWorkSample(v2State), true);
+  const next = applyLateWorkSample(v2State, {
+    version: 2,
+    workSample,
+    outlineSupplement: {
+      version: 2,
+      kind: 'work-sample',
+      questions: supplementQuestions,
+    },
+  });
+  assert.deepEqual(
+    next.resumeReading.outline?.requiredQuestions,
+    outline.requiredQuestions,
+  );
+  assert.deepEqual(
+    next.resumeReading.outline?.reserveQuestions,
+    supplementQuestions,
+  );
+  assert.deepEqual(
+    next.resumeReading.outline?.archivedReserveQuestions,
+    outline.reserveQuestions,
+  );
+  assert.equal(next.workSample.artifact.id, workSample.artifact.id);
 });

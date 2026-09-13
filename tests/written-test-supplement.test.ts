@@ -4,9 +4,17 @@ import {
   exportWrittenTestSupplement,
   validateWrittenTestSupplement,
   validateWrittenTestSupplementInput,
+  writtenTestSupplementInstructionsFor,
   writtenTestSupplementInstructions,
+  writtenTestSupplementOutputSchema,
   writtenTestSupplementSchema,
 } from '../lib/written-test-supplement.ts';
+import {
+  calculateOutlineCoverage,
+  type InterviewOutlineV2,
+  type InterviewQuestionV2,
+} from '../lib/interview-outline-v2.ts';
+import { builtInRoleTemplates } from '../lib/default-role-templates.ts';
 
 const resumeText = '姓名：张晓明\n负责 AI 助手的用户访谈与方案设计。';
 const standards = {
@@ -29,8 +37,7 @@ const existingQuestions = [
   questionSource: index === 0 ? ('resume' as const) : ('role' as const),
   dimensions: [index === 0 ? '用户洞察' : '自驱力'],
   reason: '核实候选人的具体判断与行动。',
-  resumeEvidence:
-    index === 0 ? '负责 AI 助手的用户访谈与方案设计。' : null,
+  resumeEvidence: index === 0 ? '负责 AI 助手的用户访谈与方案设计。' : null,
   listenFor: ['候选人自己的行动'],
   probes: ['你为什么这样判断？'],
 }));
@@ -38,7 +45,8 @@ const existingQuestions = [
 const rawInput = { ...standards, resumeText, existingQuestions };
 const questions = [
   {
-    question: '请复述你在笔试中如何定义核心用户问题，并说明排除了哪些次要问题。',
+    question:
+      '请复述你在笔试中如何定义核心用户问题，并说明排除了哪些次要问题。',
     questionSource: 'written-test' as const,
     dimensions: ['用户洞察', '产品判断'],
     reason: '核实问题定义与用户理解。',
@@ -87,7 +95,10 @@ void test('rejects invalid original outlines and malformed supplement questions'
     [...questions, questions[0]],
     [{ ...questions[0], questionSource: 'role' }, ...questions.slice(1)],
     [{ ...questions[0], dimensions: ['未知维度'] }, ...questions.slice(1)],
-    [{ ...questions[0], resumeEvidence: '姓名：张晓明' }, ...questions.slice(1)],
+    [
+      { ...questions[0], resumeEvidence: '姓名：张晓明' },
+      ...questions.slice(1),
+    ],
     [{ ...questions[0], probes: [] }, ...questions.slice(1)],
     [{ ...questions[0], listenFor: [] }, ...questions.slice(1)],
     [questions[0], questions[0], questions[2]],
@@ -118,4 +129,75 @@ void test('schema, prompt and markdown describe only the three-question suppleme
   assert.ok(markdown.includes(questions[2].question));
   assert.ok(markdown.includes('观察点：'));
   assert.ok(markdown.includes('追问：'));
+});
+
+function v2Outline(): InterviewOutlineV2 {
+  const template = builtInRoleTemplates[0];
+  const dimensions = template.dimensionText.split('、');
+  const order = [4, 0, 1, 2, 3, 5, 6, 7];
+  const all: InterviewQuestionV2[] = order.map((dimensionIndex, index) => ({
+    id: `outline-${index + 1}`,
+    question: `请说明经历${index + 1}的关键判断`,
+    required: index < 5,
+    estimatedMinutes: index < 5 ? 6 : 4,
+    primaryDimension: dimensions[dimensionIndex],
+    secondaryDimensions: [],
+    source: 'role',
+    goal: '核实具体判断和行动',
+    resumeEvidence: null,
+    workSampleEvidence: null,
+    listenFor: ['个人判断依据'],
+    riskSignals: ['只描述团队结论'],
+    probes: [{ condition: '依据不清楚', question: '你怎样验证？' }],
+  }));
+  return {
+    version: 2,
+    estimatedMinutes: 30,
+    requiredQuestions: all.slice(0, 5),
+    reserveQuestions: all.slice(5),
+    archivedReserveQuestions: [],
+    coverage: calculateOutlineCoverage(all, dimensions),
+  };
+}
+
+function v2WrittenQuestions(): InterviewQuestionV2[] {
+  return builtInRoleTemplates[0].dimensionText
+    .split('、')
+    .slice(5)
+    .map((primaryDimension, index) => ({
+      id: `written-${index + 1}`,
+      question: `请复述笔试${index + 1}的关键取舍`,
+      required: false,
+      estimatedMinutes: 4,
+      primaryDimension,
+      secondaryDimensions: [],
+      source: 'written-test',
+      goal: '核实候选人自己的判断',
+      resumeEvidence: null,
+      workSampleEvidence: null,
+      listenFor: ['判断依据'],
+      riskSignals: ['声称不记得取舍'],
+      probes: [{ condition: '判断不清楚', question: '你为何这样选择？' }],
+    }));
+}
+
+void test('V2 written-test supplement uses the current outline and a separate strict contract', () => {
+  const template = builtInRoleTemplates[0];
+  const raw = {
+    ...template,
+    resumeText,
+    outlineVersion: 2 as const,
+    outline: v2Outline(),
+  };
+  const input = validateWrittenTestSupplementInput(raw);
+  const output = {
+    version: 2 as const,
+    kind: 'written-test' as const,
+    questions: v2WrittenQuestions(),
+  };
+  assert.deepEqual(validateWrittenTestSupplement(output, input), output);
+  assert.ok(writtenTestSupplementOutputSchema(2).required.includes('version'));
+  assert.ok(!('outline' in writtenTestSupplementOutputSchema(2).properties));
+  assert.match(writtenTestSupplementInstructionsFor(2), /候选题/);
+  assert.doesNotMatch(writtenTestSupplementInstructionsFor(2), /六道题/);
 });

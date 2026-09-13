@@ -16,6 +16,16 @@ import {
   aiPmWorkSampleRubricNames,
   aiPmWorkSampleRubricPrompt,
 } from './work-sample-rubric.ts';
+import { builtInRoleTemplates } from './default-role-templates.ts';
+import {
+  validateInterviewOutlineV2,
+  type InterviewOutlineV2,
+} from './interview-outline-v2.ts';
+import {
+  outlineV2SupplementSchema,
+  validateOutlineV2Supplement,
+  type OutlineV2SupplementResult,
+} from './outline-v2-supplement.ts';
 
 export type { WorkSampleEvidence } from './interview-questions.ts';
 
@@ -30,11 +40,21 @@ export type WorkSampleReference = {
   modifiedAt: number;
 };
 
-export type WorkSampleInput = InterviewStandards & {
+export type WorkSampleInputV1 = InterviewStandards & {
   resumeText: string;
   workSample: WorkSampleReference;
   existingQuestions: InterviewQuestion[];
+  outlineVersion?: 1;
 };
+
+export type WorkSampleInputV2 = InterviewStandards & {
+  resumeText: string;
+  workSample: WorkSampleReference;
+  outlineVersion: 2;
+  outline: InterviewOutlineV2;
+};
+
+export type WorkSampleInput = WorkSampleInputV1 | WorkSampleInputV2;
 
 export type WorkSampleDimension = {
   name: string;
@@ -60,6 +80,16 @@ export type WorkSampleAssessment = {
   risks: string[];
   questions: InterviewQuestion[];
 };
+
+export type WorkSampleAnalysisV2 = {
+  version: 2;
+  workSample: WorkSampleAssessment;
+  outlineSupplement: OutlineV2SupplementResult;
+};
+
+export type WorkSampleAnalysisResult =
+  | WorkSampleAssessment
+  | WorkSampleAnalysisV2;
 
 function boundedText(value: unknown, max: number, label: string) {
   if (typeof value !== 'string' || !value.trim() || value.length > max)
@@ -121,6 +151,37 @@ export function validateWorkSampleInput(value: unknown): WorkSampleInput {
   if (!/AI\s*产品经理/i.test(standards.role))
     throw new Error('作品评估目前仅支持 AI 产品经理岗位。');
   const resumeText = boundedText(item.resumeText, 30000, '简历正文');
+  const workSample = validateWorkSampleReference(item.workSample);
+  if (item.outlineVersion === 2) {
+    const template = builtInRoleTemplates[0];
+    const fields = [
+      'role',
+      'requirements',
+      'dimensionText',
+      'focus',
+      'scoringGuidance',
+      'reportRequirements',
+    ] as const;
+    if (fields.some((field) => standards[field] !== template[field]))
+      throw new Error('V2 作品补充仅支持内置 AI 产品经理模板。');
+    const outline = validateInterviewOutlineV2(item.outline, {
+      role: standards.role,
+      dimensions: standards.dimensionText.split('、'),
+      resumeText,
+      requireProductCore: true,
+      hasWrittenTest: false,
+      hasWorkSample: false,
+    });
+    return {
+      ...standards,
+      resumeText,
+      workSample,
+      outlineVersion: 2,
+      outline,
+    };
+  }
+  if (item.outlineVersion !== undefined && item.outlineVersion !== 1)
+    throw new Error('作品提纲版本不正确。');
   if (
     !Array.isArray(item.existingQuestions) ||
     ![6, 9].includes(item.existingQuestions.length)
@@ -141,8 +202,9 @@ export function validateWorkSampleInput(value: unknown): WorkSampleInput {
   return {
     ...standards,
     resumeText,
-    workSample: validateWorkSampleReference(item.workSample),
+    workSample,
     existingQuestions,
+    ...(item.outlineVersion === 1 ? { outlineVersion: 1 as const } : {}),
   };
 }
 
@@ -388,6 +450,64 @@ export const workSampleAssessmentSchema = {
 
 export const workSampleSchema = workSampleAssessmentSchema;
 
+export const workSampleAnalysisV2Schema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['version', 'workSample', 'outlineSupplement'],
+  properties: {
+    version: { type: 'integer', enum: [2] },
+    workSample: workSampleAssessmentSchema,
+    outlineSupplement: outlineV2SupplementSchema('work-sample'),
+  },
+} as const;
+
+export function workSampleOutputSchema(version: 1 | 2) {
+  return version === 2 ? workSampleAnalysisV2Schema : workSampleSchema;
+}
+
+export function validateWorkSampleAnalysisResult(
+  value: unknown,
+  input: WorkSampleInput,
+  options: { conciseQuestions?: boolean } = {},
+): WorkSampleAnalysisResult {
+  if (input.outlineVersion !== 2)
+    return validateWorkSampleAssessment(value, {
+      reference: input.workSample,
+      dimensionText: input.dimensionText,
+      questionCount: 3,
+      existingQuestions: input.existingQuestions,
+      conciseQuestions: options.conciseQuestions,
+    });
+  if (!value || typeof value !== 'object')
+    throw new Error('V2 作品评估格式不正确。');
+  const raw = value as Record<string, unknown>;
+  if (raw.version !== 2) throw new Error('V2 作品评估版本不正确。');
+  const workSample = validateWorkSampleAssessment(raw.workSample, {
+    reference: input.workSample,
+    dimensionText: input.dimensionText,
+    questionCount: 3,
+    existingQuestions: [],
+    conciseQuestions: options.conciseQuestions,
+  });
+  const outlineSupplement = validateOutlineV2Supplement(raw.outlineSupplement, {
+    kind: 'work-sample',
+    outline: input.outline,
+    dimensions: input.dimensionText.split('、'),
+  });
+  if (
+    outlineSupplement.questions.some((question, index) => {
+      const assessmentQuestion = workSample.questions[index];
+      return (
+        question.question !== assessmentQuestion?.question ||
+        JSON.stringify(question.workSampleEvidence) !==
+          JSON.stringify(assessmentQuestion?.workSampleEvidence || null)
+      );
+    })
+  )
+    throw new Error('V2 作品候选题与作品评估的文件依据不一致。');
+  return { version: 2, workSample, outlineSupplement };
+}
+
 export function workSampleRubricLabel(value: WorkSampleAssessment) {
   return value.rubricVersion === AI_PM_WORK_SAMPLE_RUBRIC_VERSION
     ? '依据统一笔试目的评估'
@@ -404,6 +524,11 @@ export const workSampleInstructions = [
   'questions 必须恰好三道且不与 existingQuestions 重复，均为 questionSource=work-sample、resumeEvidence=null，且每题提供文件依据。每题 question 必须是可直接念出的 12–30 字短句，只核实一个核心判断，最多一个问号；作品背景与核实细节拆入 reason、listenFor 与 probes。第 1 题核实用户问题、关键产品决策、范围取舍和放弃方向；第 2 题核实 AI 核心价值、责任边界、失败或纠正机制，并加入一个与作品有关的约束变化；第 3 题核实判断依据、验证方法、下一步关键假设和产品化方向。问题必须基于作品中的具体内容，不能使用任何作品都适用的通用问法。dimensions 仍只能使用输入岗位 dimensionText 中的一至两个原名。',
   '只返回符合结构的 JSON，不作录用建议。',
 ].join('\n');
+
+export function workSampleInstructionsFor(version: 1 | 2) {
+  if (version === 1) return workSampleInstructions;
+  return `${workSampleInstructions}\nV2 输出必须包装为 version=2、workSample 和 outlineSupplement。workSample 保持上述六维作品评估结构；outlineSupplement 必须包含 version=2、kind=work-sample 和三道 required=false 的 V2 候选题。两处三道问题的问题文本、作品相对路径和逐字引用必须逐题完全一致。V2 候选题主问题为 8–24 个字符，每题一个主维度、最多两个辅助维度，并提供 goal、listenFor、riskSignals 和条件 probes。编号和问题不得与 outline.requiredQuestions 重复。`;
+}
 
 export function exportWorkSampleAssessment(
   value: WorkSampleAssessment,

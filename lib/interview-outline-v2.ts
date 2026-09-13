@@ -101,7 +101,7 @@ function safeWorkSamplePath(value: unknown) {
   return path;
 }
 
-function validateQuestion(
+export function validateInterviewQuestionV2(
   value: unknown,
   expectedRequired: boolean,
   context: OutlineV2Context,
@@ -242,13 +242,13 @@ export function validateInterviewOutlineV2(
   if (!Array.isArray(raw.archivedReserveQuestions))
     throw new Error('历史候选题格式不正确。');
   const requiredQuestions = raw.requiredQuestions.map((question) =>
-    validateQuestion(question, true, context),
+    validateInterviewQuestionV2(question, true, context),
   );
   const reserveQuestions = raw.reserveQuestions.map((question) =>
-    validateQuestion(question, false, context),
+    validateInterviewQuestionV2(question, false, context),
   );
   const archivedReserveQuestions = raw.archivedReserveQuestions.map(
-    (question) => validateQuestion(question, false, context),
+    (question) => validateInterviewQuestionV2(question, false, context),
   );
   const activeQuestions = [...requiredQuestions, ...reserveQuestions];
   const allQuestions = [...activeQuestions, ...archivedReserveQuestions];
@@ -354,7 +354,7 @@ export function validateInterviewOutlineV2(
   };
 }
 
-const questionSchema = {
+export const interviewQuestionV2Schema = {
   type: 'object',
   additionalProperties: false,
   required: [
@@ -450,19 +450,19 @@ export const interviewOutlineV2Schema = {
       type: 'array',
       minItems: V2_REQUIRED_QUESTIONS,
       maxItems: V2_REQUIRED_QUESTIONS,
-      items: questionSchema,
+      items: interviewQuestionV2Schema,
     },
     reserveQuestions: {
       type: 'array',
       minItems: 0,
       maxItems: V2_MAX_RESERVE_QUESTIONS,
-      items: questionSchema,
+      items: interviewQuestionV2Schema,
     },
     archivedReserveQuestions: {
       type: 'array',
       minItems: 0,
       maxItems: 24,
-      items: questionSchema,
+      items: interviewQuestionV2Schema,
     },
     coverage: {
       type: 'array',

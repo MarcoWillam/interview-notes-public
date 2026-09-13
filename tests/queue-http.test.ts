@@ -517,7 +517,7 @@ void test('connector routes resume work to the reading runner and stores its cit
           throw new Error('wrong runner');
         },
         readResume: async (value) => {
-          assert.deepEqual(value, input);
+          assert.deepEqual(value, { ...input, outlineVersion: 1 });
           return report;
         },
       },

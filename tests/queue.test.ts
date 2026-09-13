@@ -891,7 +891,7 @@ void test('resume jobs require an upgraded connector and validate against resume
     assert.equal(s.claim(d.token, true), null);
     const claimed = s.claim(d.token, true, ['interview', 'resume'])!;
     assert.equal(claimed.kind, 'resume');
-    assert.deepEqual(claimed.input, resumeInput);
+    assert.deepEqual(claimed.input, { ...resumeInput, outlineVersion: 1 });
     const report = reading;
     s.finish(d.token, claimed.id, claimed.lease, report);
     assert.deepEqual(s.get(a, job.id).report, report);

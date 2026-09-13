@@ -2,8 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { reportSchema } from '../lib/assessment.ts';
 import { resumeOutputSchema, resumeSchema } from '../lib/resume-reading.ts';
-import { workSampleSchema } from '../lib/work-sample.ts';
+import {
+  workSampleAnalysisV2Schema,
+  workSampleSchema,
+} from '../lib/work-sample.ts';
 import { writtenTestSupplementSchema } from '../lib/written-test-supplement.ts';
+import { outlineV2SupplementSchema } from '../lib/outline-v2-supplement.ts';
 
 function assertStrictObjectSchemas(value: unknown, path = 'root') {
   if (!value || typeof value !== 'object') return;
@@ -31,7 +35,9 @@ void test('every Codex output schema satisfies strict required-property rules', 
     resumeSchema,
     resumeSchemaV2: resumeOutputSchema(2),
     writtenTestSupplementSchema,
+    writtenTestSupplementSchemaV2: outlineV2SupplementSchema('written-test'),
     workSampleSchema,
+    workSampleAnalysisV2Schema,
   }))
     assertStrictObjectSchemas(schema, name);
 });
