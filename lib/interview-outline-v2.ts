@@ -358,6 +358,104 @@ export function validateInterviewOutlineV2(
   };
 }
 
+const outlineSourceLabels: Record<InterviewQuestionV2['source'], string> = {
+  role: '岗位通用',
+  resume: '简历经历',
+  'written-test': '笔试复盘',
+  'work-sample': '笔试作品',
+};
+
+const outlineCoverageLabels: Record<
+  InterviewOutlineCoverage['status'],
+  string
+> = {
+  covered: '已覆盖',
+  weak: '覆盖偏弱',
+  uncovered: '未覆盖',
+};
+
+function exportQuestionV2(question: InterviewQuestionV2, number: number) {
+  return [
+    `### ${number}. ${question.question}`,
+    '',
+    `预计用时：${question.estimatedMinutes} 分钟`,
+    '',
+    `主评估维度：${question.primaryDimension}`,
+    '',
+    `辅助评估维度：${question.secondaryDimensions.join('、') || '无'}`,
+    '',
+    `来源：${outlineSourceLabels[question.source]}`,
+    '',
+    `验证目标：${question.goal}`,
+    ...(question.resumeEvidence
+      ? [
+          '',
+          '简历依据：',
+          '',
+          '> ' + question.resumeEvidence.replaceAll('\n', '\n> '),
+        ]
+      : []),
+    ...(question.workSampleEvidence
+      ? [
+          '',
+          `作品依据：${question.workSampleEvidence.path}`,
+          '',
+          '> ' + question.workSampleEvidence.excerpt.replaceAll('\n', '\n> '),
+        ]
+      : []),
+    '',
+    '观察点：',
+    '',
+    ...question.listenFor.map((item) => `- ${item}`),
+    '',
+    '风险信号：',
+    '',
+    ...question.riskSignals.map((item) => `- ${item}`),
+    '',
+    '条件追问：',
+    '',
+    ...question.probes.map(
+      (probe) => `- 当${probe.condition}时：${probe.question}`,
+    ),
+  ];
+}
+
+export function exportInterviewOutlineV2(outline: InterviewOutlineV2): string {
+  return [
+    '## 五道必问题',
+    '',
+    `预计总时长：${outline.estimatedMinutes} 分钟`,
+    ...outline.requiredQuestions.flatMap((question, index) => [
+      '',
+      ...exportQuestionV2(question, index + 1),
+    ]),
+    '',
+    '## 候选题',
+    '',
+    ...(outline.reserveQuestions.length
+      ? outline.reserveQuestions.flatMap((question, index) => [
+          ...exportQuestionV2(question, index + 1),
+          '',
+        ])
+      : ['当前没有候选题。', '']),
+    '## 能力覆盖',
+    '',
+    ...outline.coverage.map(
+      (item) =>
+        `- ${item.dimension}：${outlineCoverageLabels[item.status]}（主问题 ${item.primaryQuestionIds.join('、') || '无'}；辅助问题 ${item.secondaryQuestionIds.join('、') || '无'}）`,
+    ),
+    '',
+    '## 归档候选题',
+    '',
+    ...(outline.archivedReserveQuestions.length
+      ? outline.archivedReserveQuestions.flatMap((question, index) => [
+          ...exportQuestionV2(question, index + 1),
+          '',
+        ])
+      : ['当前没有归档候选题。']),
+  ].join('\n');
+}
+
 export const interviewQuestionV2Schema = {
   type: 'object',
   additionalProperties: false,

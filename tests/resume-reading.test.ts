@@ -649,6 +649,46 @@ void test('markdown separates question paragraphs, evidence and follow-up lists'
     markdown.includes('简历证据：\n\n简历未提供明确依据。\n\n观察点：'),
   );
 });
+void test('V2 markdown exports required, reserve, coverage and archived questions in order', () => {
+  const outline = v2Outline();
+  const archived = {
+    ...outline.reserveQuestions[0],
+    id: 'archived-question-1',
+    question: '你会如何验证另一个关键假设',
+  };
+  const markdown = exportResumeReading({
+    ...result,
+    outline: { ...outline, archivedReserveQuestions: [archived] },
+  });
+  const resumeSection = markdown.indexOf('## 教育背景');
+  const requiredSection = markdown.indexOf('## 五道必问题');
+  const reserveSection = markdown.indexOf('## 候选题');
+  const coverageSection = markdown.indexOf('## 能力覆盖');
+  const archivedSection = markdown.indexOf('## 归档候选题');
+  const followUpsSection = markdown.indexOf('## 其他待核实项');
+  assert.ok(
+    resumeSection < requiredSection &&
+      requiredSection < reserveSection &&
+      reserveSection < coverageSection &&
+      coverageSection < archivedSection &&
+      archivedSection < followUpsSection,
+  );
+  const first = outline.requiredQuestions[0];
+  assert.ok(markdown.includes(`### 1. ${first.question}`));
+  assert.ok(markdown.includes(`预计用时：${first.estimatedMinutes} 分钟`));
+  assert.ok(markdown.includes(`主评估维度：${first.primaryDimension}`));
+  assert.ok(markdown.includes('辅助评估维度：无'));
+  assert.ok(markdown.includes('来源：岗位通用'));
+  assert.ok(markdown.includes(`验证目标：${first.goal}`));
+  assert.ok(markdown.includes(`- ${first.listenFor[0]}`));
+  assert.ok(markdown.includes(`- ${first.riskSignals[0]}`));
+  assert.ok(
+    markdown.includes(
+      `- 当${first.probes[0].condition}时：${first.probes[0].question}`,
+    ),
+  );
+  assert.ok(markdown.includes(`### 1. ${archived.question}`));
+});
 void test('markdown appends three written-test questions after the original outline', () => {
   const markdown = exportResumeReading({
     ...structuredResult,
@@ -721,6 +761,10 @@ async function renderReading(
       (_match, quote: string, specifier: string) => {
         if (specifier === './work-sample-view') {
           const stub = 'export function WorkSampleView(){return null}';
+          return `from ${quote}data:text/javascript;base64,${Buffer.from(stub).toString('base64')}${quote}`;
+        }
+        if (specifier === './interview-outline-v2-view') {
+          const stub = 'export function InterviewOutlineV2View(){return null}';
           return `from ${quote}data:text/javascript;base64,${Buffer.from(stub).toString('base64')}${quote}`;
         }
         const resolved = specifier.startsWith('.')

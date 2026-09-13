@@ -2225,6 +2225,12 @@ fieldset label:last-of-type {
   font-size: 12px;
   white-space: nowrap;
 }
+.task-protocol-warning {
+  margin: 8px 0 0;
+  color: #9a5d00;
+  font-size: 12px;
+  font-weight: 700;
+}
 .outline-regeneration-summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

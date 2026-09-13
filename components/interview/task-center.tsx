@@ -15,6 +15,7 @@ import {
 } from '../../lib/work-sample';
 import { groupAssessmentDimensions } from '../../lib/assessment-groups';
 import type { OutlineRegenerationResult } from '../../lib/outline-regeneration';
+import { exportInterviewOutlineV2 } from '../../lib/interview-outline-v2';
 import {
   controlRemoteJob,
   remoteRequest,
@@ -30,6 +31,7 @@ import {
   ResumeReadingView,
   WrittenTestSupplementView,
 } from './resume-reading-view';
+import { InterviewOutlineV2View } from './interview-outline-v2-view';
 import {
   TaskCenterView,
   taskActionPrompt,
@@ -89,24 +91,7 @@ function downloadReport(job: Job) {
 
 function downloadOutline(value: OutlineRegenerationResult) {
   if ('outline' in value) {
-    const questions = [
-      ...value.outline.requiredQuestions,
-      ...value.outline.reserveQuestions,
-    ];
-    const markdown = [
-      '# 重新生成的面试提纲',
-      '',
-      ...questions.flatMap((question, index) => [
-        `## ${index + 1}. ${question.question}`,
-        '',
-        `来源：${question.source}`,
-        '',
-        `主评估维度：${question.primaryDimension}`,
-        '',
-        `验证目标：${question.goal}`,
-        '',
-      ]),
-    ].join('\n');
+    const markdown = `# 重新生成的面试提纲\n\n${exportInterviewOutlineV2(value.outline)}`;
     const url = URL.createObjectURL(
       new Blob([markdown], { type: 'text/markdown;charset=utf-8' }),
     );
@@ -174,6 +159,9 @@ export function TaskCenter({ onOpen }: { onOpen?: () => void } = {}) {
   const [error, setError] = useState('');
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [clock, setClock] = useState(() => Date.now());
+  const [maximumOnlineProtocol, setMaximumOnlineProtocol] = useState<
+    number | null
+  >(null);
 
   const activeCount = useMemo(
     () =>
@@ -188,8 +176,24 @@ export function TaskCenter({ onOpen }: { onOpen?: () => void } = {}) {
 
   const refresh = useCallback(async () => {
     try {
-      const data = await remoteRequest<{ jobs: Job[] }>('/api/jobs');
+      const [data, devices] = await Promise.all([
+        remoteRequest<{ jobs: Job[] }>('/api/jobs'),
+        remoteRequest<{
+          devices: {
+            online: boolean;
+            ready: boolean;
+            protocol: number | null;
+          }[];
+        }>('/api/devices').catch(() => null),
+      ]);
       setJobs(data.jobs);
+      const onlineProtocols =
+        devices?.devices
+          .filter((device) => device.online && device.ready)
+          .map((device) => Number(device.protocol || 0)) || [];
+      setMaximumOnlineProtocol(
+        onlineProtocols.length ? Math.max(...onlineProtocols) : null,
+      );
       setLoaded(true);
       setError('');
     } catch (reason) {
@@ -333,6 +337,7 @@ export function TaskCenter({ onOpen }: { onOpen?: () => void } = {}) {
                   jobs={jobs}
                   now={clock}
                   pendingId={pendingId}
+                  maximumOnlineProtocol={maximumOnlineProtocol}
                   onAction={(job, action) => void act(job, action)}
                   onResult={(job) => void showResult(job)}
                 />
@@ -368,7 +373,7 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
         )}
       {job.report &&
         job.kind === 'outline' &&
-        'interviewQuestions' in job.report && (
+        ('interviewQuestions' in job.report || 'outline' in job.report) && (
           <OutlineTaskResult value={job.report as OutlineRegenerationResult} />
         )}
       {job.report &&
@@ -450,17 +455,11 @@ function OutlineTaskResult({ value }: { value: OutlineRegenerationResult }) {
     return (
       <section>
         <h4>重新生成的面试提纲</h4>
-        <ol>
-          {[
-            ...value.outline.requiredQuestions,
-            ...value.outline.reserveQuestions,
-          ].map((question) => (
-            <li key={question.id}>
-              <strong>{question.question}</strong>
-              <span>{question.primaryDimension}</span>
-            </li>
-          ))}
-        </ol>
+        <InterviewOutlineV2View outline={value.outline} />
+        <p className="small-note">请回到对应面试记录确认已自动应用。</p>
+        <button className="primary-button" onClick={() => downloadOutline(value)}>
+          <Download size={16} /> 下载提纲 Markdown
+        </button>
       </section>
     );
   const questions = [

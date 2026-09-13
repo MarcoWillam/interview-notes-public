@@ -191,7 +191,44 @@ void test('interview preparation shows the supplemented written-test status', as
     'utf8',
   );
   assert.match(source, /writtenTestSupplemented/);
-  assert.match(source, /已补充 3 道复盘题/);
+  assert.match(source, /已补充复盘题/);
+});
+
+void test('task center flags queued V2 work when online connectors are too old', async () => {
+  const { TaskCenterView } = await loadView();
+  const html = renderToStaticMarkup(
+    createElement(TaskCenterView, {
+      jobs: [
+        {
+          id: 'v2-resume',
+          kind: 'resume',
+          label: '张三',
+          state: 'queued',
+          created: now,
+          updated: now,
+          queuedAt: now,
+          requiredProtocol: 3,
+        },
+      ],
+      now,
+      pendingId: null,
+      maximumOnlineProtocol: 2,
+      onAction() {},
+      onResult() {},
+    }),
+  );
+  assert.match(html, /需要升级连接器/);
+});
+
+void test('task center V2 regeneration uses the shared markdown exporter', async () => {
+  const source = await readFile(
+    new URL('../components/interview/task-center.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /exportInterviewOutlineV2/);
+  assert.match(source, /downloadOutline/);
+  assert.match(source, /'outline' in value/);
+  assert.match(source, /下载提纲 Markdown/);
 });
 
 void test('completed interview tasks separate work-sample verification in results and exports', async () => {
