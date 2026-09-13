@@ -5,6 +5,7 @@ import {
   type QuestionSource,
   type ResumeReading,
 } from '../../lib/resume-reading';
+import { InterviewOutlineV2View } from './interview-outline-v2-view';
 import { WorkSampleView } from './work-sample-view';
 
 const sourceLabels: Record<QuestionSource, string> = {
@@ -128,12 +129,21 @@ export function ResumeReadingView({
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   const questions = value.interviewQuestions || [];
+  const outlineQuestions = value.outline
+    ? [...value.outline.requiredQuestions, ...value.outline.reserveQuestions]
+    : [];
   const hasWrittenTest =
     questions.some(
       (question) =>
         question.questionSource === 'written-test' ||
         question.questionSource === 'work-sample',
-    ) || !!value.workSample;
+    ) ||
+    outlineQuestions.some(
+      (question) =>
+        question.source === 'written-test' ||
+        question.source === 'work-sample',
+    ) ||
+    !!value.workSample;
   const itemCount = value.sections.reduce(
     (total, section) => total + section.items.length,
     0,
@@ -162,7 +172,10 @@ export function ResumeReadingView({
           </button>
         </div>
       </div>
-      {!!questions.length && (
+      {value.outline?.version === 2 && (
+        <InterviewOutlineV2View outline={value.outline} />
+      )}
+      {!value.outline && !!questions.length && (
         <section className="interview-guide">
           <h4>
             {`面试提纲 · ${hasWrittenTest ? '含笔试复盘' : '常规'} · 30–40 分钟`}
@@ -187,7 +200,11 @@ export function ResumeReadingView({
           <section className="written-test-supplement-action">
             <div>
               <strong>需要补充笔试复盘？</strong>
-              <p>保留原 6 道提纲，由 Codex 额外生成 3 道复盘题。</p>
+              <p>
+                {value.outline?.version === 2
+                  ? '保留 5 道必问题，由 Codex 更新候选题并归档当前候选题。'
+                  : '保留原 6 道提纲，由 Codex 额外生成 3 道复盘题。'}
+              </p>
             </div>
             <button
               type="button"
@@ -205,7 +222,7 @@ export function ResumeReadingView({
           value={value.workSample}
           showQuestions={
             !value.workSample.questions.every((workQuestion) =>
-              questions.some(
+              [...questions, ...outlineQuestions].some(
                 (question) => question.question === workQuestion.question,
               ),
             )
@@ -216,7 +233,11 @@ export function ResumeReadingView({
           <section className="written-test-supplement-action work-sample-action">
             <div>
               <strong>候选人补交了笔试作品？</strong>
-              <p>保留现有提纲，Codex 读取本地 ZIP 后追加 3 道作品复盘题。</p>
+              <p>
+                {value.outline?.version === 2
+                  ? '保留 5 道必问题，Codex 读取本地 ZIP 后更新候选题并归档当前候选题。'
+                  : '保留现有提纲，Codex 读取本地 ZIP 后追加 3 道作品复盘题。'}
+              </p>
             </div>
             <button
               type="button"

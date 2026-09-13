@@ -97,7 +97,7 @@ export function InterviewPreparation({
                   ? workSampleAnalyzed
                     ? '有笔试 · 作品已分析'
                     : writtenTestSupplemented
-                      ? '有笔试 · 已补充 3 道复盘题'
+                      ? '有笔试 · 已补充复盘题'
                       : '有笔试'
                   : '无笔试'
                 : '待确认'}
