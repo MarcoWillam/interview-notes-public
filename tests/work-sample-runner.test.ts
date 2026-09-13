@@ -488,6 +488,50 @@ void test('late V2 work accepts an outline that already contains written-test re
   );
 });
 
+void test('late V2 work rejects an outline that already contains work-sample questions', () => {
+  const template = builtInRoleTemplates[0];
+  const dimensions = template.dimensionText.split('、');
+  const order = [4, 0, 1, 2, 3, 5, 6, 7];
+  const all: InterviewQuestionV2[] = order.map((dimensionIndex, index) => ({
+    id: `work-existing-${index + 1}`,
+    question: `请说明作品判断${index + 1}的依据`,
+    required: index < 5,
+    estimatedMinutes: index < 5 ? 6 : 4,
+    primaryDimension: dimensions[dimensionIndex],
+    secondaryDimensions: [],
+    source:
+      index >= 1 && index <= 3 ? ('work-sample' as const) : ('role' as const),
+    goal: '核实具体判断',
+    resumeEvidence: null,
+    workSampleEvidence:
+      index >= 1 && index <= 3
+        ? { path: 'old/answer.md', excerpt: '旧作品依据' }
+        : null,
+    listenFor: ['判断依据'],
+    riskSignals: ['缺少个人行动'],
+    probes: [{ condition: '依据不清楚', question: '你怎样验证？' }],
+  }));
+  const outline: InterviewOutlineV2 = {
+    version: 2,
+    estimatedMinutes: 30,
+    requiredQuestions: all.slice(0, 5),
+    reserveQuestions: all.slice(5),
+    archivedReserveQuestions: [],
+    coverage: calculateOutlineCoverage(all, dimensions),
+  };
+  assert.throws(
+    () =>
+      validateWorkSampleInput({
+        ...template,
+        resumeText,
+        workSample: { ...artifactBase, sha256: 'a'.repeat(64) },
+        outlineVersion: 2,
+        outline,
+      }),
+    /已有作品题/,
+  );
+});
+
 void test('changed work sample fails before Codex is called', async () => {
   const f = await fixture();
   let called = false;
