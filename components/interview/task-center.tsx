@@ -88,6 +88,35 @@ function downloadReport(job: Job) {
 }
 
 function downloadOutline(value: OutlineRegenerationResult) {
+  if ('outline' in value) {
+    const questions = [
+      ...value.outline.requiredQuestions,
+      ...value.outline.reserveQuestions,
+    ];
+    const markdown = [
+      '# 重新生成的面试提纲',
+      '',
+      ...questions.flatMap((question, index) => [
+        `## ${index + 1}. ${question.question}`,
+        '',
+        `来源：${question.source}`,
+        '',
+        `主评估维度：${question.primaryDimension}`,
+        '',
+        `验证目标：${question.goal}`,
+        '',
+      ]),
+    ].join('\n');
+    const url = URL.createObjectURL(
+      new Blob([markdown], { type: 'text/markdown;charset=utf-8' }),
+    );
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = '重新生成的面试提纲.md';
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return;
+  }
   const questions = [
     ...value.interviewQuestions,
     ...(value.writtenTestSupplement || []),
@@ -417,6 +446,23 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
 }
 
 function OutlineTaskResult({ value }: { value: OutlineRegenerationResult }) {
+  if ('outline' in value)
+    return (
+      <section>
+        <h4>重新生成的面试提纲</h4>
+        <ol>
+          {[
+            ...value.outline.requiredQuestions,
+            ...value.outline.reserveQuestions,
+          ].map((question) => (
+            <li key={question.id}>
+              <strong>{question.question}</strong>
+              <span>{question.primaryDimension}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
+    );
   const questions = [
     ...value.interviewQuestions,
     ...(value.writtenTestSupplement || []),

@@ -19,8 +19,8 @@ import { resolve } from 'node:path';
 import type { InterviewInput } from '../lib/interview.ts';
 import { assessmentInstructions, reportSchema } from '../lib/assessment.ts';
 import {
-  outlineRegenerationInstructions,
-  outlineRegenerationSchema,
+  outlineRegenerationInstructionsFor,
+  outlineRegenerationOutputSchema,
   validateOutlineRegenerationInput,
   validateOutlineRegenerationResult,
   type OutlineRegenerationInput,
@@ -356,17 +356,18 @@ export async function regenerateOutlineWithCodex(
   signal: AbortSignal,
 ): Promise<unknown> {
   const input = validateOutlineRegenerationInput(value);
+  const version = input.outlineVersion === 2 ? 2 : 1;
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     const raw = await runStructuredCodex(
       input,
       signal,
-      `${outlineRegenerationInstructions}${
+      `${outlineRegenerationInstructionsFor(version)}${
         attempt
-          ? '\n上一次结果的主问题未满足短句结构。本次必须逐题检查 12–30 字、最多一个问号，并把所有细节移入观察点和追问。'
+          ? `\n上一次结果的主问题未满足短句结构。本次必须逐题检查 ${version === 2 ? '8–24' : '12–30'} 字、最多一个问号，并把所有细节移入观察点和追问。`
           : ''
       }`,
-      outlineRegenerationSchema,
+      outlineRegenerationOutputSchema(version),
     );
     try {
       return validateOutlineRegenerationResult(raw, input);
