@@ -173,6 +173,14 @@ export function validateWorkSampleInput(value: unknown): WorkSampleInput {
       hasWorkSample: false,
       allowExistingReviewSources: true,
     });
+    if (
+      [
+        ...outline.requiredQuestions,
+        ...outline.reserveQuestions,
+        ...outline.archivedReserveQuestions,
+      ].some((question) => question.source === 'work-sample')
+    )
+      throw new Error('当前提纲已有作品题，不能再次分析作品。');
     return {
       ...standards,
       resumeText,
