@@ -21,13 +21,16 @@ import {
 } from '@/lib/remote-analysis';
 import {
   validateWrittenTestSupplement,
+  type WrittenTestSupplementInput,
   type WrittenTestSupplementResult,
 } from '@/lib/written-test-supplement';
 import type {
+  WorkSampleAnalysisResult,
   WorkSampleAssessment,
+  WorkSampleInput,
   WorkSampleReference,
 } from '@/lib/work-sample';
-import { validateWorkSampleAssessment } from '@/lib/work-sample';
+import { validateWorkSampleAnalysisResult } from '@/lib/work-sample';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FileText,
@@ -78,6 +81,7 @@ import {
   applyWrittenTestSupplement,
   appliedTemplateState,
   canGenerateWrittenTestSupplement,
+  outlineVersionForTemplate,
   resolveResumeOutlinePreflight,
   resolveResumeOutlineSetup,
   resolveTemplateSelection,
@@ -171,6 +175,7 @@ export default function Home({
   const [reportRequirements, setReportRequirements] = useState('');
   const [sourceTemplateId, setSourceTemplateId] = useState<string | null>(null);
   const [templateModified, setTemplateModified] = useState(false);
+  const [outlineVersion, setOutlineVersion] = useState<1 | 2>(1);
   const [hasWrittenTest, setHasWrittenTest] = useState(false);
   const [writtenTestConfirmed, setWrittenTestConfirmed] = useState(false);
   const [resumeText, setResumeText] = useState('');
@@ -275,8 +280,15 @@ export default function Home({
     sourceTemplateId,
     writtenTestConfirmed: effectiveWrittenTestConfirmed,
     hasWrittenTest: effectiveHasWrittenTest,
-    hasResumeReading: !!resumeReading?.interviewQuestions,
-    hasSupplement: !!resumeReading?.writtenTestSupplement?.length,
+    hasResumeReading: !!(
+      resumeReading?.interviewQuestions || resumeReading?.outline
+    ),
+    hasSupplement: !!(
+      resumeReading?.writtenTestSupplement?.length ||
+      resumeReading?.outline?.reserveQuestions.some(
+        (question) => question.source === 'written-test',
+      )
+    ),
   });
   const workSampleEligible = canSubmitWorkSample({
     sourceTemplateId,
@@ -310,6 +322,7 @@ export default function Home({
     hasWrittenTest: effectiveHasWrittenTest,
     writtenTestConfirmed: effectiveWrittenTestConfirmed,
     sourceTemplateId,
+    outlineVersion,
     queuedCodex,
   });
   useEffect(() => {
@@ -325,6 +338,7 @@ export default function Home({
       hasWrittenTest: effectiveHasWrittenTest,
       writtenTestConfirmed: effectiveWrittenTestConfirmed,
       sourceTemplateId,
+      outlineVersion,
       queuedCodex,
     };
   }, [
@@ -339,6 +353,7 @@ export default function Home({
     effectiveHasWrittenTest,
     effectiveWrittenTestConfirmed,
     sourceTemplateId,
+    outlineVersion,
     queuedCodex,
   ]);
   const [remoteJob, setRemoteJob] = useState<RemoteJob | null>(null);
@@ -390,6 +405,7 @@ export default function Home({
       confirmed,
       sourceTemplateId,
       templateModified,
+      outlineVersion,
       hasWrittenTest: effectiveHasWrittenTest,
       writtenTestConfirmed: effectiveWrittenTestConfirmed,
       workSample,
@@ -418,6 +434,7 @@ export default function Home({
       setReportRequirements(saved.reportRequirements || '');
       setSourceTemplateId(saved.sourceTemplateId ?? null);
       setTemplateModified(saved.templateModified ?? false);
+      setOutlineVersion(saved.outlineVersion ?? 1);
       setHasWrittenTest(saved.hasWrittenTest ?? false);
       setWrittenTestConfirmed(saved.writtenTestConfirmed ?? false);
       setResumeText(saved.resumeText || '');
@@ -491,9 +508,9 @@ export default function Home({
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const recover = async () => {
-      let job: RemoteJob<WorkSampleAssessment>;
+      let job: RemoteJob<WorkSampleAnalysisResult>;
       try {
-        job = await remoteRequest<RemoteJob<WorkSampleAssessment>>(
+        job = await remoteRequest<RemoteJob<WorkSampleAnalysisResult>>(
           '/api/jobs/' + encodeURIComponent(workSampleJobId),
         );
       } catch (reason) {
@@ -521,15 +538,40 @@ export default function Home({
               '已完成的作品文件信息已过期，请从任务中心查看结果。',
             );
           }
-          const result = validateWorkSampleAssessment(job.report, {
-            reference,
-            dimensionText,
-            questionCount: 3,
-            existingQuestions: [
-              ...(resumeReading?.interviewQuestions || []),
-              ...(resumeReading?.writtenTestSupplement || []),
-            ],
-          });
+          if (!resumeReading)
+            throw new Error('当前面试提纲已变化，未应用作品结果。');
+          const analysisInput: WorkSampleInput =
+            outlineVersion === 2 && resumeReading.outline
+              ? {
+                  role,
+                  requirements,
+                  dimensionText,
+                  focus,
+                  scoringGuidance,
+                  reportRequirements,
+                  resumeText,
+                  workSample: reference,
+                  outlineVersion: 2,
+                  outline: resumeReading.outline,
+                }
+              : {
+                  role,
+                  requirements,
+                  dimensionText,
+                  focus,
+                  scoringGuidance,
+                  reportRequirements,
+                  resumeText,
+                  workSample: reference,
+                  existingQuestions: [
+                    ...(resumeReading.interviewQuestions || []),
+                    ...(resumeReading.writtenTestSupplement || []),
+                  ],
+                };
+          const result = validateWorkSampleAnalysisResult(
+            job.report,
+            analysisInput,
+          );
           const next = applyLateWorkSample(
             {
               sourceTemplateId,
@@ -547,7 +589,11 @@ export default function Home({
           setConfirmed(false);
           setHasWrittenTest(true);
           setWrittenTestConfirmed(true);
-          setNotice('已恢复完成的作品分析，并追加 3 道作品复盘题。');
+          setNotice(
+            'version' in result
+              ? '已恢复作品分析，3 道作品复盘题已更新到候选题。'
+              : '已恢复完成的作品分析，并追加 3 道作品复盘题。',
+          );
           return;
         } catch (reason) {
           if (disposed) return;
@@ -584,10 +630,17 @@ export default function Home({
   }, [
     busy,
     dimensionText,
+    focus,
     effectiveHasWrittenTest,
     library.ready,
+    outlineVersion,
+    reportRequirements,
+    requirements,
     resumeReading,
+    resumeText,
     sourceTemplateId,
+    role,
+    scoringGuidance,
     workSample,
     workSampleJobId,
   ]);
@@ -595,22 +648,35 @@ export default function Home({
     if (
       !library.ready ||
       !writtenTestJobId ||
-      !resumeReading?.interviewQuestions ||
+      (!resumeReading?.interviewQuestions && !resumeReading?.outline) ||
       busyRef.current
     )
       return;
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const supplementInput = {
-      resumeText,
-      role,
-      requirements,
-      dimensionText,
-      focus,
-      scoringGuidance,
-      reportRequirements,
-      existingQuestions: resumeReading.interviewQuestions,
-    };
+    const supplementInput: WrittenTestSupplementInput =
+      outlineVersion === 2 && resumeReading.outline
+        ? {
+            resumeText,
+            role,
+            requirements,
+            dimensionText,
+            focus,
+            scoringGuidance,
+            reportRequirements,
+            outlineVersion: 2,
+            outline: resumeReading.outline,
+          }
+        : {
+            resumeText,
+            role,
+            requirements,
+            dimensionText,
+            focus,
+            scoringGuidance,
+            reportRequirements,
+            existingQuestions: resumeReading.interviewQuestions || [],
+          };
     const recover = async () => {
       try {
         const job = await remoteRequest<RemoteJob<WrittenTestSupplementResult>>(
@@ -627,7 +693,11 @@ export default function Home({
           setHasWrittenTest(true);
           setWrittenTestConfirmed(true);
           setWrittenTestJobId(undefined);
-          setNotice('已恢复并追加 3 道笔试复盘题。');
+          setNotice(
+            'version' in result
+              ? '已恢复并将 3 道笔试复盘题更新到候选题。'
+              : '已恢复并追加 3 道笔试复盘题。',
+          );
           return;
         }
         if (job.state === 'failed' || job.state === 'cancelled') {
@@ -664,12 +734,13 @@ export default function Home({
     focus,
     scoringGuidance,
     reportRequirements,
+    outlineVersion,
   ]);
   useEffect(() => {
     if (
       !library.ready ||
       !outlineRegenerationJobId ||
-      !resumeReading?.interviewQuestions ||
+      (!resumeReading?.interviewQuestions && !resumeReading?.outline) ||
       busyRef.current
     )
       return;
@@ -865,11 +936,11 @@ export default function Home({
       setError('提纲已生成，本面试记录不能再次生成。');
       return;
     }
-    const templateId =
-      sourceTemplateId === BUILTIN_TEMPLATE_IDS.aiProductManager ||
-      sourceTemplateId === BUILTIN_TEMPLATE_IDS.productOperations
-        ? sourceTemplateId
-        : '';
+    const templateId = builtInRoleTemplates.some(
+      ({ id }) => id === sourceTemplateId,
+    )
+      ? sourceTemplateId || ''
+      : '';
     setError('');
     setPendingResumeOutline({
       text,
@@ -948,6 +1019,7 @@ export default function Home({
         scoringGuidance: context.scoringGuidance,
         reportRequirements: context.reportRequirements,
         hasWrittenTest: decision,
+        outlineVersion: context.outlineVersion,
         ...(artifact ? { workSample: artifact } : {}),
       });
       if (!context.queuedCodex)
@@ -1020,6 +1092,10 @@ export default function Home({
       return;
     }
     const nextStandards = resolved.standards;
+    const nextOutlineVersion = outlineVersionForTemplate(
+      resolved.templateId,
+      false,
+    );
     invalidate();
     setRole(nextStandards.role);
     setRequirements(nextStandards.requirements);
@@ -1029,6 +1105,7 @@ export default function Home({
     setReportRequirements(nextStandards.reportRequirements);
     setSourceTemplateId(resolved.templateId);
     setTemplateModified(false);
+    setOutlineVersion(nextOutlineVersion);
     setHasWrittenTest(resolved.hasWrittenTest);
     setWrittenTestConfirmed(
       resolved.templateId === BUILTIN_TEMPLATE_IDS.aiProductManager,
@@ -1038,6 +1115,7 @@ export default function Home({
       resumeText: pending.text,
       ...nextStandards,
       sourceTemplateId: resolved.templateId,
+      outlineVersion: nextOutlineVersion,
       hasWrittenTest: resolved.hasWrittenTest,
       writtenTestConfirmed:
         resolved.templateId === BUILTIN_TEMPLATE_IDS.aiProductManager,
@@ -1060,7 +1138,7 @@ export default function Home({
     const recordId = library.id;
     if (
       busyRef.current ||
-      !reading?.interviewQuestions ||
+      (!reading?.interviewQuestions && !reading?.outline) ||
       !canRegenerateOutline({
         resumeText,
         reading,
@@ -1122,7 +1200,7 @@ export default function Home({
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
       const live = outlineLiveRef.current;
-      if (!live.reading?.interviewQuestions)
+      if (!live.reading?.interviewQuestions && !live.reading?.outline)
         throw new Error('面试记录已变化，未应用过期提纲。');
       const currentInput = await createOutlineRegenerationInput({
         resumeText: live.resumeText,
@@ -1183,7 +1261,7 @@ export default function Home({
     let submittedJobId: string | undefined;
     if (
       busyRef.current ||
-      !reading?.interviewQuestions ||
+      (!reading?.interviewQuestions && !reading?.outline) ||
       !canGenerateWrittenTestSupplement({
         sourceTemplateId,
         writtenTestConfirmed: effectiveWrittenTestConfirmed,
@@ -1211,17 +1289,31 @@ export default function Home({
       const context = resumeContext.current;
       if (!context.queuedCodex)
         throw new Error('请使用当前队列版工作台连接 Codex 后生成补充题。');
+      const supplementInput: WrittenTestSupplementInput =
+        context.outlineVersion === 2 && reading.outline
+          ? {
+              resumeText: context.resumeText,
+              role: context.role,
+              requirements: context.requirements,
+              dimensionText: context.dimensionText,
+              focus: context.focus,
+              scoringGuidance: context.scoringGuidance,
+              reportRequirements: context.reportRequirements,
+              outlineVersion: 2,
+              outline: reading.outline,
+            }
+          : {
+              resumeText: context.resumeText,
+              role: context.role,
+              requirements: context.requirements,
+              dimensionText: context.dimensionText,
+              focus: context.focus,
+              scoringGuidance: context.scoringGuidance,
+              reportRequirements: context.reportRequirements,
+              existingQuestions: reading.interviewQuestions || [],
+            };
       const value = await submitRemoteWrittenTest(
-        {
-          resumeText: context.resumeText,
-          role: context.role,
-          requirements: context.requirements,
-          dimensionText: context.dimensionText,
-          focus: context.focus,
-          scoringGuidance: context.scoringGuidance,
-          reportRequirements: context.reportRequirements,
-          existingQuestions: reading.interviewQuestions,
-        },
+        supplementInput,
         `${context.candidate || resumeName || '未命名候选人'} · 笔试复盘补充`.slice(
           0,
           100,
@@ -1251,7 +1343,11 @@ export default function Home({
         hasWrittenTest: true,
         writtenTestConfirmed: true,
       };
-      setNotice('已追加 3 道笔试复盘题，笔试情况已同步为“有笔试”。');
+      setNotice(
+        'version' in result
+          ? '已将 3 道笔试复盘题更新到候选题，笔试情况已同步为“有笔试”。'
+          : '已追加 3 道笔试复盘题，笔试情况已同步为“有笔试”。',
+      );
       setTab('resume');
     } catch (e) {
       if (analysisController.current !== controller) return;
@@ -1290,7 +1386,7 @@ export default function Home({
     let submittedJobId: string | undefined;
     if (
       busyRef.current ||
-      !reading?.interviewQuestions ||
+      (!reading?.interviewQuestions && !reading?.outline) ||
       !workSampleEligible ||
       !artifact?.available
     ) {
@@ -1312,38 +1408,58 @@ export default function Home({
       const context = resumeContext.current;
       if (!context.queuedCodex)
         throw new Error('请使用当前队列版工作台连接 Codex 后分析作品。');
-      const result = await submitRemoteWorkSample(
-        {
-          resumeText: context.resumeText,
-          role: context.role,
-          requirements: context.requirements,
-          dimensionText: context.dimensionText,
-          focus: context.focus,
-          scoringGuidance: context.scoringGuidance,
-          reportRequirements: context.reportRequirements,
-          workSample: artifact,
-          existingQuestions: [
-            ...reading.interviewQuestions,
-            ...(reading.writtenTestSupplement || []),
-          ],
-        },
-        `${context.candidate || resumeName || '未命名候选人'} · 笔试作品`.slice(
-          0,
-          100,
-        ),
-        controller.signal,
-        (job) => {
-          if (
-            analysisController.current === controller &&
-            !controller.signal.aborted
-          ) {
-            submittedJobId = job.id;
-            setWorkSampleJobId(job.id);
-            setRemoteJob({ ...job, report: null });
-          }
-        },
-        { fetcher: fetch, pollMs: 2000, scope: library.id },
-      );
+      const common = {
+        resumeText: context.resumeText,
+        role: context.role,
+        requirements: context.requirements,
+        dimensionText: context.dimensionText,
+        focus: context.focus,
+        scoringGuidance: context.scoringGuidance,
+        reportRequirements: context.reportRequirements,
+        workSample: artifact,
+      };
+      const progress = (job: RemoteJob<WorkSampleAnalysisResult>) => {
+        if (
+          analysisController.current === controller &&
+          !controller.signal.aborted
+        ) {
+          submittedJobId = job.id;
+          setWorkSampleJobId(job.id);
+          setRemoteJob({ ...job, report: null });
+        }
+      };
+      const result =
+        context.outlineVersion === 2 && reading.outline
+          ? await submitRemoteWorkSample(
+              {
+                ...common,
+                outlineVersion: 2,
+                outline: reading.outline,
+              },
+              `${context.candidate || resumeName || '未命名候选人'} · 笔试作品`.slice(
+                0,
+                100,
+              ),
+              controller.signal,
+              progress,
+              { fetcher: fetch, pollMs: 2000, scope: library.id },
+            )
+          : await submitRemoteWorkSample(
+              {
+                ...common,
+                existingQuestions: [
+                  ...(reading.interviewQuestions || []),
+                  ...(reading.writtenTestSupplement || []),
+                ],
+              },
+              `${context.candidate || resumeName || '未命名候选人'} · 笔试作品`.slice(
+                0,
+                100,
+              ),
+              controller.signal,
+              progress,
+              { fetcher: fetch, pollMs: 2000, scope: library.id },
+            );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
       const next = applyLateWorkSample(
@@ -1368,7 +1484,11 @@ export default function Home({
         hasWrittenTest: true,
         writtenTestConfirmed: true,
       };
-      setNotice('作品已分析，原提纲保留，并在下方追加 3 道作品复盘题。');
+      setNotice(
+        'version' in result
+          ? '作品已分析，五道必问题保留，3 道作品复盘题已更新到候选题。'
+          : '作品已分析，原提纲保留，并在下方追加 3 道作品复盘题。',
+      );
       setTab('resume');
     } catch (reason) {
       if (analysisController.current !== controller) return;
@@ -1651,6 +1771,7 @@ export default function Home({
     invalidate();
     setStandards(value);
     setTemplateModified(true);
+    setOutlineVersion(1);
   }
   function reset(seed: NewInterviewSeed) {
     analysisController.current?.abort();
@@ -1658,6 +1779,7 @@ export default function Home({
     setStandards(seed.standards);
     setSourceTemplateId(seed.sourceTemplateId);
     setTemplateModified(false);
+    setOutlineVersion(outlineVersionForTemplate(seed.sourceTemplateId, false));
     setHasWrittenTest(false);
     setWrittenTestConfirmed(false);
     setCandidate('');
@@ -1739,6 +1861,7 @@ export default function Home({
         const next = appliedTemplateState(id);
         setSourceTemplateId(next.sourceTemplateId);
         setTemplateModified(next.templateModified);
+        setOutlineVersion(outlineVersionForTemplate(id, false));
         setHasWrittenTest(next.hasWrittenTest);
         setWrittenTestConfirmed(next.writtenTestConfirmed);
         setWorkSample(null);

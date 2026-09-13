@@ -118,6 +118,36 @@ void test('template source and written-test state survive reopening', async () =
     enriched,
   );
 });
+
+void test('outline version and V2 reading survive reopening without a database upgrade', async () => {
+  const factory = new IDBFactory();
+  const store = createLocalStore(factory);
+  const enriched: SavedInterview = {
+    ...session,
+    outlineVersion: 2,
+    resumeReading: {
+      summary: 'V2 简历阅读',
+      sections: ['教育背景', '工作经历', '项目经验', '技能'].map((name) => ({
+        name,
+        items: [],
+      })),
+      followUps: [],
+      outline: {
+        version: 2,
+        estimatedMinutes: 30,
+        requiredQuestions: [],
+        reserveQuestions: [],
+        archivedReserveQuestions: [],
+        coverage: [],
+      },
+    },
+  };
+  await store.saveInterview(enriched);
+  assert.deepEqual(
+    await createLocalStore(factory).getInterview(enriched.id),
+    enriched,
+  );
+});
 void test('legacy records remain readable without template metadata', async () => {
   const store = createLocalStore(new IDBFactory());
   await store.saveInterview(session);
@@ -171,6 +201,9 @@ void test('resume outline generation has one preflight entry and no repeat-readi
   assert.match(page, /提纲已生成/);
   assert.match(page, /确认提纲生成条件/);
   assert.doesNotMatch(page, /重新阅读简历|替换并自动阅读/);
+  assert.match(page, /outlineVersionForTemplate/);
+  assert.match(page, /outlineVersion:\s*context\.outlineVersion/);
+  assert.match(page, /reading\.outline/);
 });
 void test('resume outline confirmation uses the styled select and fixed-size radio controls', async () => {
   const [page, css] = await Promise.all([

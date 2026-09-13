@@ -9,6 +9,7 @@ import {
   inferTemplateSource,
   markTemplateModified,
   normalizeInterviewTemplateState,
+  normalizeOutlineVersion,
   outlineVersionForTemplate,
   resolveTemplateSelection,
   resolveResumeOutlinePreflight,
@@ -156,6 +157,34 @@ void test('only untouched built-in product roles use outline V2', () => {
     1,
   );
   assert.equal(outlineVersionForTemplate('custom-role', false), 1);
+});
+
+void test('restored records infer outline version from saved reading before template metadata', () => {
+  assert.equal(
+    normalizeOutlineVersion({
+      outlineVersion: undefined,
+      sourceTemplateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
+      templateModified: false,
+      resumeReading: { outline: { version: 2 } },
+    }),
+    2,
+  );
+  assert.equal(
+    normalizeOutlineVersion({
+      outlineVersion: 2,
+      sourceTemplateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
+      templateModified: false,
+      resumeReading: { interviewQuestions: [{}] },
+    }),
+    1,
+  );
+  assert.equal(
+    normalizeOutlineVersion({
+      sourceTemplateId: BUILTIN_TEMPLATE_IDS.aiEngineering,
+      templateModified: false,
+    }),
+    1,
+  );
 });
 
 void test('template transitions require a fresh AI PM written-test confirmation', () => {
