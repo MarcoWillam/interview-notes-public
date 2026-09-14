@@ -531,6 +531,18 @@ export default function Home({
       if (disposed) return;
       if (job.state === 'completed' && job.report) {
         try {
+          if (job.resultDisposition === 'pending') {
+            setWorkSampleJobId(undefined);
+            await library.refreshFromCloud();
+            setError('作品分析已完成，但资料发生变化。请在记录管理中确认结果。');
+            return;
+          }
+          if (job.resultDisposition === 'applied') {
+            setWorkSampleJobId(undefined);
+            await library.refreshFromCloud();
+            setNotice('已恢复完成的作品分析。');
+            return;
+          }
           const artifacts = await listRemoteArtifacts();
           if (disposed) return;
           const reference = artifacts.find(
@@ -664,6 +676,18 @@ export default function Home({
         );
         if (disposed) return;
         if (job.state === 'completed' && job.report) {
+          if (job.resultDisposition === 'pending') {
+            setWrittenTestJobId(undefined);
+            await library.refreshFromCloud();
+            setError('笔试复盘题已完成，但资料发生变化。请在记录管理中确认结果。');
+            return;
+          }
+          if (job.resultDisposition === 'applied') {
+            setWrittenTestJobId(undefined);
+            await library.refreshFromCloud();
+            setNotice('已恢复完成的笔试复盘题。');
+            return;
+          }
           const result = validateWrittenTestSupplement(
             job.report,
             supplementInput,
@@ -763,6 +787,20 @@ export default function Home({
         );
         if (disposed) return;
         if (job.state === 'completed' && job.report) {
+          if (job.resultDisposition === 'pending') {
+            setOutlineRegenerationJobId(undefined);
+            setOutlineRevision(undefined);
+            await library.refreshFromCloud();
+            setError('新提纲已完成，但资料发生变化。请在记录管理中确认结果。');
+            return;
+          }
+          if (job.resultDisposition === 'applied') {
+            setOutlineRegenerationJobId(undefined);
+            setOutlineRevision(undefined);
+            await library.refreshFromCloud();
+            setNotice('已恢复并应用重新生成的短问题提纲。');
+            return;
+          }
           let result: OutlineRegenerationResult;
           try {
             result = validateOutlineRegenerationResult(
@@ -1004,6 +1042,7 @@ export default function Home({
       });
       if (!context.queuedCodex)
         throw new Error('请使用当前队列版工作台连接 Codex 后阅读简历。');
+      const recordBinding = await library.flushForTask();
       const valueRead = await submitRemoteResume(
         value,
         (context.candidate || resumeName || '未命名候选人').slice(0, 100),
@@ -1015,10 +1054,16 @@ export default function Home({
           )
             setRemoteJob({ ...job, report: null });
         },
-        { fetcher: fetch, pollMs: 2000, scope: library.id },
+        {
+          fetcher: fetch,
+          pollMs: 2000,
+          scope: library.id,
+          ...recordBinding,
+        },
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
+      await library.refreshFromCloud();
       setResumeReading(valueRead);
       setWorkSample(valueRead.workSample || null);
       setWorkSampleJobId(undefined);
@@ -1156,6 +1201,7 @@ export default function Home({
           standards,
           reading,
         });
+      const recordBinding = await library.flushForTask();
       setOutlineRevision(regenerationInput.revision);
       const result = await submitRemoteOutline(
         regenerationInput,
@@ -1175,10 +1221,16 @@ export default function Home({
             setRemoteJob({ ...job, report: null });
           }
         },
-        { fetcher: fetch, pollMs: 2000, scope: library.id },
+        {
+          fetcher: fetch,
+          pollMs: 2000,
+          scope: library.id,
+          ...recordBinding,
+        },
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
+      await library.refreshFromCloud();
       const live = outlineLiveRef.current;
       if (!live.reading?.interviewQuestions && !live.reading?.outline)
         throw new Error('面试记录已变化，未应用过期提纲。');
@@ -1273,6 +1325,7 @@ export default function Home({
         context,
         reading,
       );
+      const recordBinding = await library.flushForTask();
       const value = await submitRemoteWrittenTest(
         supplementInput,
         `${context.candidate || resumeName || '未命名候选人'} · 笔试复盘补充`.slice(
@@ -1290,10 +1343,16 @@ export default function Home({
             setRemoteJob({ ...job, report: null });
           }
         },
-        { fetcher: fetch, pollMs: 2000, scope: library.id },
+        {
+          fetcher: fetch,
+          pollMs: 2000,
+          scope: library.id,
+          ...recordBinding,
+        },
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
+      await library.refreshFromCloud();
       const result: WrittenTestSupplementResult = value;
       setResumeReading(applyWrittenTestSupplement(reading, result));
       setHasWrittenTest(true);
@@ -1387,10 +1446,16 @@ export default function Home({
         ),
         controller.signal,
         progress,
-        { fetcher: fetch, pollMs: 2000, scope: library.id },
+        {
+          fetcher: fetch,
+          pollMs: 2000,
+          scope: library.id,
+          ...(await library.flushForTask()),
+        },
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
+      await library.refreshFromCloud();
       const next = applyLateWorkSample(
         {
           sourceTemplateId,
@@ -1600,12 +1665,15 @@ export default function Home({
     try {
       let data: Report;
       if (queuedCodex) {
+        const recordBinding = await library.flushForTask();
         data = await submitRemoteAnalysis(
           input,
           `${candidate || '未命名面试'} · ${role}`.slice(0, 100),
           controller.signal,
           setRemoteJob,
+          { fetcher: fetch, pollMs: 2000, ...recordBinding },
         );
+        await library.refreshFromCloud();
       } else {
         const r = await fetch('/api/analyze', {
           method: 'POST',

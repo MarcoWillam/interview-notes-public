@@ -66,6 +66,16 @@ export type RemoteJob<T = Report> = {
   targetDeviceName?: string | null;
   waitingForDevice?: boolean;
   requiredProtocol?: number;
+  interviewId?: string | null;
+  interviewRevision?: number | null;
+  resultDisposition?: 'applied' | 'pending' | null;
+};
+export type RemoteTaskDependencies = {
+  fetcher: typeof fetch;
+  pollMs: number;
+  scope?: string;
+  interviewId?: string;
+  interviewRevision?: number;
 };
 export type RemoteArtifact = WorkSampleReference & {
   deviceName: string;
@@ -123,11 +133,7 @@ async function submitRemoteTask<T>(
   label: string,
   signal: AbortSignal,
   onProgress: (job: RemoteJob<T>) => void,
-  dependencies: {
-    fetcher: typeof fetch;
-    pollMs: number;
-    scope?: string;
-  } = { fetcher: fetch, pollMs: 2000 },
+  dependencies: RemoteTaskDependencies = { fetcher: fetch, pollMs: 2000 },
 ): Promise<T> {
   const scope = dependencies.scope?.trim() || '';
   const payload = JSON.stringify({
@@ -135,6 +141,12 @@ async function submitRemoteTask<T>(
     label,
     input,
     ...(scope ? { scope } : {}),
+    ...(dependencies.interviewId
+      ? {
+          interviewId: dependencies.interviewId,
+          interviewRevision: dependencies.interviewRevision,
+        }
+      : {}),
   });
   const fingerprint = Array.from(
     new Uint8Array(
@@ -168,6 +180,12 @@ async function submitRemoteTask<T>(
           input,
           kind,
           ...(scope ? { scope } : {}),
+          ...(dependencies.interviewId
+            ? {
+                interviewId: dependencies.interviewId,
+                interviewRevision: dependencies.interviewRevision,
+              }
+            : {}),
         }),
         signal,
       },
@@ -188,7 +206,13 @@ async function submitRemoteTask<T>(
   while (true) {
     onProgress(job);
     signal.throwIfAborted();
-    if (job.state === 'completed') return validateResult(job.report);
+    if (job.state === 'completed') {
+      if (job.resultDisposition === 'pending')
+        throw new Error(
+          '分析已完成，但面试资料在执行期间发生变化。结果已保存在记录管理中，确认后再应用。',
+        );
+      return validateResult(job.report);
+    }
     if (job.state === 'failed' || job.state === 'cancelled')
       throw new Error(job.error || '任务已取消。');
     await new Promise<void>((resolve, reject) => {
@@ -270,7 +294,7 @@ export function submitRemoteAnalysis(
   label: string,
   signal: AbortSignal,
   onProgress: (job: RemoteJob) => void,
-  dependencies = { fetcher: fetch, pollMs: 2000 },
+  dependencies: RemoteTaskDependencies = { fetcher: fetch, pollMs: 2000 },
 ): Promise<Report> {
   return submitRemoteTask(
     validateInput(input),
@@ -287,11 +311,7 @@ export function submitRemoteResume(
   label: string,
   signal: AbortSignal,
   onProgress: (job: RemoteJob<ResumeReading>) => void,
-  dependencies: {
-    fetcher: typeof fetch;
-    pollMs: number;
-    scope?: string;
-  } = { fetcher: fetch, pollMs: 2000 },
+  dependencies: RemoteTaskDependencies = { fetcher: fetch, pollMs: 2000 },
 ): Promise<ResumeReading> {
   const normalized = validateResumeInput(input);
   return submitRemoteTask(
@@ -311,11 +331,7 @@ export function submitRemoteWrittenTest(
   label: string,
   signal: AbortSignal,
   onProgress: (job: RemoteJob<WrittenTestSupplementResult>) => void,
-  dependencies: {
-    fetcher: typeof fetch;
-    pollMs: number;
-    scope?: string;
-  } = { fetcher: fetch, pollMs: 2000 },
+  dependencies: RemoteTaskDependencies = { fetcher: fetch, pollMs: 2000 },
 ): Promise<WrittenTestSupplementResult> {
   const normalized = validateWrittenTestSupplementInput(input);
   return submitRemoteTask(
@@ -337,55 +353,35 @@ export function submitRemoteWorkSample(
   label: string,
   signal: AbortSignal,
   onProgress: (job: RemoteJob<WorkSampleAssessment>) => void,
-  dependencies?: {
-    fetcher: typeof fetch;
-    pollMs: number;
-    scope?: string;
-  },
+  dependencies?: RemoteTaskDependencies,
 ): Promise<WorkSampleAssessment>;
 export function submitRemoteWorkSample(
   input: WorkSampleInputV2,
   label: string,
   signal: AbortSignal,
   onProgress: (job: RemoteJob<WorkSampleAnalysisV2>) => void,
-  dependencies?: {
-    fetcher: typeof fetch;
-    pollMs: number;
-    scope?: string;
-  },
+  dependencies?: RemoteTaskDependencies,
 ): Promise<WorkSampleAnalysisV2>;
 export function submitRemoteWorkSample(
   input: WorkSampleInputV3,
   label: string,
   signal: AbortSignal,
   onProgress: (job: RemoteJob<WorkSampleAnalysisV3>) => void,
-  dependencies?: {
-    fetcher: typeof fetch;
-    pollMs: number;
-    scope?: string;
-  },
+  dependencies?: RemoteTaskDependencies,
 ): Promise<WorkSampleAnalysisV3>;
 export function submitRemoteWorkSample(
   input: WorkSampleInput,
   label: string,
   signal: AbortSignal,
   onProgress: (job: RemoteJob<WorkSampleAnalysisResult>) => void,
-  dependencies?: {
-    fetcher: typeof fetch;
-    pollMs: number;
-    scope?: string;
-  },
+  dependencies?: RemoteTaskDependencies,
 ): Promise<WorkSampleAnalysisResult>;
 export function submitRemoteWorkSample(
   input: WorkSampleInput,
   label: string,
   signal: AbortSignal,
   onProgress: (job: RemoteJob<never>) => void,
-  dependencies: {
-    fetcher: typeof fetch;
-    pollMs: number;
-    scope?: string;
-  } = { fetcher: fetch, pollMs: 2000 },
+  dependencies: RemoteTaskDependencies = { fetcher: fetch, pollMs: 2000 },
 ): Promise<WorkSampleAnalysisResult> {
   const normalized = validateWorkSampleInput(input);
   return submitRemoteTask(
@@ -407,11 +403,7 @@ export function submitRemoteOutline(
   label: string,
   signal: AbortSignal,
   onProgress: (job: RemoteJob<OutlineRegenerationResult>) => void,
-  dependencies: {
-    fetcher: typeof fetch;
-    pollMs: number;
-    scope?: string;
-  } = { fetcher: fetch, pollMs: 2000 },
+  dependencies: RemoteTaskDependencies = { fetcher: fetch, pollMs: 2000 },
 ): Promise<OutlineRegenerationResult> {
   const normalized = validateOutlineRegenerationInput(input);
   return submitRemoteTask(

@@ -40,6 +40,7 @@ import {
 import { executionContractFor } from '../execution-contract.ts';
 import type { CodexExecutionKind } from '../../lib/codex-execution-contract.ts';
 import { InterviewStore } from '../interviews/store.ts';
+import { interviewJobSource } from '../../lib/interview-job-binding.ts';
 export type JobKind = CodexExecutionKind;
 export class QueueError extends Error {
   status: number;
@@ -117,6 +118,14 @@ export class QueueStore {
       this.db.exec('ALTER TABLE jobs ADD COLUMN feedback TEXT');
     if (!jobColumns.some((column) => column.name === 'leaseProtocol'))
       this.db.exec('ALTER TABLE jobs ADD COLUMN leaseProtocol INTEGER');
+    if (!jobColumns.some((column) => column.name === 'interviewId'))
+      this.db.exec('ALTER TABLE jobs ADD COLUMN interviewId TEXT');
+    if (!jobColumns.some((column) => column.name === 'interviewRevision'))
+      this.db.exec('ALTER TABLE jobs ADD COLUMN interviewRevision INTEGER');
+    if (!jobColumns.some((column) => column.name === 'sourceHash'))
+      this.db.exec('ALTER TABLE jobs ADD COLUMN sourceHash TEXT');
+    if (!jobColumns.some((column) => column.name === 'resultDisposition'))
+      this.db.exec('ALTER TABLE jobs ADD COLUMN resultDisposition TEXT');
     this.db
       .prepare(
         "UPDATE jobs SET state='failed',input=NULL,report=NULL,error='旧版提纲任务缺少面试记录范围，请重新提交。',updated=? WHERE kind='outline' AND scope IS NULL AND state IN ('queued','running','paused','completed')",
@@ -512,6 +521,7 @@ export class QueueStore {
     value: unknown,
     kind: JobKind = 'interview',
     scope = '',
+    binding?: { interviewId: string; interviewRevision: number },
   ) {
     this.sweep();
     if (!/^[a-zA-Z0-9-]{8,100}$/.test(client))
@@ -528,6 +538,27 @@ export class QueueStore {
       kind !== 'outline'
     )
       throw new QueueError('该任务类型不支持任务范围。');
+    let interviewId: string | null = null,
+      interviewRevision: number | null = null,
+      sourceHash: string | null = null;
+    if (binding) {
+      if (
+        !/^[a-zA-Z0-9-]{8,100}$/.test(binding.interviewId) ||
+        !Number.isSafeInteger(binding.interviewRevision) ||
+        binding.interviewRevision < 1
+      )
+        throw new QueueError('面试档案版本无效。');
+      const saved = this.interviews.get(user, binding.interviewId);
+      if (saved.deletedAt !== null)
+        throw new QueueError('面试记录已在回收站。', 409);
+      if (saved.revision !== binding.interviewRevision)
+        throw new QueueError('面试记录已更新，请同步后重新提交。', 409);
+      if (scope && scope !== binding.interviewId)
+        throw new QueueError('任务与面试记录不匹配。', 409);
+      interviewId = binding.interviewId;
+      interviewRevision = binding.interviewRevision;
+      sourceHash = hash(JSON.stringify(interviewJobSource(saved.record, kind)));
+    }
     const validatedInput =
         kind === 'resume'
           ? validateResumeInput(value)
@@ -657,7 +688,7 @@ export class QueueStore {
     try {
       this.db
         .prepare(
-          "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued,targetDevice,artifactId,scope,requiredProtocol) VALUES(?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued,targetDevice,artifactId,scope,requiredProtocol,interviewId,interviewRevision,sourceHash) VALUES(?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .run(
           id,
@@ -674,6 +705,9 @@ export class QueueStore {
           artifactId,
           scope || null,
           requiredProtocol,
+          interviewId,
+          interviewRevision,
+          sourceHash,
         );
     } catch (insertError) {
       if (kind === 'outline')
@@ -689,7 +723,7 @@ export class QueueStore {
     this.sweep();
     const row = this.db
       .prepare(
-        'SELECT id,label,kind,state,report,error,created,updated,queued,started,targetDevice,artifactId,requiredProtocol FROM jobs WHERE user=? AND id=?',
+        'SELECT id,label,kind,state,report,error,created,updated,queued,started,targetDevice,artifactId,requiredProtocol,interviewId,interviewRevision,resultDisposition FROM jobs WHERE user=? AND id=?',
       )
       .get(user, id) as Row | undefined;
     if (!row) throw new QueueError('任务不存在。', 404);
@@ -725,6 +759,12 @@ export class QueueStore {
           !target.ready ||
           Number(target.seen) <= this.now() - 45000),
       requiredProtocol: Number(row.requiredProtocol),
+      interviewId: row.interviewId ? String(row.interviewId) : null,
+      interviewRevision:
+        row.interviewRevision === null ? null : Number(row.interviewRevision),
+      resultDisposition: row.resultDisposition
+        ? String(row.resultDisposition)
+        : null,
     };
   }
   private queuePosition(user: string, id: string) {
@@ -741,7 +781,7 @@ export class QueueStore {
     return (
       this.db
         .prepare(
-          'SELECT id,label,kind,state,error,created,updated,queued,started,targetDevice,artifactId,requiredProtocol FROM jobs WHERE user=? ORDER BY created DESC LIMIT 100',
+          'SELECT id,label,kind,state,error,created,updated,queued,started,targetDevice,artifactId,requiredProtocol,interviewId,interviewRevision,resultDisposition FROM jobs WHERE user=? ORDER BY created DESC LIMIT 100',
         )
         .all(user) as Row[]
     ).map((row) => {
@@ -776,6 +816,12 @@ export class QueueStore {
             !target.ready ||
             Number(target.seen) <= this.now() - 45000),
         requiredProtocol: Number(row.requiredProtocol),
+        interviewId: row.interviewId ? String(row.interviewId) : null,
+        interviewRevision:
+          row.interviewRevision === null ? null : Number(row.interviewRevision),
+        resultDisposition: row.resultDisposition
+          ? String(row.resultDisposition)
+          : null,
       };
     });
   }
@@ -1042,6 +1088,46 @@ export class QueueStore {
       report = null;
       error = '旧版提纲任务缺少面试记录范围，请重新提交。';
     }
+    if (
+      !error &&
+      job.kind === 'outline' &&
+      this.db
+        .prepare('SELECT 1 FROM outline_completions WHERE user=? AND scope=?')
+        .get(job.user, job.scope)
+    ) {
+      report = null;
+      error = '当前面试记录已有成功提纲，本次重复结果未应用。';
+    }
+    let resultDisposition: 'applied' | 'pending' | null = null;
+    if (!error && report && job.interviewId && job.sourceHash) {
+      const parsed = JSON.parse(report) as unknown;
+      const current = this.interviews.get(String(job.user), String(job.interviewId));
+      const currentSourceHash = hash(
+        JSON.stringify(
+          interviewJobSource(current.record, job.kind as JobKind),
+        ),
+      );
+      if (current.deletedAt === null && currentSourceHash === job.sourceHash) {
+        this.interviews.applyJobResult(
+          String(job.user),
+          String(job.interviewId),
+          String(job.id),
+          job.kind as JobKind,
+          parsed,
+        );
+        resultDisposition = 'applied';
+      } else {
+        this.interviews.savePendingResult(
+          String(job.user),
+          String(job.interviewId),
+          String(job.id),
+          String(job.kind),
+          Number(job.interviewRevision),
+          parsed,
+        );
+        resultDisposition = 'pending';
+      }
+    }
     this.db.exec('BEGIN IMMEDIATE');
     try {
       if (!error && job.kind === 'outline') {
@@ -1057,9 +1143,16 @@ export class QueueStore {
       }
       this.db
         .prepare(
-          'UPDATE jobs SET state=?,report=?,error=?,input=NULL,updated=? WHERE id=?',
+          'UPDATE jobs SET state=?,report=?,error=?,resultDisposition=?,input=NULL,updated=? WHERE id=?',
         )
-        .run(error ? 'failed' : 'completed', report, error, this.now(), id);
+        .run(
+          error ? 'failed' : 'completed',
+          report,
+          error,
+          resultDisposition,
+          this.now(),
+          id,
+        );
       this.db.exec('COMMIT');
     } catch (finishError) {
       this.db.exec('ROLLBACK');

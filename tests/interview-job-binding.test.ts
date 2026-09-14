@@ -1,0 +1,204 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { QueueStore } from '../server/queue/store.ts';
+import type { CloudInterview } from '../lib/cloud-interview.ts';
+
+const input = {
+  role: '产品经理',
+  requirements: '用户研究与需求分析',
+  dimensionText: '需求分析、沟通协作',
+  focus: '主动发现问题并推进解决',
+  scoringGuidance: '根据具体行动和结果判断证据充分性',
+  reportRequirements: '列明待核实内容',
+  resumeText: '姓名：张三。示例大学毕业。我访谈了五位用户。',
+  hasWrittenTest: false,
+};
+
+const reading = {
+  candidateName: '张三',
+  candidateNameEvidence: '姓名：张三。',
+  summary: '简历自述，待面试核实。',
+  sections: ['教育背景', '工作经历', '项目经验', '技能'].map((name) => ({
+    name,
+    items:
+      name === '教育背景'
+        ? [{ text: '示例大学毕业', evidence: '示例大学毕业。' }]
+        : [],
+  })),
+  interviewQuestions: Array.from({ length: 6 }, (_, index) => ({
+    question: `请说说第${index + 1}次主动推进问题的经历。`,
+    dimensions: [index % 2 ? '沟通协作' : '需求分析'],
+    reason: '核实具体行动与结果。',
+    resumeEvidence: index === 5 ? null : '我访谈了五位用户。',
+    questionSource: index === 5 ? ('role' as const) : ('resume' as const),
+    listenFor: ['个人行动', '结果与反思'],
+    probes: ['你如何验证效果？'],
+  })),
+  followUps: ['请补充项目时间范围。'],
+};
+
+function cloudRecord(id: string): CloudInterview {
+  return {
+    id,
+    createdAt: 1,
+    updatedAt: 1,
+    candidate: '',
+    ...input,
+    resumeName: 'resume.txt',
+    resumeReading: null,
+    transcript: '',
+    reviewed: false,
+    report: null,
+    conclusion: '',
+    confirmed: false,
+    outlineVersion: 1,
+    writtenTestConfirmed: true,
+  };
+}
+
+function setup() {
+  let now = 1_000_000;
+  const store = new QueueStore(':memory:', () => ++now);
+  const user = store.createUser('alice', 'password-alice-123').id;
+  const device = store.redeem(store.pairing(user).code, '测试电脑', {
+    version: '0.1.16',
+    protocol: 4,
+  });
+  return {
+    store,
+    user,
+    secret: device.token,
+    tick: (duration: number) => {
+      now += duration;
+    },
+  };
+}
+
+void test('bound Codex result is applied when relevant record sources are unchanged', () => {
+  const { store, user, secret } = setup();
+  try {
+    const record = cloudRecord('record-binding-apply');
+    store.interviews.put(user, record.id, 0, 'mutation-create-binding', record);
+    store.submit(
+      user,
+      'client-binding-apply',
+      '读取简历',
+      input,
+      'resume',
+      record.id,
+      { interviewId: record.id, interviewRevision: 1 },
+    );
+    const claimed = store.claim(secret, true, ['resume'], { version: '0.1.16', protocol: 4 })!;
+    assert.equal(store.finish(secret, claimed.id, claimed.lease, reading).accepted, true);
+    const saved = store.interviews.get(user, record.id);
+    assert.equal(saved.revision, 2);
+    assert.equal(saved.record.candidate, '张三');
+    assert.equal(saved.record.resumeReading?.summary, reading.summary);
+    assert.equal(store.get(user, claimed.id).resultDisposition, 'applied');
+  } finally {
+    store.close();
+  }
+});
+
+void test('relevant edits retain a completed result for confirmation', () => {
+  const { store, user, secret } = setup();
+  try {
+    const record = cloudRecord('record-binding-pending');
+    store.interviews.put(user, record.id, 0, 'mutation-create-pending', record);
+    store.submit(
+      user,
+      'client-binding-pending',
+      '读取简历',
+      input,
+      'resume',
+      record.id,
+      { interviewId: record.id, interviewRevision: 1 },
+    );
+    const claimed = store.claim(secret, true, ['resume'], { version: '0.1.16', protocol: 4 })!;
+    store.interviews.put(
+      user,
+      record.id,
+      1,
+      'mutation-change-resume',
+      { ...record, resumeText: record.resumeText + '新增经历。', updatedAt: 2 },
+    );
+    store.finish(secret, claimed.id, claimed.lease, reading);
+    assert.equal(store.interviews.get(user, record.id).record.resumeReading, null);
+    assert.equal(store.interviews.pendingResults(user, record.id)[0].state, 'pending');
+    assert.equal(store.get(user, claimed.id).resultDisposition, 'pending');
+    const applied = store.interviews.applyPendingResult(
+      user,
+      record.id,
+      claimed.id,
+      2,
+      'mutation-apply-pending-result',
+    );
+    assert.equal(applied.record.resumeReading?.summary, reading.summary);
+    assert.equal(store.interviews.pendingResults(user, record.id)[0].state, 'applied');
+  } finally {
+    store.close();
+  }
+});
+
+void test('pending result survives the short-lived task queue', () => {
+  const { store, user, secret, tick } = setup();
+  try {
+    const record = cloudRecord('record-binding-retained');
+    store.interviews.put(user, record.id, 0, 'mutation-create-retained', record);
+    store.submit(
+      user,
+      'client-binding-retained',
+      '读取简历',
+      input,
+      'resume',
+      record.id,
+      { interviewId: record.id, interviewRevision: 1 },
+    );
+    const claimed = store.claim(secret, true, ['resume'], { version: '0.1.16', protocol: 4 })!;
+    store.interviews.put(
+      user,
+      record.id,
+      1,
+      'mutation-change-retained',
+      { ...record, resumeText: record.resumeText + '后来新增。', updatedAt: 3 },
+    );
+    store.finish(secret, claimed.id, claimed.lease, reading);
+    tick(8 * 86_400_000);
+    store.sweep();
+    assert.throws(() => store.get(user, claimed.id), /任务不存在/);
+    assert.equal(store.interviews.pendingResults(user, record.id)[0].state, 'pending');
+  } finally {
+    store.close();
+  }
+});
+
+void test('unrelated conclusion edits still allow the bound result to apply', () => {
+  const { store, user, secret } = setup();
+  try {
+    const record = cloudRecord('record-binding-unrelated');
+    store.interviews.put(user, record.id, 0, 'mutation-create-unrelated', record);
+    store.submit(
+      user,
+      'client-binding-unrelated',
+      '读取简历',
+      input,
+      'resume',
+      record.id,
+      { interviewId: record.id, interviewRevision: 1 },
+    );
+    const claimed = store.claim(secret, true, ['resume'], { version: '0.1.16', protocol: 4 })!;
+    store.interviews.put(
+      user,
+      record.id,
+      1,
+      'mutation-change-conclusion',
+      { ...record, conclusion: '面试官备注', updatedAt: 2 },
+    );
+    store.finish(secret, claimed.id, claimed.lease, reading);
+    const saved = store.interviews.get(user, record.id);
+    assert.equal(saved.record.conclusion, '面试官备注');
+    assert.equal(saved.record.resumeReading?.summary, reading.summary);
+  } finally {
+    store.close();
+  }
+});

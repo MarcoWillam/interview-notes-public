@@ -15,10 +15,16 @@ import { Download, Trash2, X } from 'lucide-react';
 import type { useInterviewLibrary } from '@/hooks/use-interview-library';
 import { localStore } from '@/lib/local/store';
 import type { CloudInterviewSummary } from '@/lib/cloud-interview';
-import { InterviewConflicts, InterviewHistory, InterviewTrash } from './interview-history';
+import {
+  InterviewConflicts,
+  InterviewHistory,
+  InterviewPendingResults,
+  InterviewTrash,
+} from './interview-history';
+import type { PendingInterviewResult } from '@/lib/interview-sync';
 
 type Library = ReturnType<typeof useInterviewLibrary>;
-type Tab = 'records' | 'history' | 'conflicts' | 'trash';
+type Tab = 'records' | 'history' | 'results' | 'conflicts' | 'trash';
 
 export function LocalLibrary({
   open,
@@ -40,6 +46,7 @@ export function LocalLibrary({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [trash, setTrash] = useState<CloudInterviewSummary[]>([]);
+  const [results, setResults] = useState<PendingInterviewResult[]>([]);
   const running = useRef(false);
 
   async function act(task: () => Promise<void>) {
@@ -67,12 +74,20 @@ export function LocalLibrary({
     );
   }, [open, tab, library.cloud]);
 
+  useEffect(() => {
+    if (!open || tab !== 'results' || !library.cloud || !library.id) return;
+    void library.loadPendingResults(library.id).then(setResults).catch((reason: unknown) =>
+      setError(reason instanceof Error ? reason.message : '待确认结果读取失败'),
+    );
+  }, [open, tab, library.cloud, library.id]);
+
   const current = library.sessions.find((row) => row.id === library.id);
   const tabs: Array<[Tab, string, number?]> = [
     ['records', '当前记录'],
     ...(library.cloud
       ? ([
           ['history', '版本历史'],
+          ['results', '待确认结果'],
           ['conflicts', '冲突', library.conflictCount],
           ['trash', '回收站'],
         ] as Array<[Tab, string, number?]>)
@@ -137,6 +152,24 @@ export function LocalLibrary({
                 conflicts={library.conflicts}
                 pending={pending}
                 resolve={(conflictId, action) => act(() => library.resolveConflict(conflictId, action))}
+              />
+            )}
+            {tab === 'results' && (
+              <InterviewPendingResults
+                rows={results}
+                pending={pending}
+                apply={(row) =>
+                  act(async () => {
+                    await library.applyPendingResult(library.id, row.jobId);
+                    setResults(await library.loadPendingResults(library.id));
+                  })
+                }
+                discard={(row) =>
+                  act(async () => {
+                    await library.discardPendingResult(library.id, row.jobId);
+                    setResults(await library.loadPendingResults(library.id));
+                  })
+                }
               />
             )}
             {tab === 'trash' && (
