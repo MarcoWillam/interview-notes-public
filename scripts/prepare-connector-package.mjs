@@ -55,9 +55,10 @@ archive['interview-connector/使用说明.txt'] =
 配对码 10 分钟有效且只能使用一次，过期后请在网页重新生成。
 
 更新：
-1. 关闭旧连接器终端，在原连接器目录替换程序文件。
+1. 本次升级需要关闭旧连接器终端，在原连接器目录替换程序文件。
 2. 必须保留 .local/connector.json 和 works，无需重新配对。
 3. 回到原目录运行 npm run connector，网页会显示新的版本状态。
+4. 完成本次升级后，岗位模板、提纲和评估规则更新无需再次替换连接器。
 `);
 
 const output = join(root, 'public/downloads');
