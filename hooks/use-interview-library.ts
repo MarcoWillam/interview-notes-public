@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import {
   localStore,
   type SavedInterview,
@@ -49,8 +49,13 @@ export function useInterviewLibrary(
   const [sessions, setSessions] = useState<SavedInterview[]>([]);
   const [groups, setGroups] = useState<InterviewGroup[]>([]);
   const [workspacePreferences, setWorkspacePreferences] = useState<
-    Pick<InterviewWorkspace, 'sortMode' | 'manualOrder' | 'collapsedGroupIds'>
-  >({ sortMode: 'newest', manualOrder: [], collapsedGroupIds: [] });
+    | Pick<
+        InterviewWorkspace,
+        'sortMode' | 'manualOrder' | 'collapsedGroupIds'
+      >
+    | null
+  >(null);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
   const [audio, setAudio] = useState<AudioRecord[]>([]);
   const [preferences, setPreferences] = useState<Preference[]>([]);
   const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
@@ -87,33 +92,48 @@ export function useInterviewLibrary(
         await migrateAndSyncInterviews(store, transport.current);
         const remoteWorkspace = await transport.current.workspace();
         const localGroups = await store.listInterviewGroups();
-        let resolvedWorkspace = remoteWorkspace;
-        if (workspaceDirty.current || (remoteWorkspace.revision === 0 && localGroups.length)) {
+        if (workspaceDirty.current) {
           const localWorkspace = {
             ...workspaceRef.current,
-            groups: workspaceDirty.current ? workspaceRef.current.groups : localGroups,
+            groups: workspaceRef.current.groups,
           };
-          resolvedWorkspace = await transport.current.putWorkspace(
+          const resolvedWorkspace = await transport.current.putWorkspace(
             localWorkspace,
             remoteWorkspace.revision,
             crypto.randomUUID(),
           );
           workspaceDirty.current = false;
+          workspaceRef.current = {
+            groups: resolvedWorkspace.groups,
+            sortMode: resolvedWorkspace.sortMode,
+            manualOrder: resolvedWorkspace.manualOrder,
+            collapsedGroupIds: resolvedWorkspace.collapsedGroupIds,
+          };
+          setGroups(resolvedWorkspace.groups);
+          setWorkspacePreferences({
+            sortMode: resolvedWorkspace.sortMode,
+            manualOrder: resolvedWorkspace.manualOrder,
+            collapsedGroupIds: resolvedWorkspace.collapsedGroupIds,
+          });
         } else if (remoteWorkspace.revision > 0) {
           await store.replaceInterviewGroups(remoteWorkspace.groups);
+          workspaceRef.current = {
+            groups: remoteWorkspace.groups,
+            sortMode: remoteWorkspace.sortMode,
+            manualOrder: remoteWorkspace.manualOrder,
+            collapsedGroupIds: remoteWorkspace.collapsedGroupIds,
+          };
+          setGroups(remoteWorkspace.groups);
+          setWorkspacePreferences({
+            sortMode: remoteWorkspace.sortMode,
+            manualOrder: remoteWorkspace.manualOrder,
+            collapsedGroupIds: remoteWorkspace.collapsedGroupIds,
+          });
+        } else {
+          workspaceRef.current = { ...workspaceRef.current, groups: localGroups };
+          setGroups(localGroups);
         }
-        workspaceRef.current = {
-          groups: resolvedWorkspace.groups,
-          sortMode: resolvedWorkspace.sortMode,
-          manualOrder: resolvedWorkspace.manualOrder,
-          collapsedGroupIds: resolvedWorkspace.collapsedGroupIds,
-        };
-        setGroups(resolvedWorkspace.groups);
-        setWorkspacePreferences({
-          sortMode: resolvedWorkspace.sortMode,
-          manualOrder: resolvedWorkspace.manualOrder,
-          collapsedGroupIds: resolvedWorkspace.collapsedGroupIds,
-        });
+        setWorkspaceReady(true);
         const [pending, conflicts, rows] = await Promise.all([
           store.listPendingSync(),
           store.listInterviewConflicts(),
@@ -258,10 +278,11 @@ export function useInterviewLibrary(
         throw e;
       });
   }
+  const writeEvent = useEffectEvent(write);
   useEffect(() => {
     if (!ready || !id) return;
     timer.current = setTimeout(() => {
-      void write(id, callbacks.current.draft).catch(() => {});
+      void writeEvent(id, callbacks.current.draft).catch(() => {});
     }, 400);
     return () => {
       if (timer.current) clearTimeout(timer.current);
@@ -285,8 +306,12 @@ export function useInterviewLibrary(
     if (!ready || !id) throw new Error('本地存储尚未就绪');
     await write(id, callbacks.current.draft);
   }
-  async function flushForTask() {
-    await flush();
+  async function flushForTask(overrides?: Partial<Draft>) {
+    if (overrides) {
+      if (timer.current) clearTimeout(timer.current);
+      if (!ready || !id) throw new Error('本地存储尚未就绪');
+      await write(id, { ...callbacks.current.draft, ...overrides });
+    } else await flush();
     if (!options.cloud) return undefined;
     await synchronize();
     const meta = await localStore().getSyncMeta(id);
@@ -603,6 +628,7 @@ export function useInterviewLibrary(
     sessions,
     groups,
     workspacePreferences,
+    workspaceReady,
     updateWorkspacePreferences,
     audio,
     preferences,

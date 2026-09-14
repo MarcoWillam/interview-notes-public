@@ -48,6 +48,10 @@ export function LocalLibrary({
   const [trash, setTrash] = useState<CloudInterviewSummary[]>([]);
   const [results, setResults] = useState<PendingInterviewResult[]>([]);
   const running = useRef(false);
+  const libraryRef = useRef(library);
+  useEffect(() => {
+    libraryRef.current = library;
+  }, [library]);
 
   async function act(task: () => Promise<void>) {
     if (running.current) return;
@@ -69,14 +73,14 @@ export function LocalLibrary({
 
   useEffect(() => {
     if (!open || tab !== 'trash' || !library.cloud) return;
-    void library.loadTrash().then(setTrash).catch((reason: unknown) =>
+    void libraryRef.current.loadTrash().then(setTrash).catch((reason: unknown) =>
       setError(reason instanceof Error ? reason.message : '回收站读取失败'),
     );
   }, [open, tab, library.cloud]);
 
   useEffect(() => {
     if (!open || tab !== 'results' || !library.cloud || !library.id) return;
-    void library.loadPendingResults(library.id).then(setResults).catch((reason: unknown) =>
+    void libraryRef.current.loadPendingResults(library.id).then(setResults).catch((reason: unknown) =>
       setError(reason instanceof Error ? reason.message : '待确认结果读取失败'),
     );
   }, [open, tab, library.cloud, library.id]);
