@@ -73,6 +73,14 @@ function jsonPointer(value: unknown) {
     !/^\/(?:[^/~]|~[01])+(?:\/(?:[^/~]|~[01])+)*$/.test(value)
   )
     throw new Error('作品执行合同 JSON 指针无效。');
+  if (
+    value
+      .slice(1)
+      .split('/')
+      .map((part) => part.replaceAll('~1', '/').replaceAll('~0', '~'))
+      .some((part) => ['__proto__', 'prototype', 'constructor'].includes(part))
+  )
+    throw new Error('作品执行合同 JSON 指针无效。');
   return value;
 }
 
