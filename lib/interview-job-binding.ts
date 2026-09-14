@@ -53,7 +53,13 @@ export function assertInterviewJobInputMatches(
   input: Record<string, unknown>,
 ) {
   const expectedStandards = standards(record);
-  for (const [key, value] of Object.entries(expectedStandards))
+  const comparableStandards =
+    kind === 'interview'
+      ? Object.entries(expectedStandards).filter(
+          ([key]) => key !== 'dimensionText',
+        )
+      : Object.entries(expectedStandards);
+  for (const [key, value] of comparableStandards)
     if ((input[key] || '') !== value)
       throw new Error('任务资料与云端面试记录不一致。');
   if ((input.resumeText || '') !== record.resumeText)
