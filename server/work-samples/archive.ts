@@ -146,6 +146,13 @@ export async function extractWorkSample(
   outputDirectory: string,
 ): Promise<WorkSampleManifest> {
   const bytes = new Uint8Array(await readFile(zipPath));
+  return extractWorkSampleBytes(bytes, outputDirectory);
+}
+
+export async function extractWorkSampleBytes(
+  bytes: Uint8Array,
+  outputDirectory: string,
+): Promise<WorkSampleManifest> {
   if (!bytes.length || bytes.length > MAX_CONTRACT_ARTIFACT_BYTES)
     throw new Error('笔试作品 ZIP 不能为空且不能超过 50 MB。');
   const entries = inspectZip(bytes);

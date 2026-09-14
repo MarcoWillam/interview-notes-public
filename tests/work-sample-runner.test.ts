@@ -727,7 +727,12 @@ void test('generic work-sample contract injects observed coverage and verifies c
           sha256: f.reference.sha256,
           bytes: f.reference.bytes,
           coveragePointer: '/coverage',
-          evidencePointer: '/questions',
+          requiredEvidence: [
+            {
+              collectionPointer: '/questions',
+              itemPointer: '/workSampleEvidence',
+            },
+          ],
         },
         attempt: 1,
         maxAttempts: 2,
@@ -758,6 +763,97 @@ void test('generic work-sample contract injects observed coverage and verifies c
   }
 });
 
+void test('generic work-sample contract uses the verified archive snapshot', async () => {
+  const f = await fixture();
+  const extraction = join(f.root, 'snapshot-contract-extraction');
+  try {
+    const replacement = zipSync({
+      'changed.md': strToU8('校验完成后替换的内容不应被读取。'),
+    });
+    const result = await executeWorkSampleContract(
+      {
+        contractVersion: 1,
+        runner: 'structured-work-sample',
+        instructions: '只依据本地作品返回 JSON。',
+        schema: { type: 'object', properties: {} },
+        payload: { workSample: f.reference },
+        artifact: {
+          id: f.reference.id,
+          sha256: f.reference.sha256,
+          bytes: f.reference.bytes,
+          coveragePointer: '/coverage',
+          requiredEvidence: [
+            {
+              collectionPointer: '/questions',
+              itemPointer: '/workSampleEvidence',
+            },
+          ],
+        },
+        attempt: 1,
+        maxAttempts: 2,
+      },
+      f.zip,
+      new AbortController().signal,
+      {
+        createDirectory: async () => {
+          await writeFile(f.zip, replacement);
+          return extraction;
+        },
+        runStructured: async (_input, _signal, _instructions, _schema, mcp) => {
+          assert.deepEqual(mcp.readable, ['docs/brief.md', 'src/demo.ts']);
+          return assessment(f.reference);
+        },
+      },
+    );
+    assert.deepEqual(
+      (result as { coverage: { analyzed: string[] } }).coverage.analyzed,
+      ['docs/brief.md', 'src/demo.ts'],
+    );
+  } finally {
+    await f.cleanup();
+  }
+});
+
+void test('generic work-sample evidence rules support a server-selected result shape', async () => {
+  const f = await fixture();
+  try {
+    const result = await executeWorkSampleContract(
+      {
+        contractVersion: 1,
+        runner: 'structured-work-sample',
+        instructions: '只依据本地作品返回 JSON。',
+        schema: { type: 'object', properties: {} },
+        payload: { workSample: f.reference },
+        artifact: {
+          id: f.reference.id,
+          sha256: f.reference.sha256,
+          bytes: f.reference.bytes,
+          coveragePointer: '/coverage',
+          requiredEvidence: [{ collectionPointer: '/citations' }],
+        },
+        attempt: 1,
+        maxAttempts: 2,
+      },
+      f.zip,
+      new AbortController().signal,
+      {
+        runStructured: async () => ({
+          coverage: null,
+          citations: [
+            { path: 'docs/brief.md', excerpt: '目标用户是新手卖家' },
+          ],
+        }),
+      },
+    );
+    assert.deepEqual(
+      (result as { citations: unknown[] }).citations,
+      [{ path: 'docs/brief.md', excerpt: '目标用户是新手卖家' }],
+    );
+  } finally {
+    await f.cleanup();
+  }
+});
+
 void test('generic work-sample contract rejects fabricated dimension evidence', async () => {
   const f = await fixture();
   try {
@@ -775,7 +871,12 @@ void test('generic work-sample contract rejects fabricated dimension evidence', 
               sha256: f.reference.sha256,
               bytes: f.reference.bytes,
               coveragePointer: '/coverage',
-              evidencePointer: '/questions',
+              requiredEvidence: [
+                {
+                  collectionPointer: '/questions',
+                  itemPointer: '/workSampleEvidence',
+                },
+              ],
             },
             attempt: 1,
             maxAttempts: 2,

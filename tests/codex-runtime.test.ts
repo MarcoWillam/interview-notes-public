@@ -53,7 +53,7 @@ void test('generic contract executor refuses unknown runners and missing local a
             sha256: 'a'.repeat(64),
             bytes: 1024,
             coveragePointer: '/coverage',
-            evidencePointer: '/questions',
+            requiredEvidence: [{ collectionPointer: '/citations' }],
           },
         },
         new AbortController().signal,

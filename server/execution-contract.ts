@@ -1,6 +1,7 @@
 import {
   validateCodexExecutionContract,
   type CodexExecutionContract,
+  type CodexExecutionKind,
 } from '../lib/codex-execution-contract.ts';
 import { assessmentInstructions, reportSchema } from '../lib/assessment.ts';
 import { validateInput } from '../lib/interview.ts';
@@ -30,13 +31,6 @@ import {
   writtenTestSupplementOutputSchema,
 } from '../lib/written-test-supplement.ts';
 
-export type ExecutionJobKind =
-  | 'interview'
-  | 'resume'
-  | 'written-test'
-  | 'outline'
-  | 'work-sample';
-
 function artifactContract(
   reference: WorkSampleReference,
   nested: boolean,
@@ -46,7 +40,12 @@ function artifactContract(
     sha256: reference.sha256,
     bytes: reference.bytes,
     coveragePointer: nested ? '/workSample/coverage' : '/coverage',
-    evidencePointer: nested ? '/workSample/questions' : '/questions',
+    requiredEvidence: [
+      {
+        collectionPointer: nested ? '/workSample/questions' : '/questions',
+        itemPointer: '/workSampleEvidence',
+      },
+    ],
   };
 }
 
@@ -79,7 +78,7 @@ function resumeWorkSampleDefinition(input: ReturnType<typeof validateResumeInput
   };
 }
 
-function modelDefinition(kind: ExecutionJobKind, value: unknown) {
+function modelDefinition(kind: CodexExecutionKind, value: unknown) {
   if (kind === 'interview')
     return {
       runner: 'structured-text' as const,
@@ -133,7 +132,7 @@ function modelDefinition(kind: ExecutionJobKind, value: unknown) {
 }
 
 export function executionContractFor(
-  kind: ExecutionJobKind,
+  kind: CodexExecutionKind,
   input: unknown,
   options: { attempt?: number; feedback?: string } = {},
 ) {

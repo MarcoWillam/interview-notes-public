@@ -1,6 +1,5 @@
-import { createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, open, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
 import {
@@ -10,7 +9,11 @@ import {
 } from '../../lib/codex-execution-contract.ts';
 import { AnalysisError } from '../analysis-error.ts';
 import { runStructuredCodexWithWorkSample } from '../codex-runtime.ts';
-import { extractWorkSample, type WorkSampleManifest } from './archive.ts';
+import {
+  extractWorkSampleBytes,
+  type WorkSampleManifest,
+} from './archive.ts';
+import { safeLocalWorkSamplePath } from './path.ts';
 
 type RunStructured = typeof runStructuredCodexWithWorkSample;
 
@@ -19,41 +22,31 @@ type Dependencies = {
   createDirectory?: () => Promise<string>;
 };
 
-async function sha256(path: string) {
-  const digest = createHash('sha256');
-  for await (const chunk of createReadStream(path)) digest.update(chunk);
-  return digest.digest('hex');
-}
-
-function safeRelativePath(value: unknown) {
-  if (typeof value !== 'string' || !value.trim() || value.length > 500)
-    throw new Error('作品证据路径不安全。');
-  const path = value.trim().replaceAll('\\', '/');
-  if (
-    path.startsWith('/') ||
-    /^[a-z]:\//i.test(path) ||
-    path.split('/').some((part) => !part || part === '.' || part === '..')
-  )
-    throw new Error('作品证据路径不安全。');
-  return path;
-}
-
-async function verifyArchive(path: string, contract: CodexExecutionContract) {
+async function verifiedArchiveBytes(
+  path: string,
+  contract: CodexExecutionContract,
+) {
   const artifact = contract.artifact;
   if (!artifact) throw new AnalysisError('作品执行合同缺少附件。', 409);
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
-    const info = await stat(path);
+    handle = await open(path, 'r');
+    const info = await handle.stat();
+    if (!info.isFile() || info.size !== artifact.bytes) throw new Error();
+    const bytes = new Uint8Array(await handle.readFile());
     if (
-      !info.isFile() ||
-      info.size !== artifact.bytes ||
-      (await sha256(path)) !== artifact.sha256
+      bytes.byteLength !== artifact.bytes ||
+      createHash('sha256').update(bytes).digest('hex') !== artifact.sha256
     )
       throw new Error();
+    return bytes;
   } catch {
     throw new AnalysisError(
       '本地笔试作品已移除或发生变化，请刷新后重新选择。',
       409,
     );
+  } finally {
+    await handle?.close();
   }
 }
 
@@ -100,37 +93,40 @@ function replaceAtPointer(value: unknown, pointer: string, replacement: unknown)
 
 async function verifyEvidence(
   result: unknown,
-  pointer: string,
+  rules: NonNullable<CodexExecutionContract['artifact']>['requiredEvidence'],
   root: string,
   readable: string[],
 ) {
-  const questions = atPointer(result, pointer);
-  if (!Array.isArray(questions)) throw new Error('作品结果缺少文件依据。');
-  for (const question of questions) {
-    if (
-      !question ||
-      typeof question !== 'object' ||
-      !(question as Record<string, unknown>).workSampleEvidence
-    )
-      throw new Error('作品问题缺少文件依据。');
-  }
-  const evidenceItems: Record<string, unknown>[] = [];
-  const collect = (value: unknown) => {
+  const collect = (value: unknown, target: Record<string, unknown>[]) => {
     if (Array.isArray(value)) {
-      for (const item of value) collect(item);
+      for (const item of value) collect(item, target);
       return;
     }
     if (!value || typeof value !== 'object') return;
     const record = value as Record<string, unknown>;
-    if ('path' in record || 'excerpt' in record) evidenceItems.push(record);
-    for (const item of Object.values(record)) collect(item);
+    if ('path' in record || 'excerpt' in record) target.push(record);
+    for (const item of Object.values(record)) collect(item, target);
   };
-  collect(result);
+  for (const rule of rules) {
+    const collection = atPointer(result, rule.collectionPointer);
+    if (!Array.isArray(collection) || !collection.length)
+      throw new Error('作品结果缺少文件依据。');
+    for (const item of collection) {
+      const evidence = rule.itemPointer
+        ? atPointer(item, rule.itemPointer)
+        : item;
+      const requiredItems: Record<string, unknown>[] = [];
+      collect(evidence, requiredItems);
+      if (!requiredItems.length) throw new Error('作品结果缺少文件依据。');
+    }
+  }
+  const evidenceItems: Record<string, unknown>[] = [];
+  collect(result, evidenceItems);
   if (!evidenceItems.length) throw new Error('作品结果缺少文件依据。');
   const allowed = new Set(readable);
   const cache = new Map<string, string>();
   for (const item of evidenceItems) {
-    const path = safeRelativePath(item.path);
+    const path = safeLocalWorkSamplePath(item.path);
     if (!allowed.has(path)) throw new Error('作品证据文件不在允许范围内。');
     if (typeof item.excerpt !== 'string' || !item.excerpt.trim())
       throw new Error('作品证据引用为空。');
@@ -165,13 +161,13 @@ export async function executeWorkSampleContract(
   if (contract.runner !== 'structured-work-sample' || !contract.artifact)
     throw new Error('作品执行器收到错误合同。');
   signal.throwIfAborted();
-  await verifyArchive(zipPath, contract);
+  const archiveBytes = await verifiedArchiveBytes(zipPath, contract);
   const directory = await (
     dependencies.createDirectory ||
     (() => mkdtemp(join(tmpdir(), 'interview-work-sample-')))
   )();
   try {
-    const manifest = await extractWorkSample(zipPath, directory);
+    const manifest = await extractWorkSampleBytes(archiveBytes, directory);
     signal.throwIfAborted();
     if (
       !contract.payload ||
@@ -196,7 +192,7 @@ export async function executeWorkSampleContract(
     );
     await verifyEvidence(
       result,
-      contract.artifact.evidencePointer,
+      contract.artifact.requiredEvidence,
       directory,
       manifest.readable,
     );
