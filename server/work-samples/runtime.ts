@@ -93,36 +93,35 @@ function replaceAtPointer(value: unknown, pointer: string, replacement: unknown)
 
 async function verifyEvidence(
   result: unknown,
-  rules: NonNullable<CodexExecutionContract['artifact']>['requiredEvidence'],
+  rules: NonNullable<CodexExecutionContract['artifact']>['evidenceRules'],
   root: string,
   readable: string[],
 ) {
-  const collect = (value: unknown, target: Record<string, unknown>[]) => {
-    if (Array.isArray(value)) {
-      for (const item of value) collect(item, target);
-      return;
-    }
-    if (!value || typeof value !== 'object') return;
-    const record = value as Record<string, unknown>;
-    if ('path' in record || 'excerpt' in record) target.push(record);
-    for (const item of Object.values(record)) collect(item, target);
-  };
+  const evidenceItems: Array<{ path: unknown; excerpt: unknown }> = [];
   for (const rule of rules) {
     const collection = atPointer(result, rule.collectionPointer);
-    if (!Array.isArray(collection) || !collection.length)
+    if (!Array.isArray(collection))
       throw new Error('作品结果缺少文件依据。');
     for (const item of collection) {
-      const evidence = rule.itemPointer
-        ? atPointer(item, rule.itemPointer)
+      const evidence = rule.evidencePointer
+        ? atPointer(item, rule.evidencePointer)
         : item;
-      const requiredItems: Record<string, unknown>[] = [];
-      collect(evidence, requiredItems);
-      if (!requiredItems.length) throw new Error('作品结果缺少文件依据。');
+      const entries = rule.evidenceArray
+        ? Array.isArray(evidence)
+          ? evidence
+          : []
+        : evidence === undefined || evidence === null
+          ? []
+          : [evidence];
+      if (rule.required && !entries.length)
+        throw new Error('作品结果缺少文件依据。');
+      for (const entry of entries)
+        evidenceItems.push({
+          path: atPointer(entry, rule.pathPointer),
+          excerpt: atPointer(entry, rule.excerptPointer),
+        });
     }
   }
-  const evidenceItems: Record<string, unknown>[] = [];
-  collect(result, evidenceItems);
-  if (!evidenceItems.length) throw new Error('作品结果缺少文件依据。');
   const allowed = new Set(readable);
   const cache = new Map<string, string>();
   for (const item of evidenceItems) {
@@ -192,7 +191,7 @@ export async function executeWorkSampleContract(
     );
     await verifyEvidence(
       result,
-      contract.artifact.requiredEvidence,
+      contract.artifact.evidenceRules,
       directory,
       manifest.readable,
     );

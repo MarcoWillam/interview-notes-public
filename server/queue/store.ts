@@ -71,7 +71,7 @@ export class QueueStore {
       CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,user TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS pairs(hash TEXT PRIMARY KEY,user TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,user TEXT NOT NULL,name TEXT NOT NULL,hash TEXT UNIQUE NOT NULL,seen INTEGER NOT NULL,ready INTEGER NOT NULL DEFAULT 0,revoked INTEGER NOT NULL DEFAULT 0,version TEXT,protocol INTEGER,versionSeen INTEGER);
-      CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,kind TEXT NOT NULL DEFAULT 'interview',queued INTEGER,started INTEGER,scope TEXT,requiredProtocol INTEGER NOT NULL DEFAULT 1,attempt INTEGER NOT NULL DEFAULT 1,feedback TEXT,UNIQUE(user,client));
+      CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,leaseProtocol INTEGER,kind TEXT NOT NULL DEFAULT 'interview',queued INTEGER,started INTEGER,scope TEXT,requiredProtocol INTEGER NOT NULL DEFAULT 1,attempt INTEGER NOT NULL DEFAULT 1,feedback TEXT,UNIQUE(user,client));
       CREATE TABLE IF NOT EXISTS outline_completions(user TEXT NOT NULL,scope TEXT NOT NULL,job TEXT NOT NULL,inputHash TEXT NOT NULL,completed INTEGER NOT NULL,PRIMARY KEY(user,scope));
       CREATE TABLE IF NOT EXISTS artifacts(user TEXT NOT NULL,device TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,sha256 TEXT NOT NULL,bytes INTEGER NOT NULL,modified INTEGER NOT NULL,seen INTEGER NOT NULL,PRIMARY KEY(device,id));
       CREATE INDEX IF NOT EXISTS jobs_owner_created ON jobs(user,created);
@@ -113,6 +113,8 @@ export class QueueStore {
       );
     if (!jobColumns.some((column) => column.name === 'feedback'))
       this.db.exec('ALTER TABLE jobs ADD COLUMN feedback TEXT');
+    if (!jobColumns.some((column) => column.name === 'leaseProtocol'))
+      this.db.exec('ALTER TABLE jobs ADD COLUMN leaseProtocol INTEGER');
     this.db
       .prepare(
         "UPDATE jobs SET state='failed',input=NULL,report=NULL,error='旧版提纲任务缺少面试记录范围，请重新提交。',updated=? WHERE kind='outline' AND scope IS NULL AND state IN ('queued','running','paused','completed')",
@@ -130,6 +132,9 @@ export class QueueStore {
       this.db.exec('ALTER TABLE devices ADD COLUMN protocol INTEGER');
     if (!deviceColumns.some((column) => column.name === 'versionSeen'))
       this.db.exec('ALTER TABLE devices ADD COLUMN versionSeen INTEGER');
+    this.db.exec(
+      "UPDATE jobs SET leaseProtocol=COALESCE((SELECT protocol FROM devices WHERE devices.id=jobs.device),1) WHERE state='running' AND leaseProtocol IS NULL",
+    );
     this.db.exec('UPDATE jobs SET queued=created WHERE queued IS NULL');
   }
   close() {
@@ -468,7 +473,7 @@ export class QueueStore {
       .run(this.now(), id, user);
     this.db
       .prepare(
-        "UPDATE jobs SET state='failed',input=NULL,error='保存作品的电脑已解除配对，请重新选择作品。',device=NULL,lease=NULL,until=NULL,updated=? WHERE targetDevice=? AND user=? AND state IN ('queued','running','paused')",
+        "UPDATE jobs SET state='failed',input=NULL,error='保存作品的电脑已解除配对，请重新选择作品。',device=NULL,lease=NULL,until=NULL,leaseProtocol=NULL,updated=? WHERE targetDevice=? AND user=? AND state IN ('queued','running','paused')",
       )
       .run(this.now(), id, user);
     this.db
@@ -785,7 +790,7 @@ export class QueueStore {
             throw new QueueError('当前任务不能暂停。', 409);
           this.db
             .prepare(
-              "UPDATE jobs SET state='paused',device=NULL,lease=NULL,until=NULL,updated=? WHERE user=? AND id=?",
+              "UPDATE jobs SET state='paused',device=NULL,lease=NULL,until=NULL,leaseProtocol=NULL,updated=? WHERE user=? AND id=?",
             )
             .run(this.now(), user, id);
         }
@@ -795,7 +800,7 @@ export class QueueStore {
             throw new QueueError('当前任务不能恢复。', 409);
           this.db
             .prepare(
-              "UPDATE jobs SET state='queued',queued=?,started=NULL,device=NULL,lease=NULL,until=NULL,updated=? WHERE user=? AND id=?",
+              "UPDATE jobs SET state='queued',queued=?,started=NULL,device=NULL,lease=NULL,until=NULL,leaseProtocol=NULL,updated=? WHERE user=? AND id=?",
             )
             .run(this.now(), this.now(), user, id);
         }
@@ -804,7 +809,7 @@ export class QueueStore {
           throw new QueueError('当前任务不能停止。', 409);
         this.db
           .prepare(
-            "UPDATE jobs SET state='cancelled',input=NULL,report=NULL,error=NULL,device=NULL,lease=NULL,until=NULL,started=NULL,updated=? WHERE user=? AND id=?",
+            "UPDATE jobs SET state='cancelled',input=NULL,report=NULL,error=NULL,device=NULL,lease=NULL,until=NULL,leaseProtocol=NULL,started=NULL,updated=? WHERE user=? AND id=?",
           )
           .run(this.now(), user, id);
       }
@@ -840,12 +845,13 @@ export class QueueStore {
     const lease = token();
     const row = this.db
       .prepare(
-        `UPDATE jobs SET state='running',device=?,lease=?,until=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND requiredProtocol<=? AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1) OR (kind='outline' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY ${PREPARATION_PRIORITY},queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId,attempt,feedback`,
+        `UPDATE jobs SET state='running',device=?,lease=?,until=?,leaseProtocol=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND requiredProtocol<=? AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1) OR (kind='outline' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY ${PREPARATION_PRIORITY},queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId,attempt,feedback`,
       )
       .get(
         device.id,
         lease,
         this.now() + 60000,
+        connectorProtocol,
         this.now(),
         this.now(),
         device.user,
@@ -906,15 +912,9 @@ export class QueueStore {
       .prepare('SELECT * FROM jobs WHERE id=? AND user=?')
       .get(id, device.user) as Row | undefined;
     if (!job) throw new QueueError('任务不属于此连接器。', 403);
-    const deviceProtocol = Number(
-      (
-        this.db.prepare('SELECT protocol FROM devices WHERE id=?').get(device.id) as
-          | Row
-          | undefined
-      )?.protocol || 1,
-    );
+    const executionProtocol = Number(job.leaseProtocol || 1);
     if (
-      deviceProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
+      executionProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
       executionAttempt === undefined
     )
       throw new QueueError('协议 5 完成任务时必须提供执行合同次数。');
@@ -927,7 +927,7 @@ export class QueueStore {
     if (job.device !== device.id || job.lease !== lease)
       throw new QueueError('任务不属于此连接器。', 403);
     if (
-      deviceProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
+      executionProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
       executionAttempt !== undefined
     ) {
       if (!Number.isSafeInteger(executionAttempt) || Number(executionAttempt) < 1)
@@ -1008,7 +1008,7 @@ export class QueueStore {
       !failed &&
       error &&
       validationFeedback &&
-      deviceProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
+      executionProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
       Number(job.attempt || 1) < 2
     ) {
       const attempt = Number(job.attempt || 1) + 1;

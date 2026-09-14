@@ -84,6 +84,10 @@ void test('server builds artifact-bound contracts for initial and later work', (
   });
   assert.equal(initial.runner, 'structured-work-sample');
   assert.equal(initial.artifact?.coveragePointer, '/workSample/coverage');
+  assert.deepEqual(
+    initial.artifact?.evidenceRules.map((rule) => rule.collectionPointer),
+    ['/workSample/questions', '/workSample/dimensions'],
+  );
 
   const later = executionContractFor('work-sample', {
     ...standards,
@@ -94,6 +98,10 @@ void test('server builds artifact-bound contracts for initial and later work', (
   });
   assert.equal(later.runner, 'structured-work-sample');
   assert.equal(later.artifact?.coveragePointer, '/coverage');
+  assert.deepEqual(
+    later.artifact?.evidenceRules.map((rule) => rule.collectionPointer),
+    ['/questions', '/dimensions'],
+  );
 });
 
 void test('server selects the V3 campus-potential prompt and schema at claim time', () => {

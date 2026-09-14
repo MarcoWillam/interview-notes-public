@@ -43,6 +43,24 @@ const artifactBase = {
   bytes: 1,
   modifiedAt: 123,
 };
+const artifactEvidenceRules = [
+  {
+    collectionPointer: '/questions',
+    evidencePointer: '/workSampleEvidence',
+    evidenceArray: false,
+    required: true,
+    pathPointer: '/path',
+    excerptPointer: '/excerpt',
+  },
+  {
+    collectionPointer: '/dimensions',
+    evidencePointer: '/evidence',
+    evidenceArray: true,
+    required: false,
+    pathPointer: '/path',
+    excerptPointer: '/excerpt',
+  },
+];
 const question = (
   index: number,
   source: 'resume' | 'role' | 'work-sample',
@@ -727,12 +745,7 @@ void test('generic work-sample contract injects observed coverage and verifies c
           sha256: f.reference.sha256,
           bytes: f.reference.bytes,
           coveragePointer: '/coverage',
-          requiredEvidence: [
-            {
-              collectionPointer: '/questions',
-              itemPointer: '/workSampleEvidence',
-            },
-          ],
+          evidenceRules: artifactEvidenceRules,
         },
         attempt: 1,
         maxAttempts: 2,
@@ -782,12 +795,7 @@ void test('generic work-sample contract uses the verified archive snapshot', asy
           sha256: f.reference.sha256,
           bytes: f.reference.bytes,
           coveragePointer: '/coverage',
-          requiredEvidence: [
-            {
-              collectionPointer: '/questions',
-              itemPointer: '/workSampleEvidence',
-            },
-          ],
+          evidenceRules: artifactEvidenceRules,
         },
         attempt: 1,
         maxAttempts: 2,
@@ -829,7 +837,15 @@ void test('generic work-sample evidence rules support a server-selected result s
           sha256: f.reference.sha256,
           bytes: f.reference.bytes,
           coveragePointer: '/coverage',
-          requiredEvidence: [{ collectionPointer: '/citations' }],
+          evidenceRules: [
+            {
+              collectionPointer: '/citations',
+              evidenceArray: false,
+              required: true,
+              pathPointer: '/path',
+              excerptPointer: '/excerpt',
+            },
+          ],
         },
         attempt: 1,
         maxAttempts: 2,
@@ -842,6 +858,7 @@ void test('generic work-sample evidence rules support a server-selected result s
           citations: [
             { path: 'docs/brief.md', excerpt: '目标用户是新手卖家' },
           ],
+          metadata: { path: 'logical-route', excerpt: 'not-file-evidence' },
         }),
       },
     );
@@ -871,12 +888,7 @@ void test('generic work-sample contract rejects fabricated dimension evidence', 
               sha256: f.reference.sha256,
               bytes: f.reference.bytes,
               coveragePointer: '/coverage',
-              requiredEvidence: [
-                {
-                  collectionPointer: '/questions',
-                  itemPointer: '/workSampleEvidence',
-                },
-              ],
+              evidenceRules: artifactEvidenceRules,
             },
             attempt: 1,
             maxAttempts: 2,
