@@ -22,6 +22,16 @@ export type InterviewVersion = InterviewVersionSummary & {
   record: CloudInterview;
 };
 
+export type PendingInterviewResult = {
+  jobId: string;
+  kind: string;
+  baseRevision: number;
+  result: unknown;
+  state: 'pending' | 'applied' | 'discarded';
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type InterviewSyncTransport = {
   list: (trash?: boolean) => Promise<CloudInterviewSummary[]>;
   get: (id: string) => Promise<SyncedInterview>;
@@ -53,6 +63,14 @@ export type InterviewManagementTransport = InterviewSyncTransport & {
     baseRevision: number,
     mutationId: string,
   ) => Promise<SyncedInterview>;
+  pendingResults: (id: string) => Promise<PendingInterviewResult[]>;
+  applyPendingResult: (
+    id: string,
+    jobId: string,
+    baseRevision: number,
+    mutationId: string,
+  ) => Promise<SyncedInterview>;
+  discardPendingResult: (id: string, jobId: string) => Promise<void>;
 };
 
 export class InterviewSyncConflict extends Error {
@@ -173,6 +191,31 @@ export function createInterviewSyncTransport(
           method: 'POST',
           body: JSON.stringify({ baseRevision, mutationId }),
         },
+        fetcher,
+      );
+    },
+    async pendingResults(id) {
+      const response = await remoteRequest<{ results: PendingInterviewResult[] }>(
+        `/api/interviews/${encodeURIComponent(id)}/pending-results`,
+        {},
+        fetcher,
+      );
+      return response.results;
+    },
+    applyPendingResult(id, jobId, baseRevision, mutationId) {
+      return remoteRequest<SyncedInterview>(
+        `/api/interviews/${encodeURIComponent(id)}/pending-results/${encodeURIComponent(jobId)}/apply`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ baseRevision, mutationId }),
+        },
+        fetcher,
+      );
+    },
+    async discardPendingResult(id, jobId) {
+      await remoteRequest(
+        `/api/interviews/${encodeURIComponent(id)}/pending-results/${encodeURIComponent(jobId)}/discard`,
+        { method: 'POST', body: '{}' },
         fetcher,
       );
     },

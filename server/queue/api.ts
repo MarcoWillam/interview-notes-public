@@ -286,6 +286,16 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
             store.interviews.discardPendingResult(user.id, id, value);
             return json({ ok: true });
           }
+          if (value && action === 'apply' && method === 'POST')
+            return json(
+              store.interviews.applyPendingResult(
+                user.id,
+                id,
+                value,
+                Number(body.baseRevision),
+                str('mutationId', 100),
+              ),
+            );
         }
         throw new InterviewStoreError('面试记录接口不存在。', 404);
       }
@@ -339,6 +349,12 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
               body.input,
               kind,
               body.scope === undefined ? '' : str('scope', 100),
+              body.interviewId === undefined
+                ? undefined
+                : {
+                    interviewId: str('interviewId', 100),
+                    interviewRevision: Number(body.interviewRevision),
+                  },
             ),
             202,
           );

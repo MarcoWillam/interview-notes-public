@@ -8,6 +8,11 @@ import {
   type CloudInterviewSummary,
   type CloudVersionReason,
 } from '../../lib/cloud-interview.ts';
+import {
+  applyInterviewJobResult,
+  resultVersionReason,
+} from '../../lib/interview-job-binding.ts';
+import type { CodexExecutionKind } from '../../lib/codex-execution-contract.ts';
 
 type Row = Record<string, string | number | null>;
 
@@ -521,6 +526,26 @@ export class InterviewStore {
       .run(user, interview, jobId, kind, baseRevision, serialized, now, now);
   }
 
+  applyJobResult(
+    user: string,
+    interview: string,
+    jobId: string,
+    kind: CodexExecutionKind,
+    result: unknown,
+  ) {
+    const current = this.get(user, interview);
+    if (current.deletedAt !== null)
+      throw new InterviewStoreError('面试记录已在回收站，结果未自动应用。', 409);
+    return this.put(
+      user,
+      interview,
+      current.revision,
+      `job-${jobId}`,
+      applyInterviewJobResult(current.record, kind, result, this.now()),
+      resultVersionReason(kind),
+    );
+  }
+
   pendingResults(user: string, interview: string): PendingInterviewResult[] {
     return (
       this.db
@@ -547,6 +572,48 @@ export class InterviewStore {
       .run(this.now(), user, interview, jobId);
     if (!changed.changes)
       throw new InterviewStoreError('待确认结果不存在。', 404);
+  }
+
+  applyPendingResult(
+    user: string,
+    interview: string,
+    jobId: string,
+    baseRevision: number,
+    mutationId: string,
+  ) {
+    const row = this.db
+      .prepare(
+        "SELECT kind,result FROM interview_pending_results WHERE user=? AND interview=? AND jobId=? AND state='pending'",
+      )
+      .get(user, interview, jobId) as Row | undefined;
+    if (!row) throw new InterviewStoreError('待确认结果不存在。', 404);
+    const kind = String(row.kind) as CodexExecutionKind;
+    if (!['resume', 'written-test', 'work-sample', 'outline', 'interview'].includes(kind))
+      throw new InterviewStoreError('待确认结果类型无效。');
+    const current = this.get(user, interview);
+    if (current.revision !== baseRevision)
+      throw new RevisionConflict(
+        interviewSummary(current.record, current.revision, current.deletedAt),
+      );
+    const saved = this.put(
+      user,
+      interview,
+      baseRevision,
+      mutationId,
+      applyInterviewJobResult(
+        current.record,
+        kind,
+        JSON.parse(String(row.result)),
+        this.now(),
+      ),
+      resultVersionReason(kind),
+    );
+    this.db
+      .prepare(
+        "UPDATE interview_pending_results SET state='applied',updated=? WHERE user=? AND interview=? AND jobId=?",
+      )
+      .run(this.now(), user, interview, jobId);
+    return saved;
   }
 
   sweep() {

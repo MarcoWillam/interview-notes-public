@@ -6,6 +6,7 @@ import type { SavedInterview, InterviewConflict } from '@/lib/local/store';
 import type {
   InterviewVersion,
   InterviewVersionSummary,
+  PendingInterviewResult,
 } from '@/lib/interview-sync';
 import type { CloudInterviewSummary, CloudVersionReason } from '@/lib/cloud-interview';
 import { changedInterviewSections } from '@/lib/interview-history';
@@ -199,6 +200,51 @@ export function InterviewTrash({
           <button className="secondary-button" disabled={pending} onClick={() => void restore(row)}>
             <RotateCcw size={15} /> 恢复
           </button>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+const resultKindLabels: Record<string, string> = {
+  resume: '简历阅读与提纲',
+  'written-test': '笔试复盘补充',
+  'work-sample': '作品分析',
+  outline: '重新生成提纲',
+  interview: '结论评估',
+};
+
+export function InterviewPendingResults({
+  rows,
+  apply,
+  discard,
+  pending,
+}: {
+  rows: PendingInterviewResult[];
+  apply: (row: PendingInterviewResult) => Promise<void>;
+  discard: (row: PendingInterviewResult) => Promise<void>;
+  pending: boolean;
+}) {
+  const active = rows.filter((row) => row.state === 'pending');
+  if (!active.length)
+    return <p className="library-empty">当前记录没有待确认的 Codex 结果。</p>;
+  return (
+    <div className="conflict-list">
+      {active.map((row) => (
+        <article className="conflict-card" key={row.jobId}>
+          <strong>{resultKindLabels[row.kind] || 'Codex 分析结果'}</strong>
+          <p>分析期间相关资料发生变化，因此结果没有直接覆盖当前记录。</p>
+          <span className="small-note">
+            完成于 {new Date(row.updatedAt).toLocaleString('zh-CN')}
+          </span>
+          <div className="button-row">
+            <button className="text-button" disabled={pending} onClick={() => void discard(row)}>
+              放弃结果
+            </button>
+            <button className="secondary-button" disabled={pending} onClick={() => void apply(row)}>
+              确认并应用
+            </button>
+          </div>
         </article>
       ))}
     </div>

@@ -245,6 +245,27 @@ export function useInterviewLibrary(
     if (!ready || !id) throw new Error('本地存储尚未就绪');
     await write(id, callbacks.current.draft);
   }
+  async function flushForTask() {
+    await flush();
+    if (!options.cloud) return undefined;
+    await synchronize();
+    const meta = await localStore().getSyncMeta(id);
+    if (!meta) throw new Error('面试记录尚未同步到云端，请稍后重试。');
+    return { interviewId: id, interviewRevision: meta.revision };
+  }
+  async function refreshFromCloud(interviewId = id) {
+    if (!options.cloud) return;
+    const value = await transport.current.get(interviewId);
+    await localStore().saveRemoteInterview(value.record, value.revision);
+    if (interviewId === id) {
+      setReady(false);
+      createdAt.current = value.record.createdAt ?? value.record.updatedAt;
+      await callbacks.current.restore(await normalizeSession(value.record));
+      setReady(true);
+    }
+    await refresh();
+    setSyncStatus('synced');
+  }
   async function open(nextId: string) {
     setWorking(true);
     try {
@@ -478,6 +499,27 @@ export function useInterviewLibrary(
     await store.deleteInterviewConflict(conflictId);
     await synchronize().catch(() => {});
   }
+  async function loadPendingResults(interviewId = id) {
+    if (!options.cloud) return [];
+    return transport.current.pendingResults(interviewId);
+  }
+  async function applyPendingResult(interviewId: string, jobId: string) {
+    const meta = await localStore().getSyncMeta(interviewId);
+    if (!meta) throw new Error('请先同步当前面试记录。');
+    const result = await transport.current.applyPendingResult(
+      interviewId,
+      jobId,
+      meta.revision,
+      crypto.randomUUID(),
+    );
+    await localStore().saveRemoteInterview(result.record, result.revision);
+    if (interviewId === id)
+      await callbacks.current.restore(await normalizeSession(result.record));
+    await refresh();
+  }
+  async function discardPendingResult(interviewId: string, jobId: string) {
+    await transport.current.discardPendingResult(interviewId, jobId);
+  }
   return {
     access,
     id,
@@ -499,6 +541,8 @@ export function useInterviewLibrary(
     cloud: options.cloud,
     retrySync: synchronize,
     flush,
+    flushForTask,
+    refreshFromCloud,
     open,
     create,
     remove,
@@ -514,5 +558,8 @@ export function useInterviewLibrary(
     restoreVersion,
     restoreDeleted,
     resolveConflict,
+    loadPendingResults,
+    applyPendingResult,
+    discardPendingResult,
   };
 }
