@@ -2,7 +2,7 @@ import { readFile, mkdir, rm, writeFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { unzipSync } from 'fflate';
-import { MAX_WORK_SAMPLE_BYTES } from '../../lib/work-sample.ts';
+import { MAX_CONTRACT_ARTIFACT_BYTES } from '../../lib/codex-execution-contract.ts';
 
 const MAX_EXPANDED_BYTES = 300 * 1024 * 1024;
 const MAX_FILES = 3000;
@@ -146,7 +146,7 @@ export async function extractWorkSample(
   outputDirectory: string,
 ): Promise<WorkSampleManifest> {
   const bytes = new Uint8Array(await readFile(zipPath));
-  if (!bytes.length || bytes.length > MAX_WORK_SAMPLE_BYTES)
+  if (!bytes.length || bytes.length > MAX_CONTRACT_ARTIFACT_BYTES)
     throw new Error('笔试作品 ZIP 不能为空且不能超过 50 MB。');
   const entries = inspectZip(bytes);
   let expanded = 0;

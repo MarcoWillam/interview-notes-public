@@ -1,33 +1,11 @@
-import { validateInput } from '../../lib/interview.ts';
 import {
-  validateResumeInput,
-  validateResumeReading,
-} from '../../lib/resume-reading.ts';
-import {
-  validateWrittenTestSupplement,
-  validateWrittenTestSupplementInput,
-} from '../../lib/written-test-supplement.ts';
-import {
-  analyzeWithCodex,
-  codexStatus,
-  generateWrittenTestSupplementWithCodex,
-  readResumeWithCodex,
-  regenerateOutlineWithCodex,
-} from '../codex.ts';
-import {
-  validateOutlineRegenerationInput,
-  validateOutlineRegenerationResult,
-} from '../../lib/outline-regeneration.ts';
+  validateCodexExecutionContract,
+  type CodexExecutionContract,
+} from '../../lib/codex-execution-contract.ts';
+import { codexStatus } from '../codex-runtime.ts';
+import { executeCodexContract } from '../contract-executor.ts';
 import { connectorRelease } from '../../lib/connector-release.ts';
-import type {
-  WorkSampleInput,
-  WorkSampleReference,
-} from '../../lib/work-sample.ts';
-import { validateWorkSampleInput } from '../../lib/work-sample.ts';
-import {
-  analyzeWorkSampleWithCodex,
-  readResumeAndWorkSampleWithCodex,
-} from '../work-samples/analyze.ts';
+import type { LocalWorkSampleReference } from '../work-samples/inventory.ts';
 export type Credentials = { server: string; token: string; id: string };
 export function validateServer(value: string) {
   const url = new URL(value);
@@ -137,22 +115,17 @@ export async function runConnector(
   credentials: Credentials,
   signal: AbortSignal,
   dependencies: {
-    analyze: typeof analyzeWithCodex;
     status: typeof codexStatus;
-    readResume?: typeof readResumeWithCodex;
-    writeTest?: typeof generateWrittenTestSupplementWithCodex;
-    regenerateOutline?: typeof regenerateOutlineWithCodex;
-    readResumeWork?: typeof readResumeAndWorkSampleWithCodex;
-    analyzeWorkSample?: (
-      input: WorkSampleInput,
-      path: string,
+    execute?: (
+      contract: CodexExecutionContract,
       signal: AbortSignal,
+      context: { artifactPath?: string },
     ) => Promise<unknown>;
     workSamples?: () => Promise<{
-      artifacts: WorkSampleReference[];
+      artifacts: LocalWorkSampleReference[];
       files: Map<string, string>;
     }>;
-  } = { analyze: analyzeWithCodex, status: codexStatus },
+  } = { status: codexStatus },
   timings = { pollMs: 3000, heartbeatMs: 5000 },
 ) {
   const server = validateServer(credentials.server);
@@ -160,7 +133,7 @@ export async function runConnector(
     lastCheck = 0,
     reportedOffline = false,
     inventory:
-      | { artifacts: WorkSampleReference[]; files: Map<string, string> }
+      | { artifacts: LocalWorkSampleReference[]; files: Map<string, string> }
       | undefined;
   while (!signal.aborted) {
     try {
@@ -205,7 +178,7 @@ export async function runConnector(
         lease: string;
         kind?: string;
         artifactId?: string | null;
-        input: unknown;
+        execution: unknown;
       } | null;
       if (job) {
         const task = new AbortController(),
@@ -236,75 +209,32 @@ export async function runConnector(
             });
         }, timings.heartbeatMs);
         try {
-          let report: unknown,
-            failed = false,
-            failure: string | undefined;
-          try {
-            if (job.kind === 'resume') {
-              const input = validateResumeInput(job.input);
-              const artifactPath = input.workSample
-                ? inventory?.files.get(input.workSample.id)
+          let execution = validateCodexExecutionContract(job.execution);
+          while (!taskSignal.aborted) {
+            let report: unknown,
+              failed = false,
+              failure: string | undefined;
+            try {
+              const artifactPath = execution.artifact
+                ? inventory?.files.get(execution.artifact.id)
                 : undefined;
-              if (input.workSample && !artifactPath)
-                throw new Error('本地作品不存在。');
-              const reading = input.workSample
-                ? await (
-                    dependencies.readResumeWork ||
-                    readResumeAndWorkSampleWithCodex
-                  )(input, artifactPath!, taskSignal)
-                : await (dependencies.readResume || readResumeWithCodex)(
-                    input,
-                    taskSignal,
-                  );
-              report = validateResumeReading(reading, input, {
-                conciseQuestions: true,
-              });
-            } else if (job.kind === 'written-test') {
-              const input = validateWrittenTestSupplementInput(job.input);
-              const supplement = await (
-                dependencies.writeTest || generateWrittenTestSupplementWithCodex
-              )(input, taskSignal);
-              report = validateWrittenTestSupplement(supplement, input, {
-                conciseQuestions: true,
-              });
-            } else if (job.kind === 'work-sample') {
-              const input = validateWorkSampleInput(job.input);
-              const artifactPath = inventory?.files.get(input.workSample.id);
-              if (!artifactPath) throw new Error('本地作品不存在。');
-              report = await (
-                dependencies.analyzeWorkSample || analyzeWorkSampleWithCodex
-              )(input, artifactPath, taskSignal);
-            } else if (job.kind === 'outline') {
-              const input = validateOutlineRegenerationInput(job.input);
-              const result = await (
-                dependencies.regenerateOutline || regenerateOutlineWithCodex
-              )(input, taskSignal);
-              report = validateOutlineRegenerationResult(result, input);
-            } else {
-              report = await dependencies.analyze(
-                validateInput(job.input),
+              report = await (dependencies.execute || executeCodexContract)(
+                execution,
                 taskSignal,
+                { artifactPath },
               );
+            } catch (error) {
+              failed = true;
+              failure = workFailure(error);
             }
-          } catch (error) {
-            failed = true;
-            const needsStructuredFailure =
-              job.kind === 'outline' ||
-              job.kind === 'work-sample' ||
-              (job.kind === 'resume' &&
-                !!job.input &&
-                typeof job.input === 'object' &&
-                'workSample' in job.input);
-            failure = needsStructuredFailure ? workFailure(error) : 'codex';
-          }
-          if (!taskSignal.aborted) {
+            let finished: Record<string, unknown> | undefined;
             for (
               let attempt = 0;
               attempt < 4 && !taskSignal.aborted;
               attempt++
             ) {
               try {
-                await connectorRequest(
+                finished = await connectorRequest(
                   server,
                   '/api/worker/finish',
                   { id: job.id, lease: job.lease, report, failed, failure },
@@ -318,6 +248,12 @@ export async function runConnector(
                 else await delay(3000, taskSignal);
               }
             }
+            if (!finished || failed) break;
+            const retry = finished.retry;
+            if (!retry || typeof retry !== 'object') break;
+            execution = validateCodexExecutionContract(
+              (retry as Record<string, unknown>).execution,
+            );
           }
         } finally {
           clearInterval(timer);

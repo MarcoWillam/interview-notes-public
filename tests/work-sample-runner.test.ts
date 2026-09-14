@@ -25,6 +25,7 @@ import {
   type InterviewQuestionV3,
 } from '../lib/interview-outline-v3.ts';
 import { validateWorkSampleInput } from '../lib/work-sample.ts';
+import { executeWorkSampleContract } from '../server/work-samples/runtime.ts';
 
 const standards = {
   role: 'AI 产品经理（校招）',
@@ -700,6 +701,57 @@ void test('aborting work analysis removes the extracted directory', async () => 
       await new Promise((resolve) => setTimeout(resolve, 5));
     controller.abort(new Error('cancelled'));
     await assert.rejects(running, /cancelled/);
+    await assert.rejects(() => readdir(extraction));
+  } finally {
+    await f.cleanup();
+  }
+});
+
+void test('generic work-sample contract injects observed coverage and verifies cited files', async () => {
+  const f = await fixture();
+  const extraction = join(f.root, 'generic-contract-extraction');
+  try {
+    const result = await executeWorkSampleContract(
+      {
+        contractVersion: 1,
+        runner: 'structured-work-sample',
+        instructions: '只依据本地作品返回 JSON。',
+        schema: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {},
+        },
+        payload: { workSample: f.reference },
+        artifact: {
+          id: f.reference.id,
+          sha256: f.reference.sha256,
+          bytes: f.reference.bytes,
+          coveragePointer: '/coverage',
+          evidencePointer: '/questions',
+        },
+        attempt: 1,
+        maxAttempts: 2,
+      },
+      f.zip,
+      new AbortController().signal,
+      {
+        createDirectory: async () => extraction,
+        runStructured: async (input, _signal, instructions, _schema, mcp) => {
+          assert.match(instructions, /本地作品/);
+          assert.deepEqual(
+            (input as { workSampleCoverage: { analyzed: string[] } })
+              .workSampleCoverage.analyzed,
+            ['docs/brief.md', 'src/demo.ts'],
+          );
+          assert.equal(mcp.root, extraction);
+          return assessment(f.reference);
+        },
+      },
+    );
+    assert.deepEqual(
+      (result as { coverage: { analyzed: string[] } }).coverage.analyzed,
+      ['docs/brief.md', 'src/demo.ts'],
+    );
     await assert.rejects(() => readdir(extraction));
   } finally {
     await f.cleanup();

@@ -2,7 +2,14 @@ import { createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
-import type { WorkSampleReference } from '../../lib/work-sample.ts';
+export type LocalWorkSampleReference = {
+  id: string;
+  deviceId: string;
+  name: string;
+  sha256: string;
+  bytes: number;
+  modifiedAt: number;
+};
 
 async function fileSha256(path: string) {
   const hash = createHash('sha256');
@@ -24,10 +31,10 @@ export async function scanWorkSampleInbox(
     hashFile?: (path: string) => Promise<string>;
   } = {},
 ): Promise<{
-  artifacts: WorkSampleReference[];
+  artifacts: LocalWorkSampleReference[];
   files: Map<string, string>;
 }> {
-  const artifacts: WorkSampleReference[] = [];
+  const artifacts: LocalWorkSampleReference[] = [];
   const files = new Map<string, string>();
   const cachePath =
     options.cachePath || resolve(inbox, '..', '.local', 'work-index.json');
@@ -60,7 +67,7 @@ export async function scanWorkSampleInbox(
         .update(deviceId + '\n' + sha256)
         .digest('hex')
         .slice(0, 24);
-    const artifact: WorkSampleReference = {
+    const artifact: LocalWorkSampleReference = {
       id,
       deviceId,
       name: basename(entry.name),
