@@ -20,11 +20,11 @@ const textContract = {
   maxAttempts: 2,
 } satisfies CodexExecutionContract;
 
-test('execution contract accepts a closed structured-text task', () => {
+void test('execution contract accepts a closed structured-text task', () => {
   assert.deepEqual(validateCodexExecutionContract(textContract), textContract);
 });
 
-test('work-sample execution requires bounded artifact verification pointers', () => {
+void test('work-sample execution requires bounded artifact verification pointers', () => {
   const contract = validateCodexExecutionContract({
     ...textContract,
     runner: 'structured-work-sample',
@@ -51,7 +51,7 @@ test('work-sample execution requires bounded artifact verification pointers', ()
   );
 });
 
-test('execution contract rejects unknown executable fields and excessive content', () => {
+void test('execution contract rejects unknown executable fields and excessive content', () => {
   assert.throws(
     () => validateCodexExecutionContract({ ...textContract, command: 'sh' }),
     /未知字段/,
@@ -70,7 +70,7 @@ test('execution contract rejects unknown executable fields and excessive content
   );
 });
 
-test('execution contract rejects unsafe schemas and invalid JSON pointers', () => {
+void test('execution contract rejects unsafe schemas and invalid JSON pointers', () => {
   assert.throws(
     () => validateCodexExecutionContract({ ...textContract, schema: [] }),
     /输出结构/,
@@ -89,5 +89,20 @@ test('execution contract rejects unsafe schemas and invalid JSON pointers', () =
         },
       }),
     /JSON 指针/,
+  );
+});
+
+void test('execution contract stays below the connector response limit', () => {
+  assert.throws(
+    () =>
+      validateCodexExecutionContract({
+        ...textContract,
+        schema: {
+          type: 'object',
+          description: 'y'.repeat(180 * 1024),
+        },
+        payload: { text: 'x'.repeat(400 * 1024) },
+      }),
+    /执行合同超过限制/,
   );
 });

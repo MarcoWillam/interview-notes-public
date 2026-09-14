@@ -3,6 +3,7 @@ export const MAX_CONTRACT_INSTRUCTIONS_BYTES = 64 * 1024;
 export const MAX_CONTRACT_SCHEMA_BYTES = 256 * 1024;
 export const MAX_CONTRACT_PAYLOAD_BYTES = 512 * 1024;
 export const MAX_CONTRACT_RESULT_BYTES = 512 * 1024;
+export const MAX_CONTRACT_BYTES = 550 * 1024;
 export const MAX_CONTRACT_ATTEMPTS = 2;
 export const MAX_CONTRACT_ARTIFACT_BYTES = 50 * 1024 * 1024;
 
@@ -157,6 +158,7 @@ export function validateCodexExecutionContract(
     throw new Error('作品执行合同缺少附件。');
   if (value.runner === 'structured-text' && artifact)
     throw new Error('文本执行合同不能包含附件。');
+  serializedBytes(value, 'Codex 执行合同', MAX_CONTRACT_BYTES);
   return {
     contractVersion: 1,
     runner: value.runner,

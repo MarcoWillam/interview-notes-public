@@ -12,7 +12,7 @@ const contract = {
   maxAttempts: 2,
 } as const;
 
-test('generic contract executor passes only server instructions, schema and payload', async () => {
+void test('generic contract executor passes only server instructions, schema and payload', async () => {
   const seen: unknown[] = [];
   const result = await executeCodexContract(
     contract,
@@ -33,7 +33,7 @@ test('generic contract executor passes only server instructions, schema and payl
   ]);
 });
 
-test('generic contract executor refuses unknown runners and missing local artifacts', async () => {
+void test('generic contract executor refuses unknown runners and missing local artifacts', async () => {
   await assert.rejects(
     () =>
       executeCodexContract(

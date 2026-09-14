@@ -23,7 +23,7 @@ const workSample = {
   modifiedAt: 1,
 };
 
-test('server builds text contracts for every text-only task kind', () => {
+void test('server builds text contracts for every text-only task kind', () => {
   const fixtures = [
     {
       kind: 'interview' as const,
@@ -74,7 +74,7 @@ test('server builds text contracts for every text-only task kind', () => {
   }
 });
 
-test('server builds artifact-bound contracts for initial and later work', () => {
+void test('server builds artifact-bound contracts for initial and later work', () => {
   const initial = executionContractFor('resume', {
     ...standards,
     resumeText,
@@ -96,7 +96,7 @@ test('server builds artifact-bound contracts for initial and later work', () => 
   assert.equal(later.artifact?.coveragePointer, '/coverage');
 });
 
-test('server appends bounded semantic feedback only on retry', () => {
+void test('server appends bounded semantic feedback only on retry', () => {
   const contract = executionContractFor(
     'resume',
     {
