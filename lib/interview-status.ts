@@ -1,4 +1,4 @@
-import type { SavedInterview } from './local/store';
+import type { CloudInterview as SavedInterview } from './cloud-interview';
 
 export type InterviewStatus =
   | 'preparing'

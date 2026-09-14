@@ -11,41 +11,8 @@ import {
   replacementForLegacyBuiltInRoleTemplate,
   replacementForPreviousBuiltInRoleTemplate,
 } from '../default-role-templates.ts';
-export type SavedInterview = {
-  id: string;
-  groupId?: string | null;
-  createdAt?: number;
-  updatedAt: number;
-  candidate: string;
-  role: string;
-  requirements: string;
-  dimensionText: string;
-  focus: string;
-  resumeText: string;
-  resumeName: string;
-  /** Historical records only; current drafts no longer require verification. */
-  resumeChecked?: boolean;
-  resumeReading?: import('../resume-reading.ts').ResumeReading | null;
-  transcript: string;
-  transcriptName?: string;
-  reviewed: boolean;
-  report: import('../interview.ts').Report | null;
-  conclusion: string;
-  confirmed: boolean;
-  scoringGuidance?: string;
-  reportRequirements?: string;
-  sourceTemplateId?: string | null;
-  templateModified?: boolean;
-  outlineVersion?: 1 | 2 | 3;
-  hasWrittenTest?: boolean;
-  writtenTestConfirmed?: boolean;
-  workSample?: import('../work-sample.ts').WorkSampleAssessment | null;
-  workSampleJobId?: string;
-  writtenTestJobId?: string;
-  outlineRegeneratedAt?: number;
-  outlineRegenerationJobId?: string;
-  outlineRevision?: string;
-};
+import type { CloudInterview } from '../cloud-interview.ts';
+export type SavedInterview = CloudInterview;
 export type InterviewGroup = {
   id: string;
   name: string;
