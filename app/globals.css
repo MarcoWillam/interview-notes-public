@@ -1785,10 +1785,59 @@ fieldset label:last-of-type {
   gap: 19px !important;
 }
 .library-dialog {
-  max-width: 720px !important;
+  width: min(900px, calc(100vw - 32px));
+  max-width: 900px !important;
   max-height: 85vh;
-  overflow: auto;
+  overflow: hidden;
   padding: 28px !important;
+}
+.library-dialog .dialog-heading > div:first-child {
+  min-width: 0;
+}
+.library-dialog [data-slot='dialog-description'] {
+  margin: 6px 0 0;
+}
+.library-tabs {
+  display: flex;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e2ebe7;
+  overflow-x: auto;
+}
+.library-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #657b74;
+  font-size: 13px;
+}
+.library-tabs button[data-active] {
+  color: #087d70;
+  background: #edf7f3;
+}
+.library-tabs button span {
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 10px;
+  color: white;
+  background: #bb624e;
+  font-size: 11px;
+}
+.library-tab-body {
+  min-height: 280px;
+  max-height: min(58vh, 560px);
+  overflow: auto;
+  padding: 2px;
+}
+.library-empty {
+  color: #799087;
+  font-size: 14px;
+  padding: 26px 4px;
 }
 .local-list {
   display: flex;
@@ -1847,6 +1896,72 @@ fieldset label:last-of-type {
 .library-dialog input {
   font-size: 16px;
 }
+.history-layout {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.8fr) minmax(280px, 1.2fr);
+  min-height: 300px;
+  gap: 16px;
+}
+.history-list,
+.conflict-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.history-version {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 11px 12px;
+  text-align: left;
+  border: 1px solid #e0e9e4;
+  border-radius: 9px;
+  color: #344c46;
+  background: white;
+}
+.history-version[data-active] {
+  border-color: #79b9aa;
+  background: #f0f8f5;
+}
+.history-version span,
+.history-preview span {
+  color: #7b8d87;
+  font-size: 12px;
+}
+.history-detail {
+  min-width: 0;
+  padding: 16px;
+  border-radius: 10px;
+  background: #f7faf8;
+}
+.history-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.history-preview p,
+.conflict-card p {
+  margin: 4px 0;
+  color: #61756f;
+  font-size: 13px;
+}
+.conflict-card {
+  padding: 15px;
+  border: 1px solid #e7d9c5;
+  border-radius: 10px;
+  background: #fffaf3;
+}
+.conflict-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #855f2f;
+}
+.conflict-card .button-row {
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
 @media (max-width: 760px) {
   .work-tabs {
     gap: 10px !important;
@@ -1867,6 +1982,9 @@ fieldset label:last-of-type {
   }
   .library-dialog {
     padding: 20px !important;
+  }
+  .history-layout {
+    grid-template-columns: 1fr;
   }
   .local-row .button-row {
     align-self: flex-end;

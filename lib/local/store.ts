@@ -12,10 +12,7 @@ import {
   replacementForPreviousBuiltInRoleTemplate,
 } from '../default-role-templates.ts';
 import type { CloudInterview } from '../cloud-interview.ts';
-import type {
-  CloudInterviewSummary,
-  CloudVersionReason,
-} from '../cloud-interview.ts';
+import type { CloudVersionReason } from '../cloud-interview.ts';
 export type SavedInterview = CloudInterview & {
   /** Older local records may predate creation-time tracking. */
   createdAt?: number;
@@ -38,7 +35,7 @@ export type InterviewConflict = {
   id: string;
   interviewId: string;
   local: SavedInterview;
-  remote: CloudInterviewSummary;
+  remote: SavedInterview;
   createdAt: number;
 };
 export type InterviewGroup = {
@@ -469,7 +466,7 @@ export function createLocalStore(
       }),
     saveInterviewConflict: (
       local: SavedInterview,
-      remote: CloudInterviewSummary,
+      remote: SavedInterview,
     ) =>
       put('conflicts', {
         id: crypto.randomUUID(),

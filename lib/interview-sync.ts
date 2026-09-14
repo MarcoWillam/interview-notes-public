@@ -12,6 +12,16 @@ export type SyncedInterview = {
   deletedAt: number | null;
 };
 
+export type InterviewVersionSummary = {
+  revision: number;
+  reason: CloudVersionReason;
+  createdAt: number;
+};
+
+export type InterviewVersion = InterviewVersionSummary & {
+  record: CloudInterview;
+};
+
 export type InterviewSyncTransport = {
   list: (trash?: boolean) => Promise<CloudInterviewSummary[]>;
   get: (id: string) => Promise<SyncedInterview>;
@@ -23,6 +33,22 @@ export type InterviewSyncTransport = {
     reason: CloudVersionReason,
   ) => Promise<SyncedInterview>;
   remove: (
+    id: string,
+    baseRevision: number,
+    mutationId: string,
+  ) => Promise<SyncedInterview>;
+};
+
+export type InterviewManagementTransport = InterviewSyncTransport & {
+  versions: (id: string) => Promise<InterviewVersionSummary[]>;
+  version: (id: string, revision: number) => Promise<InterviewVersion>;
+  restoreVersion: (
+    id: string,
+    revision: number,
+    baseRevision: number,
+    mutationId: string,
+  ) => Promise<SyncedInterview>;
+  restoreDeleted: (
     id: string,
     baseRevision: number,
     mutationId: string,
@@ -78,7 +104,7 @@ function conflictFrom(error: unknown) {
 
 export function createInterviewSyncTransport(
   fetcher: typeof fetch = fetch,
-): InterviewSyncTransport {
+): InterviewManagementTransport {
   return {
     async list(trash = false) {
       const response = await remoteRequest<{ interviews: CloudInterviewSummary[] }>(
@@ -115,6 +141,41 @@ export function createInterviewSyncTransport(
         fetcher,
       );
     },
+    async versions(id) {
+      const response = await remoteRequest<{ versions: InterviewVersionSummary[] }>(
+        `/api/interviews/${encodeURIComponent(id)}/versions`,
+        {},
+        fetcher,
+      );
+      return response.versions;
+    },
+    version(id, revision) {
+      return remoteRequest<InterviewVersion>(
+        `/api/interviews/${encodeURIComponent(id)}/versions/${revision}`,
+        {},
+        fetcher,
+      );
+    },
+    restoreVersion(id, revision, baseRevision, mutationId) {
+      return remoteRequest<SyncedInterview>(
+        `/api/interviews/${encodeURIComponent(id)}/versions/${revision}/restore`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ baseRevision, mutationId }),
+        },
+        fetcher,
+      );
+    },
+    restoreDeleted(id, baseRevision, mutationId) {
+      return remoteRequest<SyncedInterview>(
+        `/api/interviews/${encodeURIComponent(id)}/restore`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ baseRevision, mutationId }),
+        },
+        fetcher,
+      );
+    },
   };
 }
 
@@ -142,7 +203,7 @@ export async function syncInterviewOutbox(
       const conflict = conflictFrom(error);
       if (!conflict || !item.record) throw error;
       const cloud = await remote.get(item.id);
-      await store.saveInterviewConflict(item.record, conflict.current);
+      await store.saveInterviewConflict(item.record, cloud.record);
       await store.saveRemoteInterview(cloud.record, cloud.revision);
       await store.clearPendingSync(item.id, item.mutationId, cloud.revision);
     }
