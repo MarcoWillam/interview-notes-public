@@ -3,7 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { Buffer } from 'node:buffer';
 import { isIP } from 'node:net';
-import { queueApi, type QueueConfig } from './api.ts';
+import { MAX_API_BODY_BYTES, queueApi, type QueueConfig } from './api.ts';
 import { QueueStore } from './store.ts';
 export function queueHttp(
   store: QueueStore,
@@ -34,7 +34,10 @@ export function queueHttp(
           return;
         }
         if (url.pathname.startsWith('/api/')) {
-          if (Number(req.headers['content-length']) > 550000) {
+          const bodyLimit = url.pathname.startsWith('/api/interviews/')
+            ? MAX_API_BODY_BYTES
+            : 550000;
+          if (Number(req.headers['content-length']) > bodyLimit) {
             req.resume();
             send({ error: '资料超过大小限制。' }, 413);
             return;
@@ -44,12 +47,12 @@ export function queueHttp(
           await new Promise<void>((resolve, reject) => {
             req.on('data', (chunk: Buffer) => {
               size += chunk.length;
-              if (size <= 550000) chunks.push(chunk);
+              if (size <= bodyLimit) chunks.push(chunk);
             });
             req.on('end', resolve);
             req.on('error', reject);
           });
-          if (size > 550000) {
+          if (size > bodyLimit) {
             send({ error: '资料超过大小限制。' }, 413);
             return;
           }
@@ -75,7 +78,7 @@ export function queueHttp(
             new Request(url, {
               method: req.method,
               headers,
-              ...(req.method === 'POST'
+            ...(['POST', 'PUT', 'DELETE'].includes(req.method || '')
                 ? { body: Buffer.concat(chunks).toString('utf8') }
                 : {}),
             }),
