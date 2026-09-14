@@ -8,14 +8,32 @@ import { unzipSync } from 'fflate';
 
 const root = resolve(import.meta.dirname, '..');
 
-void test('connector package includes the structured outline runtime modules', () => {
+void test('connector package keeps interview prompts and validators on the server', () => {
   for (const file of [
+    'server/codex.ts',
+    'server/execution-contract.ts',
+    'lib/assessment.ts',
+    'lib/resume-reading.ts',
+    'lib/written-test-supplement.ts',
+    'lib/outline-regeneration.ts',
+    'lib/work-sample.ts',
     'lib/interview-outline-v2.ts',
     'lib/interview-outline-v2-prompt.ts',
     'lib/outline-v2-supplement.ts',
     'lib/interview-outline-v3.ts',
     'lib/interview-outline-v3-prompt.ts',
     'lib/outline-v3-supplement.ts',
+  ])
+    assert.equal(
+      connectorPackageFiles.includes(file),
+      false,
+      `${file} must stay server-only`,
+    );
+  for (const file of [
+    'lib/codex-execution-contract.ts',
+    'server/codex-runtime.ts',
+    'server/contract-executor.ts',
+    'server/work-samples/runtime.ts',
   ])
     assert.ok(connectorPackageFiles.includes(file), `${file} must be packaged`);
 });
@@ -52,6 +70,7 @@ void test('connector package carries the ZIP reader and its license without inst
   assert.match(instructions, /作品原件.*不会上传服务器/);
   assert.match(instructions, /\.local\/connector\.json/);
   assert.match(instructions, /无需重新配对/);
+  assert.match(instructions, /规则更新无需再次替换连接器/);
 });
 
 void test('connector archive excludes private files and unsafe paths', async () => {
