@@ -128,7 +128,7 @@ void test('bound interview assessment matches the record dimension array', () =>
   try {
     const record = {
       ...cloudRecord('record-binding-interview'),
-      transcript: '候选人：我先访谈用户，再根据反馈调整方案。',
+      transcript: '候选人：我先访谈用户，再根据反馈调整方案。\n\n  ',
       reviewed: true,
     };
     store.interviews.put(
@@ -146,7 +146,7 @@ void test('bound interview assessment matches the record dimension array', () =>
         {
           role: record.role,
           requirements: record.requirements,
-          transcript: record.transcript,
+          transcript: record.transcript.trim(),
           dimensions: ['需求分析', '沟通协作'],
           resumeText: record.resumeText,
           focus: record.focus,
