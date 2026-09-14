@@ -32,6 +32,15 @@ export type PendingInterviewResult = {
   updatedAt: number;
 };
 
+export type InterviewWorkspace = {
+  groups: Array<{ id: string; name: string; createdAt: number; order: number }>;
+  sortMode: 'newest' | 'oldest' | 'manual';
+  manualOrder: string[];
+  collapsedGroupIds: string[];
+};
+
+export type SyncedInterviewWorkspace = InterviewWorkspace & { revision: number };
+
 export type InterviewSyncTransport = {
   list: (trash?: boolean) => Promise<CloudInterviewSummary[]>;
   get: (id: string) => Promise<SyncedInterview>;
@@ -71,6 +80,12 @@ export type InterviewManagementTransport = InterviewSyncTransport & {
     mutationId: string,
   ) => Promise<SyncedInterview>;
   discardPendingResult: (id: string, jobId: string) => Promise<void>;
+  workspace: () => Promise<SyncedInterviewWorkspace>;
+  putWorkspace: (
+    workspace: InterviewWorkspace,
+    baseRevision: number,
+    mutationId: string,
+  ) => Promise<SyncedInterviewWorkspace>;
 };
 
 export class InterviewSyncConflict extends Error {
@@ -216,6 +231,23 @@ export function createInterviewSyncTransport(
       await remoteRequest(
         `/api/interviews/${encodeURIComponent(id)}/pending-results/${encodeURIComponent(jobId)}/discard`,
         { method: 'POST', body: '{}' },
+        fetcher,
+      );
+    },
+    workspace() {
+      return remoteRequest<SyncedInterviewWorkspace>(
+        '/api/interview-workspace',
+        {},
+        fetcher,
+      );
+    },
+    putWorkspace(workspace, baseRevision, mutationId) {
+      return remoteRequest<SyncedInterviewWorkspace>(
+        '/api/interview-workspace',
+        {
+          method: 'PUT',
+          body: JSON.stringify({ workspace, baseRevision, mutationId }),
+        },
         fetcher,
       );
     },

@@ -2101,6 +2101,10 @@ export default function Home({
           onRenameGroup={library.renameGroup}
           onDeleteGroup={library.deleteGroup}
           onMoveToGroup={library.moveToGroup}
+          workspacePreferences={
+            library.cloud ? library.workspacePreferences : undefined
+          }
+          onWorkspacePreferencesChange={library.updateWorkspacePreferences}
         />
         <div className="workbench">
           {(!library.ready || library.error) && (

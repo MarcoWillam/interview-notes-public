@@ -25,6 +25,7 @@ import {
   cloudVersionReason,
   createInterviewSyncTransport,
   migrateAndSyncInterviews,
+  type InterviewWorkspace,
 } from '@/lib/interview-sync';
 export type Draft = Omit<SavedInterview, 'id' | 'createdAt' | 'updatedAt'>;
 export function useInterviewLibrary(
@@ -47,6 +48,9 @@ export function useInterviewLibrary(
   const [conflicts, setConflicts] = useState<InterviewConflict[]>([]);
   const [sessions, setSessions] = useState<SavedInterview[]>([]);
   const [groups, setGroups] = useState<InterviewGroup[]>([]);
+  const [workspacePreferences, setWorkspacePreferences] = useState<
+    Pick<InterviewWorkspace, 'sortMode' | 'manualOrder' | 'collapsedGroupIds'>
+  >({ sortMode: 'newest', manualOrder: [], collapsedGroupIds: [] });
   const [audio, setAudio] = useState<AudioRecord[]>([]);
   const [preferences, setPreferences] = useState<Preference[]>([]);
   const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
@@ -65,6 +69,13 @@ export function useInterviewLibrary(
   const writes = useRef(Promise.resolve());
   const syncs = useRef(Promise.resolve());
   const transport = useRef(createInterviewSyncTransport());
+  const workspaceRef = useRef<InterviewWorkspace>({
+    groups: [],
+    sortMode: 'newest',
+    manualOrder: [],
+    collapsedGroupIds: [],
+  });
+  const workspaceDirty = useRef(false);
   const signature = JSON.stringify(draft);
   const synchronize = useCallback(async () => {
     if (!options.cloud) return;
@@ -74,6 +85,35 @@ export function useInterviewLibrary(
       .then(async () => {
         const store = localStore();
         await migrateAndSyncInterviews(store, transport.current);
+        const remoteWorkspace = await transport.current.workspace();
+        const localGroups = await store.listInterviewGroups();
+        let resolvedWorkspace = remoteWorkspace;
+        if (workspaceDirty.current || (remoteWorkspace.revision === 0 && localGroups.length)) {
+          const localWorkspace = {
+            ...workspaceRef.current,
+            groups: workspaceDirty.current ? workspaceRef.current.groups : localGroups,
+          };
+          resolvedWorkspace = await transport.current.putWorkspace(
+            localWorkspace,
+            remoteWorkspace.revision,
+            crypto.randomUUID(),
+          );
+          workspaceDirty.current = false;
+        } else if (remoteWorkspace.revision > 0) {
+          await store.replaceInterviewGroups(remoteWorkspace.groups);
+        }
+        workspaceRef.current = {
+          groups: resolvedWorkspace.groups,
+          sortMode: resolvedWorkspace.sortMode,
+          manualOrder: resolvedWorkspace.manualOrder,
+          collapsedGroupIds: resolvedWorkspace.collapsedGroupIds,
+        };
+        setGroups(resolvedWorkspace.groups);
+        setWorkspacePreferences({
+          sortMode: resolvedWorkspace.sortMode,
+          manualOrder: resolvedWorkspace.manualOrder,
+          collapsedGroupIds: resolvedWorkspace.collapsedGroupIds,
+        });
         const [pending, conflicts, rows] = await Promise.all([
           store.listPendingSync(),
           store.listInterviewConflicts(),
@@ -370,6 +410,9 @@ export function useInterviewLibrary(
         order: nextOrder,
       });
       setGroups([...current, saved]);
+      workspaceRef.current = { ...workspaceRef.current, groups: [...current, saved] };
+      workspaceDirty.current = true;
+      if (options.cloud) void synchronize().catch(() => {});
       return saved;
     } finally {
       setWorking(false);
@@ -383,6 +426,12 @@ export function useInterviewLibrary(
       if (!group) throw new Error('分组已不存在，请刷新后重试');
       const saved = await localStore().saveInterviewGroup({ ...group, name });
       setGroups(current.map((item) => (item.id === saved.id ? saved : item)));
+      workspaceRef.current = {
+        ...workspaceRef.current,
+        groups: current.map((item) => (item.id === saved.id ? saved : item)),
+      };
+      workspaceDirty.current = true;
+      if (options.cloud) void synchronize().catch(() => {});
       return saved;
     } finally {
       setWorking(false);
@@ -392,13 +441,30 @@ export function useInterviewLibrary(
     setWorking(true);
     try {
       await writes.current.catch(() => {});
-      await localStore().deleteInterviewGroup(id);
+      const store = localStore();
+      const affected = sessions.filter((session) => session.groupId === id);
+      await store.deleteInterviewGroup(id);
+      if (options.cloud) {
+        for (const session of affected) {
+          const updated = await store.getInterview(session.id);
+          if (updated) await store.queueInterviewSync(updated, 'periodic-edit');
+        }
+      }
       setGroups((current) => current.filter((group) => group.id !== id));
       setSessions((current) =>
         current.map((session) =>
           session.groupId === id ? { ...session, groupId: null } : session,
         ),
       );
+      workspaceRef.current = {
+        ...workspaceRef.current,
+        groups: workspaceRef.current.groups.filter((group) => group.id !== id),
+        collapsedGroupIds: workspaceRef.current.collapsedGroupIds.filter(
+          (groupId) => groupId !== id,
+        ),
+      };
+      workspaceDirty.current = true;
+      if (options.cloud) void synchronize().catch(() => {});
     } finally {
       setWorking(false);
     }
@@ -422,6 +488,14 @@ export function useInterviewLibrary(
     } finally {
       setWorking(false);
     }
+  }
+  function updateWorkspacePreferences(
+    value: Pick<InterviewWorkspace, 'sortMode' | 'manualOrder' | 'collapsedGroupIds'>,
+  ) {
+    setWorkspacePreferences(value);
+    workspaceRef.current = { ...workspaceRef.current, ...value };
+    workspaceDirty.current = true;
+    if (options.cloud) void synchronize().catch(() => {});
   }
   async function loadVersions(interviewId = id) {
     if (!options.cloud) return [];
@@ -528,6 +602,8 @@ export function useInterviewLibrary(
     error,
     sessions,
     groups,
+    workspacePreferences,
+    updateWorkspacePreferences,
     audio,
     preferences,
     globalSettings,

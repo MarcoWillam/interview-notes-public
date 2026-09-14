@@ -10,6 +10,9 @@ void test('authenticated workspaces migrate, autosave and retry cloud records', 
   assert.match(hook, /createInterviewSyncTransport/);
   assert.match(hook, /migrateAndSyncInterviews/);
   assert.match(hook, /queueInterviewSync/);
+  assert.match(hook, /transport\.current\.workspace\(\)/);
+  assert.match(hook, /putWorkspace/);
+  assert.match(hook, /workspacePreferences/);
   assert.match(hook, /addEventListener\('online'/);
   assert.match(hook, /syncStatus/);
   assert.match(page, /cloud:\s*!!workspaceAccount\s*&&\s*!workspaceAccount\.preview/);
