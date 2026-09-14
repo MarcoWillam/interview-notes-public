@@ -39,6 +39,7 @@ import {
 } from '../../lib/connector-release.ts';
 import { executionContractFor } from '../execution-contract.ts';
 import type { CodexExecutionKind } from '../../lib/codex-execution-contract.ts';
+import { InterviewStore } from '../interviews/store.ts';
 export type JobKind = CodexExecutionKind;
 export class QueueError extends Error {
   status: number;
@@ -62,6 +63,7 @@ function validateStoredWorkSampleResult(result: unknown, storedInput: unknown) {
 export class QueueStore {
   db: DatabaseSync;
   now: () => number;
+  interviews: InterviewStore;
   constructor(path: string, now = Date.now) {
     this.now = now;
     this.db = new DatabaseSync(path);
@@ -136,6 +138,7 @@ export class QueueStore {
       "UPDATE jobs SET leaseProtocol=COALESCE((SELECT protocol FROM devices WHERE devices.id=jobs.device),1) WHERE state='running' AND leaseProtocol IS NULL",
     );
     this.db.exec('UPDATE jobs SET queued=created WHERE queued IS NULL');
+    this.interviews = new InterviewStore(this.db, this.now);
   }
   close() {
     this.db.close();
@@ -482,6 +485,7 @@ export class QueueStore {
   }
   sweep() {
     const now = this.now();
+    this.interviews.sweep();
     this.db
       .prepare(
         "UPDATE jobs SET state='failed',input=NULL,error='电脑连接中断，未自动重复分析。请确认后重新提交。',updated=? WHERE state='running' AND until<?",
