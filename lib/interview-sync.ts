@@ -37,6 +37,36 @@ export class InterviewSyncConflict extends Error {
   }
 }
 
+export function cloudVersionReason(
+  previous: CloudInterview | undefined,
+  next: CloudInterview,
+): CloudVersionReason {
+  if (!previous) return 'periodic-edit';
+  if (!previous.confirmed && next.confirmed) return 'manually-confirmed';
+  if (!previous.report && next.report) return 'assessment-generated';
+  if (
+    previous.outlineRegeneratedAt !== next.outlineRegeneratedAt &&
+    next.outlineRegeneratedAt !== undefined
+  )
+    return 'outline-regenerated';
+  if (!previous.workSample && next.workSample) return 'work-sample-analyzed';
+  if (
+    !previous.hasWrittenTest &&
+    next.hasWrittenTest &&
+    previous.resumeReading &&
+    next.resumeReading
+  )
+    return 'written-test-supplemented';
+  if (!previous.resumeReading && next.resumeReading) return 'outline-generated';
+  if (
+    previous.transcript !== next.transcript &&
+    previous.transcriptName !== next.transcriptName &&
+    !!next.transcriptName
+  )
+    return 'transcript-imported';
+  return 'periodic-edit';
+}
+
 function conflictFrom(error: unknown) {
   if (error instanceof InterviewSyncConflict) return error;
   if (error instanceof RemoteError && error.status === 409) {

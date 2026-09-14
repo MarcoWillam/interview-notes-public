@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   localStore,
   type SavedInterview,
@@ -20,11 +20,17 @@ import {
 } from '@/lib/interview-template-state';
 import { BUILTIN_TEMPLATE_IDS } from '@/lib/default-role-templates';
 import { updateInterviewSummary } from '@/lib/interview-sidebar';
+import {
+  cloudVersionReason,
+  createInterviewSyncTransport,
+  migrateAndSyncInterviews,
+} from '@/lib/interview-sync';
 export type Draft = Omit<SavedInterview, 'id' | 'createdAt' | 'updatedAt'>;
 export function useInterviewLibrary(
   draft: Draft,
   restore: (session: SavedInterview) => Promise<void>,
   clear: (seed: NewInterviewSeed) => void,
+  options: { cloud: boolean } = { cloud: false },
 ) {
   const access = useLocalAccess();
   const [id, setId] = useState('');
@@ -32,6 +38,11 @@ export function useInterviewLibrary(
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
+  const [syncStatus, setSyncStatus] = useState<
+    'local' | 'syncing' | 'synced' | 'pending' | 'conflict'
+  >(options.cloud ? 'syncing' : 'local');
+  const [syncError, setSyncError] = useState('');
+  const [conflictCount, setConflictCount] = useState(0);
   const [sessions, setSessions] = useState<SavedInterview[]>([]);
   const [groups, setGroups] = useState<InterviewGroup[]>([]);
   const [audio, setAudio] = useState<AudioRecord[]>([]);
@@ -50,7 +61,41 @@ export function useInterviewLibrary(
   const createdAt = useRef<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const writes = useRef(Promise.resolve());
+  const syncs = useRef(Promise.resolve());
+  const transport = useRef(createInterviewSyncTransport());
   const signature = JSON.stringify(draft);
+  const synchronize = useCallback(async () => {
+    if (!options.cloud) return;
+    setSyncStatus('syncing');
+    const next = syncs.current
+      .catch(() => {})
+      .then(async () => {
+        const store = localStore();
+        await migrateAndSyncInterviews(store, transport.current);
+        const [pending, conflicts, rows] = await Promise.all([
+          store.listPendingSync(),
+          store.listInterviewConflicts(),
+          store.listInterviews(),
+        ]);
+        setSessions(rows.sort((a, b) => b.updatedAt - a.updatedAt));
+        setConflictCount(conflicts.length);
+        setSyncStatus(
+          conflicts.length ? 'conflict' : pending.length ? 'pending' : 'synced',
+        );
+        setSyncError('');
+      })
+      .catch((reason: unknown) => {
+        setSyncStatus('pending');
+        setSyncError(
+          reason instanceof Error
+            ? reason.message
+            : '暂时无法同步云端，已保存在当前浏览器。',
+        );
+        throw reason;
+      });
+    syncs.current = next.catch(() => {});
+    return next;
+  }, [options.cloud]);
   async function normalizeSession(session: SavedInterview) {
     const store = localStore();
     const [templates, settings] = await Promise.all([
@@ -105,6 +150,7 @@ export function useInterviewLibrary(
     let disposed = false;
     void (async () => {
       try {
+        if (options.cloud) await synchronize().catch(() => {});
         const rows = await localStore().listInterviews();
         if (disposed) return;
         const latest = rows.sort((a, b) => b.updatedAt - a.updatedAt)[0];
@@ -130,7 +176,7 @@ export function useInterviewLibrary(
     return () => {
       disposed = true;
     };
-  }, [access]);
+  }, [access, options.cloud, synchronize]);
   function write(currentId: string, value: Draft) {
     const stamp = JSON.stringify(value);
     const updatedAt = Date.now();
@@ -144,7 +190,17 @@ export function useInterviewLibrary(
     const next = writes.current
       .catch(() => {})
       .then(async () => {
-        await localStore().saveInterviewDraft(saved);
+        const store = localStore();
+        const previous = await store.getInterview(currentId);
+        await store.saveInterviewDraft(saved);
+        if (options.cloud) {
+          await store.queueInterviewSync(
+            saved,
+            cloudVersionReason(previous, saved),
+          );
+          setSyncStatus('pending');
+          void synchronize().catch(() => {});
+        }
         return saved;
       });
     writes.current = next.then(() => {});
@@ -168,6 +224,19 @@ export function useInterviewLibrary(
       if (timer.current) clearTimeout(timer.current);
     };
   }, [ready, id, signature]);
+  useEffect(() => {
+    if (!options.cloud) return;
+    const retry = () => void synchronize().catch(() => {});
+    const visible = () => {
+      if (document.visibilityState === 'visible') retry();
+    };
+    window.addEventListener('online', retry);
+    document.addEventListener('visibilitychange', visible);
+    return () => {
+      window.removeEventListener('online', retry);
+      document.removeEventListener('visibilitychange', visible);
+    };
+  }, [options.cloud, synchronize]);
   async function flush() {
     if (timer.current) clearTimeout(timer.current);
     if (!ready || !id) throw new Error('本地存储尚未就绪');
@@ -225,6 +294,14 @@ export function useInterviewLibrary(
         if (timer.current) clearTimeout(timer.current);
       }
       await writes.current.catch(() => {});
+      const store = localStore();
+      const targetRecord = await store.getInterview(target);
+      if (options.cloud && targetRecord) {
+        const meta = await store.getSyncMeta(target);
+        if (meta) await store.queueInterviewDelete(targetRecord);
+        else await store.dropPendingSync(target);
+        setSyncStatus('pending');
+      }
       await localStore().deleteInterview(target);
       if (target === id) {
         setReady(false);
@@ -235,6 +312,7 @@ export function useInterviewLibrary(
         setReady(true);
       }
       await refresh();
+      if (options.cloud) void synchronize().catch(() => {});
     } finally {
       setReady(true);
       setWorking(false);
@@ -306,6 +384,12 @@ export function useInterviewLibrary(
     try {
       await flush();
       await localStore().moveInterviewToGroup(interviewId, groupId);
+      if (options.cloud) {
+        const moved = await localStore().getInterview(interviewId);
+        if (moved) await localStore().queueInterviewSync(moved, 'periodic-edit');
+        setSyncStatus('pending');
+        void synchronize().catch(() => {});
+      }
       setSessions((current) =>
         current.map((session) =>
           session.id === interviewId ? { ...session, groupId } : session,
@@ -329,6 +413,10 @@ export function useInterviewLibrary(
     saveGlobalPreferences,
     storage,
     unsaved: saved !== id + signature,
+    syncStatus,
+    syncError,
+    conflictCount,
+    retrySync: synchronize,
     flush,
     open,
     create,
