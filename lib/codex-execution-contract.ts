@@ -4,7 +4,7 @@ export const MAX_CONTRACT_SCHEMA_BYTES = 256 * 1024;
 export const MAX_CONTRACT_PAYLOAD_BYTES = 512 * 1024;
 export const MAX_CONTRACT_RESULT_BYTES = 512 * 1024;
 export const MAX_CONTRACT_ATTEMPTS = 2;
-const MAX_WORK_SAMPLE_BYTES = 50 * 1024 * 1024;
+export const MAX_CONTRACT_ARTIFACT_BYTES = 50 * 1024 * 1024;
 
 export type CodexExecutionRunner =
   | 'structured-text'
@@ -92,7 +92,7 @@ function validateArtifact(value: unknown): CodexExecutionArtifact {
   if (
     !Number.isSafeInteger(value.bytes) ||
     Number(value.bytes) < 1 ||
-    Number(value.bytes) > MAX_WORK_SAMPLE_BYTES
+    Number(value.bytes) > MAX_CONTRACT_ARTIFACT_BYTES
   )
     throw new Error('附件大小无效。');
   return {

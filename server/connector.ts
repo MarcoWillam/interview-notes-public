@@ -7,7 +7,7 @@ import {
   scanWorkSampleInbox,
 } from './work-samples/inventory.ts';
 import { cleanupStaleWorkSampleDirectories } from './work-samples/archive.ts';
-import { analyzeWithCodex, codexStatus } from './codex.ts';
+import { codexStatus } from './codex-runtime.ts';
 import {
   connectorRequest,
   runConnector,
@@ -68,7 +68,6 @@ try {
   console.log(`本地作品箱：${workSampleInbox}`);
   console.log('连接器已启动，等待属于此账号的面试评估任务。');
   await runConnector(credentials, controller.signal, {
-    analyze: analyzeWithCodex,
     status: codexStatus,
     workSamples: () => scanWorkSampleInbox(workSampleInbox, credentials.id),
   });

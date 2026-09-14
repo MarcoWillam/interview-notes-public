@@ -210,9 +210,9 @@ void test('HTTP queue holds offline jobs, pairs a connector, and returns a valid
       controller.signal,
       {
         status,
-        analyze: async (actual) => {
+        execute: async (contract) => {
           calls++;
-          assert.deepEqual(actual, input);
+          assert.deepEqual(contract.payload, input);
           return report;
         },
         workSamples: async () => ({
@@ -347,14 +347,16 @@ void test('connector routes a later work sample job through the local artifact r
       controller.signal,
       {
         status,
-        analyze: async () => report,
         workSamples: async () => ({
           artifacts: [artifact],
           files: new Map([[artifact.id, '/local/works/candidate.zip']]),
         }),
-        analyzeWorkSample: async (actual, path) => {
-          assert.equal(actual.workSample.id, artifact.id);
-          localPath = path;
+        execute: async (contract, _signal, context) => {
+          assert.equal(
+            (contract.payload as { workSample: { id: string } }).workSample.id,
+            artifact.id,
+          );
+          localPath = context.artifactPath || '';
           return result;
         },
       },
@@ -397,7 +399,7 @@ void test('pausing a running task aborts the connector and preserves resumable w
       controller.signal,
       {
         status,
-        analyze: async (_input, signal) =>
+        execute: async (_contract, signal) =>
           new Promise((_resolve, reject) => {
             signal.addEventListener(
               'abort',
@@ -513,11 +515,8 @@ void test('connector routes resume work to the reading runner and stores its cit
       controller.signal,
       {
         status,
-        analyze: async () => {
-          throw new Error('wrong runner');
-        },
-        readResume: async (value) => {
-          assert.deepEqual(value, { ...input, outlineVersion: 1 });
+        execute: async (contract) => {
+          assert.deepEqual(contract.payload, { ...input, outlineVersion: 1 });
           return report;
         },
       },
@@ -585,11 +584,11 @@ void test('connector fails resume work whose question evidence is absent from th
       controller.signal,
       {
         status,
-        analyze: async () => {
-          throw new Error('wrong runner');
-        },
-        readResume: async (actual) => {
-          assert.deepEqual(actual, resumeInput);
+        execute: async (contract) => {
+          assert.deepEqual(contract.payload, {
+            ...resumeInput,
+            outlineVersion: 1,
+          });
           const invalid = structuredClone(reading);
           invalid.interviewQuestions[0].resumeEvidence =
             '简历中不存在的项目成果';
@@ -607,7 +606,7 @@ void test('connector fails resume work whose question evidence is absent from th
     assert.equal(restored.state, 'failed');
     assert.equal(restored.report, null);
     // The connector must reject invalid runner output before transmitting it.
-    assert.match(restored.error, /本地 Codex 未完成分析/);
+    assert.match(restored.error, /评估引用或结构校验失败/);
   } finally {
     controller.abort();
     await worker;
@@ -634,14 +633,8 @@ void test('connector routes written-test work to the dedicated runner', async ()
       controller.signal,
       {
         status,
-        analyze: async () => {
-          throw new Error('wrong runner');
-        },
-        readResume: async () => {
-          throw new Error('wrong runner');
-        },
-        writeTest: async (actual) => {
-          assert.deepEqual(actual, writtenTestInput);
+        execute: async (contract) => {
+          assert.deepEqual(contract.payload, writtenTestInput);
           return writtenTestResult;
         },
       },

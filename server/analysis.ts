@@ -4,13 +4,8 @@ import {
   validateReport,
   type InterviewInput,
 } from '../lib/interview.ts';
-export class AnalysisError extends Error {
-  status: number;
-  constructor(message: string, status = 502) {
-    super(message);
-    this.status = status;
-  }
-}
+import { AnalysisError } from './analysis-error.ts';
+export { AnalysisError };
 const json = (value: unknown, status = 200) =>
   Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 export function createAnalysisHandler(
