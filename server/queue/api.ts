@@ -180,6 +180,7 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
               body.report,
               body.failed === true,
               body.failure,
+              body.attempt,
             ),
           );
         throw new QueueError('接口不存在。', 404);
