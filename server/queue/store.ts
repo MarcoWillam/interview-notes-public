@@ -38,12 +38,8 @@ import {
   type ConnectorReport,
 } from '../../lib/connector-release.ts';
 import { executionContractFor } from '../execution-contract.ts';
-export type JobKind =
-  | 'interview'
-  | 'resume'
-  | 'written-test'
-  | 'work-sample'
-  | 'outline';
+import type { CodexExecutionKind } from '../../lib/codex-execution-contract.ts';
+export type JobKind = CodexExecutionKind;
 export class QueueError extends Error {
   status: number;
   constructor(message: string, status = 400) {
@@ -910,6 +906,18 @@ export class QueueStore {
       .prepare('SELECT * FROM jobs WHERE id=? AND user=?')
       .get(id, device.user) as Row | undefined;
     if (!job) throw new QueueError('任务不属于此连接器。', 403);
+    const deviceProtocol = Number(
+      (
+        this.db.prepare('SELECT protocol FROM devices WHERE id=?').get(device.id) as
+          | Row
+          | undefined
+      )?.protocol || 1,
+    );
+    if (
+      deviceProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
+      executionAttempt === undefined
+    )
+      throw new QueueError('协议 5 完成任务时必须提供执行合同次数。');
     if (job.state === 'completed' || job.state === 'failed') {
       if (job.device !== device.id || job.lease !== lease)
         throw new QueueError('任务不属于此连接器。', 403);
@@ -918,13 +926,6 @@ export class QueueStore {
     if (job.state !== 'running') return { accepted: false };
     if (job.device !== device.id || job.lease !== lease)
       throw new QueueError('任务不属于此连接器。', 403);
-    const deviceProtocol = Number(
-      (
-        this.db.prepare('SELECT protocol FROM devices WHERE id=?').get(device.id) as
-          | Row
-          | undefined
-      )?.protocol || 1,
-    );
     if (
       deviceProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
       executionAttempt !== undefined

@@ -203,7 +203,7 @@ void test('outline regeneration requires a current connector and reports its ver
       writtenTestSupplement: null,
       workSampleQuestions: null,
     };
-    s.finish(device.token, claimed.id, claimed.lease, result);
+    s.finish(device.token, claimed.id, claimed.lease, result, false, undefined, 1);
     assert.equal(s.get(a, submitted.id).state, 'completed');
     assert.throws(
       () =>
@@ -334,6 +334,21 @@ void test('protocol five receives a server contract and retries invalid results 
     assert.equal(claimed.execution?.contractVersion, 1);
     assert.equal(claimed.execution?.attempt, 1);
 
+    assert.throws(
+      () =>
+        s.finish(
+          modern.token,
+          claimed.id,
+          claimed.lease,
+          {},
+          false,
+          undefined,
+          undefined,
+        ),
+      /必须提供执行合同次数/,
+    );
+    assert.equal(s.get(a, submitted.id).state, 'running');
+
     const retried = s.finish(
       modern.token,
       claimed.id,
@@ -433,15 +448,23 @@ void test('legacy outline work without a stored scope fails safely on finish', (
     );
     s.db.prepare('UPDATE jobs SET scope=NULL WHERE id=?').run(submitted.id);
     const claimed = s.claim(device.token, true, ['outline'], release)!;
-    s.finish(device.token, claimed.id, claimed.lease, {
-      revision: outlineInput.revision,
-      interviewQuestions: reading.interviewQuestions.map((question, index) => ({
-        ...question,
-        question: `请说明第${index + 1}项经历中的个人行动与结果？`,
-      })),
-      writtenTestSupplement: null,
-      workSampleQuestions: null,
-    });
+    s.finish(
+      device.token,
+      claimed.id,
+      claimed.lease,
+      {
+        revision: outlineInput.revision,
+        interviewQuestions: reading.interviewQuestions.map((question, index) => ({
+          ...question,
+          question: `请说明第${index + 1}项经历中的个人行动与结果？`,
+        })),
+        writtenTestSupplement: null,
+        workSampleQuestions: null,
+      },
+      false,
+      undefined,
+      1,
+    );
     const result = s.get(a, submitted.id);
     assert.equal(result.state, 'failed');
     assert.match(String(result.error), /旧版提纲任务/);

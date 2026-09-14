@@ -33,7 +33,12 @@ void test('work-sample execution requires bounded artifact verification pointers
       sha256: 'a'.repeat(64),
       bytes: 4096,
       coveragePointer: '/workSample/coverage',
-      evidencePointer: '/workSample/questions',
+      requiredEvidence: [
+        {
+          collectionPointer: '/workSample/questions',
+          itemPointer: '/workSampleEvidence',
+        },
+      ],
     },
   });
   assert.equal(contract.artifact?.coveragePointer, '/workSample/coverage');
@@ -85,7 +90,7 @@ void test('execution contract rejects unsafe schemas and invalid JSON pointers',
           sha256: 'a'.repeat(64),
           bytes: 4096,
           coveragePointer: '../coverage',
-          evidencePointer: '/questions',
+          requiredEvidence: [{ collectionPointer: '/questions' }],
         },
       }),
     /JSON 指针/,
@@ -100,7 +105,24 @@ void test('execution contract rejects unsafe schemas and invalid JSON pointers',
           sha256: 'a'.repeat(64),
           bytes: 4096,
           coveragePointer: '/__proto__/coverage',
-          evidencePointer: '/questions',
+          requiredEvidence: [{ collectionPointer: '/questions' }],
+        },
+      }),
+    /JSON 指针/,
+  );
+  assert.throws(
+    () =>
+      validateCodexExecutionContract({
+        ...textContract,
+        runner: 'structured-work-sample',
+        artifact: {
+          id: 'artifact-12345678',
+          sha256: 'a'.repeat(64),
+          bytes: 4096,
+          coveragePointer: '/coverage',
+          requiredEvidence: [
+            { collectionPointer: '/citations', itemPointer: '/constructor' },
+          ],
         },
       }),
     /JSON 指针/,

@@ -1,4 +1,3 @@
-export const SERVER_DRIVEN_EXECUTION_PROTOCOL = 5;
 export const MAX_CONTRACT_INSTRUCTIONS_BYTES = 64 * 1024;
 export const MAX_CONTRACT_SCHEMA_BYTES = 256 * 1024;
 export const MAX_CONTRACT_PAYLOAD_BYTES = 512 * 1024;
@@ -11,12 +10,22 @@ export type CodexExecutionRunner =
   | 'structured-text'
   | 'structured-work-sample';
 
+export type CodexExecutionKind =
+  | 'interview'
+  | 'resume'
+  | 'written-test'
+  | 'outline'
+  | 'work-sample';
+
 export type CodexExecutionArtifact = {
   id: string;
   sha256: string;
   bytes: number;
   coveragePointer: string;
-  evidencePointer: string;
+  requiredEvidence: Array<{
+    collectionPointer: string;
+    itemPointer?: string;
+  }>;
 };
 
 export type CodexExecutionContract = {
@@ -88,7 +97,7 @@ function validateArtifact(value: unknown): CodexExecutionArtifact {
   if (!record(value)) throw new Error('作品执行合同缺少附件。');
   exactKeys(
     value,
-    ['id', 'sha256', 'bytes', 'coveragePointer', 'evidencePointer'],
+    ['id', 'sha256', 'bytes', 'coveragePointer', 'requiredEvidence'],
     '附件合同',
   );
   if (
@@ -104,12 +113,28 @@ function validateArtifact(value: unknown): CodexExecutionArtifact {
     Number(value.bytes) > MAX_CONTRACT_ARTIFACT_BYTES
   )
     throw new Error('附件大小无效。');
+  if (
+    !Array.isArray(value.requiredEvidence) ||
+    value.requiredEvidence.length < 1 ||
+    value.requiredEvidence.length > 8
+  )
+    throw new Error('作品证据规则无效。');
+  const requiredEvidence = value.requiredEvidence.map((rule) => {
+    if (!record(rule)) throw new Error('作品证据规则无效。');
+    exactKeys(rule, ['collectionPointer', 'itemPointer'], '作品证据规则');
+    return {
+      collectionPointer: jsonPointer(rule.collectionPointer),
+      ...(rule.itemPointer === undefined
+        ? {}
+        : { itemPointer: jsonPointer(rule.itemPointer) }),
+    };
+  });
   return {
     id: value.id,
     sha256: value.sha256,
     bytes: Number(value.bytes),
     coveragePointer: jsonPointer(value.coveragePointer),
-    evidencePointer: jsonPointer(value.evidencePointer),
+    requiredEvidence,
   };
 }
 
