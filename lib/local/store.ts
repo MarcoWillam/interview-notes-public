@@ -357,6 +357,12 @@ export function createLocalStore(
       await put('interviewGroups', saved);
       return saved;
     },
+    replaceInterviewGroups: (groups: InterviewGroup[]) =>
+      run<void>(['interviewGroups'], 'readwrite', (tx) => {
+        const store = tx.objectStore('interviewGroups');
+        store.clear();
+        for (const group of groups) store.put(group);
+      }),
     deleteInterviewGroup: (id: string) =>
       run<void>(['interviewGroups', 'interviews'], 'readwrite', (tx) => {
         tx.objectStore('interviewGroups').delete(id);

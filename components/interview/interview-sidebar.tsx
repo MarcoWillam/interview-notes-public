@@ -36,6 +36,7 @@ import {
   type SidebarSortMode,
 } from '@/lib/interview-sidebar';
 import type { InterviewGroup, SavedInterview } from '@/lib/local/store';
+import type { InterviewWorkspace } from '@/lib/interview-sync';
 import {
   interviewStatus,
   interviewStatusLabel,
@@ -69,6 +70,16 @@ type Props = {
   onRenameGroup: (id: string, name: string) => Promise<InterviewGroup>;
   onDeleteGroup: (id: string) => Promise<void>;
   onMoveToGroup: (interviewId: string, groupId: string | null) => Promise<void>;
+  workspacePreferences?: Pick<
+    InterviewWorkspace,
+    'sortMode' | 'manualOrder' | 'collapsedGroupIds'
+  >;
+  onWorkspacePreferencesChange?: (
+    value: Pick<
+      InterviewWorkspace,
+      'sortMode' | 'manualOrder' | 'collapsedGroupIds'
+    >,
+  ) => void;
 };
 
 export function InterviewSidebar(props: Props) {
@@ -94,9 +105,10 @@ export function InterviewSidebar(props: Props) {
           parseSidebarCollapsed(localStorage.getItem(SIDEBAR_STORAGE_KEY)),
         );
         setSortMode(
-          parseSidebarSortMode(
-            localStorage.getItem(sidebarSortStorageKey(props.storageScope)),
-          ),
+          props.workspacePreferences?.sortMode ||
+            parseSidebarSortMode(
+              localStorage.getItem(sidebarSortStorageKey(props.storageScope)),
+            ),
         );
         setStatusFilter(
           parseSidebarStatusFilter(
@@ -108,18 +120,20 @@ export function InterviewSidebar(props: Props) {
             '[]',
         );
         setManualOrder(
-          Array.isArray(storedOrder)
+          props.workspacePreferences?.manualOrder ||
+            (Array.isArray(storedOrder)
             ? storedOrder.filter(
                 (value): value is string => typeof value === 'string',
               )
-            : [],
+            : []),
         );
         setCollapsedGroupIds(
-          parseCollapsedGroupIds(
-            localStorage.getItem(
-              sidebarGroupCollapsedStorageKey(props.storageScope),
+          props.workspacePreferences?.collapsedGroupIds ||
+            parseCollapsedGroupIds(
+              localStorage.getItem(
+                sidebarGroupCollapsedStorageKey(props.storageScope),
+              ),
             ),
-          ),
         );
       } catch {
         setCollapsed(false);
@@ -136,6 +150,26 @@ export function InterviewSidebar(props: Props) {
       media.removeEventListener('change', update);
     };
   }, [props.storageScope]);
+
+  useEffect(() => {
+    if (!props.workspacePreferences) return;
+    setSortMode(props.workspacePreferences.sortMode);
+    setManualOrder(props.workspacePreferences.manualOrder);
+    setCollapsedGroupIds(props.workspacePreferences.collapsedGroupIds);
+  }, [props.workspacePreferences]);
+
+  function publishWorkspace(
+    next: Partial<
+      Pick<InterviewWorkspace, 'sortMode' | 'manualOrder' | 'collapsedGroupIds'>
+    >,
+  ) {
+    props.onWorkspacePreferencesChange?.({
+      sortMode,
+      manualOrder,
+      collapsedGroupIds,
+      ...next,
+    });
+  }
 
   const reconciledManualOrder = useMemo(
     () => reconcileManualOrder(manualOrder, props.sessions),
@@ -195,6 +229,7 @@ export function InterviewSidebar(props: Props) {
 
   function changeSortMode(next: SidebarSortMode) {
     setSortMode(next);
+    publishWorkspace({ sortMode: next });
     try {
       localStorage.setItem(sidebarSortStorageKey(props.storageScope), next);
     } catch {
@@ -213,6 +248,7 @@ export function InterviewSidebar(props: Props) {
 
   function changeManualOrder(next: string[]) {
     setManualOrder(next);
+    publishWorkspace({ manualOrder: next });
     try {
       localStorage.setItem(
         sidebarOrderStorageKey(props.storageScope),
@@ -228,6 +264,7 @@ export function InterviewSidebar(props: Props) {
       ? collapsedGroupIds.filter((id) => id !== groupId)
       : [...collapsedGroupIds, groupId];
     setCollapsedGroupIds(next);
+    publishWorkspace({ collapsedGroupIds: next });
     try {
       localStorage.setItem(
         sidebarGroupCollapsedStorageKey(props.storageScope),
