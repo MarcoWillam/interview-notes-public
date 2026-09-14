@@ -96,6 +96,21 @@ void test('server builds artifact-bound contracts for initial and later work', (
   assert.equal(later.artifact?.coveragePointer, '/coverage');
 });
 
+void test('server selects the V3 campus-potential prompt and schema at claim time', () => {
+  const contract = executionContractFor('resume', {
+    ...standards,
+    resumeText,
+    hasWrittenTest: false,
+    outlineVersion: 3,
+  });
+  assert.equal(contract.runner, 'structured-text');
+  assert.match(contract.instructions, /V3 校招潜力/);
+  const schema = contract.schema as {
+    properties: { outline: { properties: { version: { enum: number[] } } } };
+  };
+  assert.deepEqual(schema.properties.outline.properties.version.enum, [3]);
+});
+
 void test('server appends bounded semantic feedback only on retry', () => {
   const contract = executionContractFor(
     'resume',
