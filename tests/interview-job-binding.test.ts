@@ -100,6 +100,29 @@ void test('bound Codex result is applied when relevant record sources are unchan
   }
 });
 
+void test('bound task input must match the server record snapshot', () => {
+  const { store, user } = setup();
+  try {
+    const record = cloudRecord('record-binding-mismatch');
+    store.interviews.put(user, record.id, 0, 'mutation-create-mismatch', record);
+    assert.throws(
+      () =>
+        store.submit(
+          user,
+          'client-binding-mismatch',
+          '读取其他简历',
+          { ...input, resumeText: '姓名：其他候选人。' },
+          'resume',
+          record.id,
+          { interviewId: record.id, interviewRevision: 1 },
+        ),
+      /任务简历与云端面试记录不一致/,
+    );
+  } finally {
+    store.close();
+  }
+});
+
 void test('relevant edits retain a completed result for confirmation', () => {
   const { store, user, secret } = setup();
   try {
@@ -166,6 +189,30 @@ void test('pending result survives the short-lived task queue', () => {
     tick(8 * 86_400_000);
     store.sweep();
     assert.throws(() => store.get(user, claimed.id), /任务不存在/);
+    assert.equal(store.interviews.pendingResults(user, record.id)[0].state, 'pending');
+  } finally {
+    store.close();
+  }
+});
+
+void test('deleting a record during analysis retains the result without restoring it', () => {
+  const { store, user, secret } = setup();
+  try {
+    const record = cloudRecord('record-binding-deleted');
+    store.interviews.put(user, record.id, 0, 'mutation-create-deleted', record);
+    store.submit(
+      user,
+      'client-binding-deleted',
+      '读取简历',
+      input,
+      'resume',
+      record.id,
+      { interviewId: record.id, interviewRevision: 1 },
+    );
+    const claimed = store.claim(secret, true, ['resume'], { version: '0.1.16', protocol: 4 })!;
+    store.interviews.remove(user, record.id, 1, 'mutation-delete-running');
+    store.finish(secret, claimed.id, claimed.lease, reading);
+    assert.notEqual(store.interviews.get(user, record.id, true).deletedAt, null);
     assert.equal(store.interviews.pendingResults(user, record.id)[0].state, 'pending');
   } finally {
     store.close();

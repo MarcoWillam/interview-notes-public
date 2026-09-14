@@ -292,7 +292,10 @@ export async function pullCloudInterviews(
   const pendingIds = new Set(
     (await store.listPendingSync()).map(({ id }) => id),
   );
-  const summaries = await remote.list();
+  const [summaries, deleted] = await Promise.all([
+    remote.list(),
+    remote.list(true),
+  ]);
   for (const summary of summaries) {
     if (pendingIds.has(summary.id)) continue;
     const local = await store.getInterview(summary.id);
@@ -300,6 +303,18 @@ export async function pullCloudInterviews(
     if (local && meta?.revision === summary.revision) continue;
     const cloud = await remote.get(summary.id);
     await store.saveRemoteInterview(cloud.record, cloud.revision);
+  }
+  const activeIds = new Set(summaries.map(({ id }) => id));
+  const deletedIds = new Set(deleted.map(({ id }) => id));
+  for (const local of await store.listInterviews()) {
+    if (
+      pendingIds.has(local.id) ||
+      activeIds.has(local.id) ||
+      !(await store.getSyncMeta(local.id))
+    )
+      continue;
+    if (deletedIds.has(local.id) || !activeIds.has(local.id))
+      await store.deleteInterview(local.id);
   }
   return summaries;
 }

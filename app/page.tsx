@@ -466,6 +466,10 @@ export default function Home({
     reset,
     { cloud: !!workspaceAccount && !workspaceAccount.preview },
   );
+  const libraryRef = useRef(library);
+  useEffect(() => {
+    libraryRef.current = library;
+  }, [library]);
   const outlineLiveRef = useRef({
     recordId: library.id,
     resumeText,
@@ -533,13 +537,13 @@ export default function Home({
         try {
           if (job.resultDisposition === 'pending') {
             setWorkSampleJobId(undefined);
-            await library.refreshFromCloud();
+            await libraryRef.current.refreshFromCloud();
             setError('作品分析已完成，但资料发生变化。请在记录管理中确认结果。');
             return;
           }
           if (job.resultDisposition === 'applied') {
             setWorkSampleJobId(undefined);
-            await library.refreshFromCloud();
+            await libraryRef.current.refreshFromCloud();
             setNotice('已恢复完成的作品分析。');
             return;
           }
@@ -678,13 +682,13 @@ export default function Home({
         if (job.state === 'completed' && job.report) {
           if (job.resultDisposition === 'pending') {
             setWrittenTestJobId(undefined);
-            await library.refreshFromCloud();
+            await libraryRef.current.refreshFromCloud();
             setError('笔试复盘题已完成，但资料发生变化。请在记录管理中确认结果。');
             return;
           }
           if (job.resultDisposition === 'applied') {
             setWrittenTestJobId(undefined);
-            await library.refreshFromCloud();
+            await libraryRef.current.refreshFromCloud();
             setNotice('已恢复完成的笔试复盘题。');
             return;
           }
@@ -790,14 +794,14 @@ export default function Home({
           if (job.resultDisposition === 'pending') {
             setOutlineRegenerationJobId(undefined);
             setOutlineRevision(undefined);
-            await library.refreshFromCloud();
+            await libraryRef.current.refreshFromCloud();
             setError('新提纲已完成，但资料发生变化。请在记录管理中确认结果。');
             return;
           }
           if (job.resultDisposition === 'applied') {
             setOutlineRegenerationJobId(undefined);
             setOutlineRevision(undefined);
-            await library.refreshFromCloud();
+            await libraryRef.current.refreshFromCloud();
             setNotice('已恢复并应用重新生成的短问题提纲。');
             return;
           }
@@ -1042,7 +1046,21 @@ export default function Home({
       });
       if (!context.queuedCodex)
         throw new Error('请使用当前队列版工作台连接 Codex 后阅读简历。');
-      const recordBinding = await library.flushForTask();
+      const recordBinding = await library.flushForTask({
+        role: value.role,
+        requirements: value.requirements,
+        dimensionText: value.dimensionText,
+        focus: value.focus,
+        scoringGuidance: value.scoringGuidance,
+        reportRequirements: value.reportRequirements,
+        resumeText: value.resumeText,
+        sourceTemplateId: context.sourceTemplateId,
+        templateModified: false,
+        outlineVersion: value.outlineVersion,
+        hasWrittenTest: value.hasWrittenTest,
+        writtenTestConfirmed:
+          context.sourceTemplateId === BUILTIN_TEMPLATE_IDS.aiProductManager,
+      });
       const valueRead = await submitRemoteResume(
         value,
         (context.candidate || resumeName || '未命名候选人').slice(0, 100),
@@ -2102,9 +2120,13 @@ export default function Home({
           onDeleteGroup={library.deleteGroup}
           onMoveToGroup={library.moveToGroup}
           workspacePreferences={
-            library.cloud ? library.workspacePreferences : undefined
+            library.cloud ? library.workspacePreferences || undefined : undefined
           }
-          onWorkspacePreferencesChange={library.updateWorkspacePreferences}
+          onWorkspacePreferencesChange={
+            library.cloud && library.workspaceReady
+              ? library.updateWorkspacePreferences
+              : undefined
+          }
         />
         <div className="workbench">
           {(!library.ready || library.error) && (

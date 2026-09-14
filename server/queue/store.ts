@@ -40,7 +40,10 @@ import {
 import { executionContractFor } from '../execution-contract.ts';
 import type { CodexExecutionKind } from '../../lib/codex-execution-contract.ts';
 import { InterviewStore } from '../interviews/store.ts';
-import { interviewJobSource } from '../../lib/interview-job-binding.ts';
+import {
+  assertInterviewJobInputMatches,
+  interviewJobSource,
+} from '../../lib/interview-job-binding.ts';
 export type JobKind = CodexExecutionKind;
 export class QueueError extends Error {
   status: number;
@@ -540,7 +543,8 @@ export class QueueStore {
       throw new QueueError('该任务类型不支持任务范围。');
     let interviewId: string | null = null,
       interviewRevision: number | null = null,
-      sourceHash: string | null = null;
+      sourceHash: string | null = null,
+      boundRecord: ReturnType<InterviewStore['get']> | null = null;
     if (binding) {
       if (
         !/^[a-zA-Z0-9-]{8,100}$/.test(binding.interviewId) ||
@@ -548,7 +552,8 @@ export class QueueStore {
         binding.interviewRevision < 1
       )
         throw new QueueError('面试档案版本无效。');
-      const saved = this.interviews.get(user, binding.interviewId);
+      const saved = this.interviews.get(user, binding.interviewId, true);
+      boundRecord = saved;
       if (saved.deletedAt !== null)
         throw new QueueError('面试记录已在回收站。', 409);
       if (saved.revision !== binding.interviewRevision)
@@ -572,9 +577,14 @@ export class QueueStore {
                   ? validateInput(value)
                   : (() => {
                       throw new QueueError('作品评估任务尚未包含有效输入。');
-                    })(),
+                  })(),
       input = JSON.stringify(validatedInput),
-      digest = hash(kind + (scope ? '\n' + scope + '\n' : '') + input),
+      digest = hash(
+        kind +
+          (scope ? '\n' + scope + '\n' : '') +
+          (interviewId ? `\n${interviewId}@${interviewRevision}\n` : '') +
+          input,
+      ),
       safeLabel = label.slice(0, 100) || '未命名面试',
       requiredProtocol =
         'outlineVersion' in validatedInput &&
@@ -584,6 +594,12 @@ export class QueueStore {
               validatedInput.outlineVersion === 2
             ? OUTLINE_V2_CONNECTOR_PROTOCOL
             : 1;
+    if (boundRecord)
+      assertInterviewJobInputMatches(
+        boundRecord.record,
+        kind,
+        validatedInput as unknown as Record<string, unknown>,
+      );
     if (
       kind === 'outline' &&
       !this.db
@@ -1101,7 +1117,11 @@ export class QueueStore {
     let resultDisposition: 'applied' | 'pending' | null = null;
     if (!error && report && job.interviewId && job.sourceHash) {
       const parsed = JSON.parse(report) as unknown;
-      const current = this.interviews.get(String(job.user), String(job.interviewId));
+      const current = this.interviews.get(
+        String(job.user),
+        String(job.interviewId),
+        true,
+      );
       const currentSourceHash = hash(
         JSON.stringify(
           interviewJobSource(current.record, job.kind as JobKind),

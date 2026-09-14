@@ -43,6 +43,58 @@ export function interviewJobSource(record: CloudInterview, kind: JobKind) {
   };
 }
 
+function equal(left: unknown, right: unknown) {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+export function assertInterviewJobInputMatches(
+  record: CloudInterview,
+  kind: JobKind,
+  input: Record<string, unknown>,
+) {
+  const expectedStandards = standards(record);
+  for (const [key, value] of Object.entries(expectedStandards))
+    if ((input[key] || '') !== value)
+      throw new Error('任务资料与云端面试记录不一致。');
+  if ((input.resumeText || '') !== record.resumeText)
+    throw new Error('任务简历与云端面试记录不一致。');
+  if (kind === 'resume') {
+    if (
+      !!input.hasWrittenTest !== !!record.hasWrittenTest ||
+      Number(input.outlineVersion || 1) !== Number(record.outlineVersion || 1)
+    )
+      throw new Error('提纲设置与云端面试记录不一致。');
+    return;
+  }
+  if (kind === 'interview') {
+    const dimensions = record.dimensionText
+      .split(/[、,，\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (
+      input.transcript !== record.transcript ||
+      !equal(input.dimensions, dimensions) ||
+      !equal(input.workSample, record.workSample)
+    )
+      throw new Error('评估资料与云端面试记录不一致。');
+    return;
+  }
+  const reading = record.resumeReading;
+  if (!reading) throw new Error('云端面试记录缺少现有提纲。');
+  if (input.outlineVersion === 2 || input.outlineVersion === 3) {
+    if (!equal(input.outline, reading.outline))
+      throw new Error('任务提纲与云端面试记录不一致。');
+  } else if (
+    kind === 'outline'
+      ? !equal(input.interviewQuestions, reading.interviewQuestions) ||
+        !equal(input.writtenTestSupplement, reading.writtenTestSupplement) ||
+        !equal(input.workSample, reading.workSample)
+      : !equal(input.existingQuestions, reading.interviewQuestions)
+  ) {
+    throw new Error('任务提纲与云端面试记录不一致。');
+  }
+}
+
 export function resultVersionReason(kind: JobKind): CloudVersionReason {
   return kind === 'resume'
     ? 'outline-generated'

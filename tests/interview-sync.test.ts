@@ -6,6 +6,7 @@ import {
   InterviewSyncConflict,
   cloudVersionReason,
   migrateAndSyncInterviews,
+  pullCloudInterviews,
   syncInterviewOutbox,
   type InterviewSyncTransport,
 } from '../lib/interview-sync.ts';
@@ -152,6 +153,16 @@ void test('first migration uploads local records and then pulls cloud-only recor
 
   await migrateAndSyncInterviews(store, remote.value);
   assert.equal(remote.calls.filter((call) => call.startsWith('put:')).length, 1);
+});
+
+void test('a remotely deleted record is removed from the local active list', async () => {
+  const store = createLocalStore(new IDBFactory(), 'sync-remote-delete');
+  const remote = transport([{ record, revision: 1 }]);
+  await store.saveRemoteInterview(record, 1);
+  remote.records.delete(record.id);
+  await pullCloudInterviews(store, remote.value);
+  assert.equal(await store.getInterview(record.id), undefined);
+  assert.equal((await store.getSyncMeta(record.id))?.revision, 1);
 });
 
 void test('business milestones choose durable version reasons', () => {

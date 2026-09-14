@@ -92,6 +92,10 @@ export function InterviewSidebar(props: Props) {
   const [collapsedGroupIds, setCollapsedGroupIds] = useState<string[]>([]);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const overlayRef = useRef<HTMLElement>(null);
+  const cloudSortMode = props.workspacePreferences?.sortMode;
+  const cloudManualOrder = props.workspacePreferences?.manualOrder;
+  const cloudCollapsedGroupIds = props.workspacePreferences?.collapsedGroupIds;
+  const publishInitialWorkspace = props.onWorkspacePreferencesChange;
 
   useEffect(() => {
     const media = window.matchMedia(`(max-width: ${SIDEBAR_BREAKPOINT - 1}px)`);
@@ -104,12 +108,12 @@ export function InterviewSidebar(props: Props) {
         setCollapsed(
           parseSidebarCollapsed(localStorage.getItem(SIDEBAR_STORAGE_KEY)),
         );
-        setSortMode(
-          props.workspacePreferences?.sortMode ||
-            parseSidebarSortMode(
-              localStorage.getItem(sidebarSortStorageKey(props.storageScope)),
-            ),
-        );
+        const initialSortMode =
+          cloudSortMode ||
+          parseSidebarSortMode(
+            localStorage.getItem(sidebarSortStorageKey(props.storageScope)),
+          );
+        setSortMode(initialSortMode);
         setStatusFilter(
           parseSidebarStatusFilter(
             localStorage.getItem(sidebarStatusStorageKey(props.storageScope)),
@@ -119,22 +123,28 @@ export function InterviewSidebar(props: Props) {
           localStorage.getItem(sidebarOrderStorageKey(props.storageScope)) ||
             '[]',
         );
-        setManualOrder(
-          props.workspacePreferences?.manualOrder ||
-            (Array.isArray(storedOrder)
+        const initialManualOrder =
+          cloudManualOrder ||
+          (Array.isArray(storedOrder)
             ? storedOrder.filter(
                 (value): value is string => typeof value === 'string',
               )
-            : []),
-        );
-        setCollapsedGroupIds(
-          props.workspacePreferences?.collapsedGroupIds ||
-            parseCollapsedGroupIds(
-              localStorage.getItem(
-                sidebarGroupCollapsedStorageKey(props.storageScope),
-              ),
+            : []);
+        const initialCollapsedGroupIds =
+          cloudCollapsedGroupIds ||
+          parseCollapsedGroupIds(
+            localStorage.getItem(
+              sidebarGroupCollapsedStorageKey(props.storageScope),
             ),
-        );
+          );
+        setManualOrder(initialManualOrder);
+        setCollapsedGroupIds(initialCollapsedGroupIds);
+        if (!cloudSortMode)
+          publishInitialWorkspace?.({
+            sortMode: initialSortMode,
+            manualOrder: initialManualOrder,
+            collapsedGroupIds: initialCollapsedGroupIds,
+          });
       } catch {
         setCollapsed(false);
         setSortMode('newest');
@@ -149,14 +159,13 @@ export function InterviewSidebar(props: Props) {
       window.clearTimeout(initialize);
       media.removeEventListener('change', update);
     };
-  }, [props.storageScope]);
-
-  useEffect(() => {
-    if (!props.workspacePreferences) return;
-    setSortMode(props.workspacePreferences.sortMode);
-    setManualOrder(props.workspacePreferences.manualOrder);
-    setCollapsedGroupIds(props.workspacePreferences.collapsedGroupIds);
-  }, [props.workspacePreferences]);
+  }, [
+    props.storageScope,
+    cloudSortMode,
+    cloudManualOrder,
+    cloudCollapsedGroupIds,
+    publishInitialWorkspace,
+  ]);
 
   function publishWorkspace(
     next: Partial<

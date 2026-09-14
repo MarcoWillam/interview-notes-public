@@ -45,7 +45,7 @@ void test('WAL database backup is verified and retention stays inside its direct
       14,
     );
     assert.equal(
-      names.filter((name) => /^interview-week-/.test(name)).length,
+      names.filter((name) => name.startsWith('interview-week-')).length,
       8,
     );
     const latest = names.filter((name) => /^interview-\d{4}-/.test(name)).sort().at(-1)!;
