@@ -1,11 +1,12 @@
-export const CONNECTOR_VERSION = '2026.9.14-2';
-export const CONNECTOR_PROTOCOL = 4;
+export const CONNECTOR_VERSION = '2026.9.14-3';
+export const CONNECTOR_PROTOCOL = 5;
 export const MINIMUM_CONNECTOR_PROTOCOL = 1;
 export const OUTLINE_CONNECTOR_PROTOCOL = 2;
 export const OUTLINE_V2_CONNECTOR_PROTOCOL = 3;
 export const OUTLINE_V3_CONNECTOR_PROTOCOL = 4;
+export const SERVER_DRIVEN_EXECUTION_PROTOCOL = 5;
 export const CONNECTOR_RELEASE_NOTES =
-  '支持校招潜力型六道必问、两道候选题和亲和短问法';
+  '提纲和评估规则改由服务器下发，后续规则更新无需升级连接器';
 
 export const connectorRelease = {
   version: CONNECTOR_VERSION,
@@ -86,6 +87,7 @@ export const connectorReleaseInfo = {
   outlineProtocol: OUTLINE_CONNECTOR_PROTOCOL,
   outlineV2Protocol: OUTLINE_V2_CONNECTOR_PROTOCOL,
   outlineV3Protocol: OUTLINE_V3_CONNECTOR_PROTOCOL,
+  serverDrivenExecutionProtocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
   notes: CONNECTOR_RELEASE_NOTES,
   downloadUrl: '/downloads/interview-connector.zip',
 } as const;
