@@ -7,6 +7,7 @@ import {
   type InterviewGroup,
   type NewInterviewSeed,
   type Preference,
+  type InterviewConflict,
 } from '@/lib/local/store';
 import { useLocalAccess } from './use-local-access';
 import {
@@ -43,6 +44,7 @@ export function useInterviewLibrary(
   >(options.cloud ? 'syncing' : 'local');
   const [syncError, setSyncError] = useState('');
   const [conflictCount, setConflictCount] = useState(0);
+  const [conflicts, setConflicts] = useState<InterviewConflict[]>([]);
   const [sessions, setSessions] = useState<SavedInterview[]>([]);
   const [groups, setGroups] = useState<InterviewGroup[]>([]);
   const [audio, setAudio] = useState<AudioRecord[]>([]);
@@ -79,6 +81,7 @@ export function useInterviewLibrary(
         ]);
         setSessions(rows.sort((a, b) => b.updatedAt - a.updatedAt));
         setConflictCount(conflicts.length);
+        setConflicts(conflicts);
         setSyncStatus(
           conflicts.length ? 'conflict' : pending.length ? 'pending' : 'synced',
         );
@@ -399,6 +402,82 @@ export function useInterviewLibrary(
       setWorking(false);
     }
   }
+  async function loadVersions(interviewId = id) {
+    if (!options.cloud) return [];
+    return transport.current.versions(interviewId);
+  }
+  async function loadVersion(interviewId: string, revision: number) {
+    if (!options.cloud) throw new Error('本地预览没有云端版本历史。');
+    return transport.current.version(interviewId, revision);
+  }
+  async function loadTrash() {
+    if (!options.cloud) return [];
+    return transport.current.list(true);
+  }
+  async function restoreVersion(interviewId: string, revision: number) {
+    const store = localStore();
+    const meta = await store.getSyncMeta(interviewId);
+    if (!meta) throw new Error('这份记录尚未同步，暂时不能恢复历史版本。');
+    const result = await transport.current.restoreVersion(
+      interviewId,
+      revision,
+      meta.revision,
+      crypto.randomUUID(),
+    );
+    await store.saveRemoteInterview(result.record, result.revision);
+    if (interviewId === id) {
+      setReady(false);
+      createdAt.current = result.record.createdAt ?? result.record.updatedAt;
+      await callbacks.current.restore(await normalizeSession(result.record));
+      setReady(true);
+    }
+    await refresh();
+    setSyncStatus('synced');
+  }
+  async function restoreDeleted(interviewId: string, revision: number) {
+    if (!options.cloud) throw new Error('本地预览没有云端回收站。');
+    const result = await transport.current.restoreDeleted(
+      interviewId,
+      revision,
+      crypto.randomUUID(),
+    );
+    await localStore().saveRemoteInterview(result.record, result.revision);
+    await refresh();
+    setSyncStatus('synced');
+  }
+  async function resolveConflict(
+    conflictId: string,
+    action: 'keep-cloud' | 'duplicate-local' | 'replace-cloud',
+  ) {
+    const conflict = conflicts.find((item) => item.id === conflictId);
+    if (!conflict) throw new Error('冲突副本已处理，请刷新后重试。');
+    const store = localStore();
+    if (action === 'duplicate-local') {
+      const stamp = Date.now();
+      const duplicate = {
+        ...conflict.local,
+        id: crypto.randomUUID(),
+        candidate: `${conflict.local.candidate || '未命名面试'}（冲突副本）`,
+        createdAt: stamp,
+        updatedAt: stamp,
+      };
+      await store.saveInterviewDraft(duplicate);
+      await store.queueInterviewSync(duplicate, 'periodic-edit');
+    } else if (action === 'replace-cloud') {
+      const current = await transport.current.get(conflict.interviewId);
+      const record = { ...conflict.local, updatedAt: Date.now() };
+      const result = await transport.current.put(
+        conflict.interviewId,
+        current.revision,
+        crypto.randomUUID(),
+        record,
+        'periodic-edit',
+      );
+      await store.saveRemoteInterview(result.record, result.revision);
+    }
+    await store.deleteInterviewConflict(conflictId);
+    await synchronize().catch(() => {});
+  }
   return {
     access,
     id,
@@ -416,6 +495,8 @@ export function useInterviewLibrary(
     syncStatus,
     syncError,
     conflictCount,
+    conflicts,
+    cloud: options.cloud,
     retrySync: synchronize,
     flush,
     open,
@@ -427,5 +508,11 @@ export function useInterviewLibrary(
     renameGroup,
     deleteGroup,
     moveToGroup,
+    loadVersions,
+    loadVersion,
+    loadTrash,
+    restoreVersion,
+    restoreDeleted,
+    resolveConflict,
   };
 }
