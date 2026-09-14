@@ -1,0 +1,17 @@
+[Unit]
+Description=Back up Bole AI interview records
+After=interview-notes.service
+
+[Service]
+Type=oneshot
+User=interview-notes
+Group=interview-notes
+WorkingDirectory=/opt/interview-notes/current
+ExecStart=/opt/node-v24.13.0-linux-x64/bin/node --experimental-strip-types server/interviews/backup-cli.ts --database /var/lib/interview-notes/queue.sqlite --directory /var/backups/interview-notes
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/backups/interview-notes
+

@@ -18,6 +18,7 @@
     "start:local": "node --experimental-strip-types server/start-local.ts",
     "connector": "node --experimental-strip-types server/connector.ts",
     "accounts": "node --experimental-strip-types server/accounts.ts",
+    "backup:interviews": "node --experimental-strip-types server/interviews/backup-cli.ts",
     "build:server": "vite build --config vite.queue.config.ts",
     "prebuild": "node scripts/prepare-pdf-assets.mjs && node scripts/prepare-connector-package.mjs",
     "prebuild:server": "node scripts/prepare-pdf-assets.mjs && node scripts/prepare-connector-package.mjs",

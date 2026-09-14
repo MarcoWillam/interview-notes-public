@@ -23,7 +23,7 @@ journalctl -u interview-notes -n 50 --no-pager
 
 发布更新前在本机运行 `npm test`、`npm run typecheck`、`npm run lint`、`npm run build` 和 `git diff --check`，均须退出 0。HTTP 测试需要本机 loopback 监听权限。生产采用 `dist/web` 静态入口，完整构建生成的 `dist/client`、`dist/server` 不上传。
 
-发布包采用明确白名单：`dist/web`、`server/start.ts`、`server/execution-contract.ts`、`server/queue/{api,http,store}.ts`、`lib/interview.ts`、`lib/assessment.ts`、`lib/assessment-groups.ts`、`lib/codex-execution-contract.ts`、`lib/connector-release.ts`、`lib/default-role-templates.ts`、`lib/interview-questions.ts`、`lib/interview-outline-v{2,3}.ts`、`lib/interview-outline-v{2,3}-prompt.ts`、`lib/outline-v{2,3}-supplement.ts`、`lib/outline-regeneration.ts`、`lib/resume-reading.ts`、`lib/standards.ts`、`lib/work-sample.ts`、`lib/work-sample-rubric.ts`、`lib/written-test-supplement.ts` 和 `package.json`。这些文件构成云端服务的 import 闭包；作品读取器与 Codex 运行逻辑只打入 `dist/web` 内的连接器下载包，不作为云端运行依赖。生产服务此外仅依赖 Node 内置模块，不需要 `node_modules`。包内不得包含 `.env*`、`.local`、简历或作品源文件、浏览器数据、Codex credentials、`node_modules` 或 `.git`；后续增加服务端依赖时重新核对闭包。PDF CMap 与字体资源随 `dist/web` 一起发布。
+发布包采用明确白名单：`dist/web`、`server/start.ts`、`server/execution-contract.ts`、`server/queue/{api,http,store}.ts`、`server/interviews/{store,backup,backup-cli}.ts`、上述服务端文件导入的 `lib/*.ts`、备份 systemd 单元和 `package.json`。这些文件构成云端服务的 import 闭包；作品读取器与 Codex 运行逻辑只打入 `dist/web` 内的连接器下载包，不作为云端运行依赖。生产服务此外仅依赖 Node 内置模块，不需要 `node_modules`。包内不得包含 `.env*`、`.local`、SQLite/WAL、备份、简历或作品源文件、浏览器数据、Codex credentials、`node_modules` 或 `.git`；后续增加服务端依赖时重新核对闭包。PDF CMap 与字体资源随 `dist/web` 一起发布。
 
 本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。本次 `20260914-1` 发布包 SHA-256 为 `638f541863929a30df08abb06b8f433bd62929e7ab0fe89b2c588ae05cf3a10f`。macOS 打包时必须禁用 AppleDouble 和扩展属性，发布校验会拒绝 `._*` 条目。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。本机端口健康探针必须带 `Host: your-server-ip`，否则正式环境的来源校验会返回 403；服务重启后在有限重试窗口内探测，不能把首次连接拒绝误判为启动失败。
 
@@ -129,7 +129,7 @@ Nginx 的 HTTPS `server` 块可使用以下位置配置，证书与域名使用�
 
 ```nginx
 location / {
-    client_max_body_size 600k;
+    client_max_body_size 2304k;
     proxy_set_header Host $http_host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -154,9 +154,29 @@ location / {
 
 ## 数据与备份
 
-数据库文件在 `INTERVIEW_DATA_DIR/queue.sqlite`，开启 WAL。需要一致备份时，停止服务后复制整个数据目录，或使用 SQLite 正式备份机制；不要只复制正在写入的主文件。代码发布只传代码与 `dist/web`，不要上传本机 `.local`、`.env` 或 Codex 认证目录。
+数据库文件在 `INTERVIEW_DATA_DIR/queue.sqlite`，开启 WAL。登录后，候选人信息、简历提取文字、岗位标准快照、提纲、面试记录、作品观察、结论与关键历史版本保存到服务器，并按网页登录账号隔离；`owner` 也不能读取其他账号的档案。原始简历附件、作品 ZIP 与录音仍只保存在上传它们的电脑。服务器系统管理员可以读取未加密 SQLite 和备份，因此生产主机与备份目录必须按最小权限管理。
 
-排队原材料保留最多 24 小时；任务终止清除输入字段，结果/任务保留 7 天。数据库清理不覆盖历史备份。浏览器 IndexedDB 的完整面试记录、人工结论与全局偏好仍按浏览器和网站账号保存，不会自动同步到服务器；换地址或设备时需要提前导出。
+浏览器 IndexedDB 是离线副本。断网时继续保存到本机，联网后自动提交；同一账号在两台电脑同时修改时，落后的修改会保留为冲突副本，不采用最后写入覆盖。删除档案后进入回收站，30 天内可恢复；关键节点版本长期保留，普通编辑版本保留 90 天且每份档案最多 50 个。
+
+一致备份使用 Node SQLite backup API，不能直接复制正在使用的 WAL 主文件。安装定时器前创建独立目录并只授权服务账号：
+
+```sh
+install -d -m 700 -o interview-notes -g interview-notes /var/backups/interview-notes
+install -m 644 deploy/interview-record-backup.service /etc/systemd/system/
+install -m 644 deploy/interview-record-backup.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now interview-record-backup.timer
+systemctl start interview-record-backup.service
+systemctl status interview-record-backup.service --no-pager
+```
+
+工具每天保留 14 份日备份，并保留最近 8 个 ISO 周备份；每份文件生成后必须通过 `PRAGMA quick_check` 才会进入保留集合。恢复演练在临时目录打开备份，检查 `quick_check`、`interviews`、`interview_versions`、回收站和两个测试账号的隔离查询，不覆盖生产数据库。发布前先执行一次：
+
+```sh
+npm run backup:interviews -- --database /var/lib/interview-notes/queue.sqlite --directory /var/backups/interview-notes
+```
+
+排队原材料保留最多 24 小时；任务终止清除输入字段，结果/任务保留 7 天。Codex 任务绑定提交时的档案修订，相关输入未变化时结果直接写入档案；相关输入已变化时，结果单独保存到档案的“待确认结果”，不会随任务队列清理而丢失。数据库清理不覆盖历史备份。
 
 顶部任务中心只显示当前登录账号的任务。相同账号、任务类型、名称和输入的等待、运行或暂停任务会复用原任务；简历阅读和笔试复盘补充在领取顺序中优先于尚未开始的结论评估。暂停保留输入并撤销当前租约，运行中的本地 Codex 通常在下一次 5 秒心跳时中断；恢复会重新排队并从头执行，已有模型用量不会退回。停止会清除服务器上的简历、岗位要求和面试记录且不能恢复。V2 提纲任务要求连接器协议 3；协议 2 连接器仍能领取 V1 任务，但不会领取 V2，任务中心会在有在线旧连接器时提示升级。
 
