@@ -41,11 +41,13 @@ export function configureRemoteAccount(value: string) {
   account = value;
 }
 const pendingSubmissions = new Map<string, string>();
-class RemoteError extends Error {
+export class RemoteError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  payload: unknown;
+  constructor(message: string, status: number, payload?: unknown) {
     super(message);
     this.status = status;
+    this.payload = payload;
   }
 }
 export type RemoteJob<T = Report> = {
@@ -94,6 +96,7 @@ export async function remoteRequest<T>(
         ? '登录已过期，请刷新网页重新登录。'
         : data.error || '请求失败，请稍后重试。',
       response.status,
+      data,
     );
   return data;
 }

@@ -1,0 +1,162 @@
+import type {
+  CloudInterview,
+  CloudInterviewSummary,
+  CloudVersionReason,
+} from './cloud-interview.ts';
+import type { LocalStore } from './local/store.ts';
+import { RemoteError, remoteRequest } from './remote-analysis.ts';
+
+export type SyncedInterview = {
+  record: CloudInterview;
+  revision: number;
+  deletedAt: number | null;
+};
+
+export type InterviewSyncTransport = {
+  list: (trash?: boolean) => Promise<CloudInterviewSummary[]>;
+  get: (id: string) => Promise<SyncedInterview>;
+  put: (
+    id: string,
+    baseRevision: number,
+    mutationId: string,
+    record: CloudInterview,
+    reason: CloudVersionReason,
+  ) => Promise<SyncedInterview>;
+  remove: (
+    id: string,
+    baseRevision: number,
+    mutationId: string,
+  ) => Promise<SyncedInterview>;
+};
+
+export class InterviewSyncConflict extends Error {
+  current: CloudInterviewSummary;
+  constructor(current: CloudInterviewSummary) {
+    super('面试记录已在其他页面更新。');
+    this.current = current;
+  }
+}
+
+function conflictFrom(error: unknown) {
+  if (error instanceof InterviewSyncConflict) return error;
+  if (error instanceof RemoteError && error.status === 409) {
+    const payload = error.payload as { current?: CloudInterviewSummary } | null;
+    if (payload?.current) return new InterviewSyncConflict(payload.current);
+  }
+  return null;
+}
+
+export function createInterviewSyncTransport(
+  fetcher: typeof fetch = fetch,
+): InterviewSyncTransport {
+  return {
+    async list(trash = false) {
+      const response = await remoteRequest<{ interviews: CloudInterviewSummary[] }>(
+        `/api/interviews${trash ? '?trash=1' : ''}`,
+        {},
+        fetcher,
+      );
+      return response.interviews;
+    },
+    get(id) {
+      return remoteRequest<SyncedInterview>(
+        `/api/interviews/${encodeURIComponent(id)}`,
+        {},
+        fetcher,
+      );
+    },
+    put(id, baseRevision, mutationId, record, reason) {
+      return remoteRequest<SyncedInterview>(
+        `/api/interviews/${encodeURIComponent(id)}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ baseRevision, mutationId, record, reason }),
+        },
+        fetcher,
+      );
+    },
+    remove(id, baseRevision, mutationId) {
+      return remoteRequest<SyncedInterview>(
+        `/api/interviews/${encodeURIComponent(id)}`,
+        {
+          method: 'DELETE',
+          body: JSON.stringify({ baseRevision, mutationId }),
+        },
+        fetcher,
+      );
+    },
+  };
+}
+
+export async function syncInterviewOutbox(
+  store: LocalStore,
+  remote: InterviewSyncTransport,
+) {
+  const pending = (await store.listPendingSync()).sort(
+    (left, right) => left.queuedAt - right.queuedAt,
+  );
+  for (const item of pending) {
+    try {
+      const saved =
+        item.operation === 'delete'
+          ? await remote.remove(item.id, item.baseRevision, item.mutationId)
+          : await remote.put(
+              item.id,
+              item.baseRevision,
+              item.mutationId,
+              item.record!,
+              item.reason,
+            );
+      await store.clearPendingSync(item.id, item.mutationId, saved.revision);
+    } catch (error) {
+      const conflict = conflictFrom(error);
+      if (!conflict || !item.record) throw error;
+      const cloud = await remote.get(item.id);
+      await store.saveInterviewConflict(item.record, conflict.current);
+      await store.saveRemoteInterview(cloud.record, cloud.revision);
+      await store.clearPendingSync(item.id, item.mutationId, cloud.revision);
+    }
+  }
+}
+
+export async function pullCloudInterviews(
+  store: LocalStore,
+  remote: InterviewSyncTransport,
+) {
+  const pendingIds = new Set(
+    (await store.listPendingSync()).map(({ id }) => id),
+  );
+  const summaries = await remote.list();
+  for (const summary of summaries) {
+    if (pendingIds.has(summary.id)) continue;
+    const local = await store.getInterview(summary.id);
+    const meta = await store.getSyncMeta(summary.id);
+    if (local && meta?.revision === summary.revision) continue;
+    const cloud = await remote.get(summary.id);
+    await store.saveRemoteInterview(cloud.record, cloud.revision);
+  }
+  return summaries;
+}
+
+export async function migrateAndSyncInterviews(
+  store: LocalStore,
+  remote: InterviewSyncTransport,
+) {
+  if (!(await store.isCloudMigrationComplete())) {
+    const [records, pending] = await Promise.all([
+      store.listInterviews(),
+      store.listPendingSync(),
+    ]);
+    const queued = new Set(pending.map(({ id }) => id));
+    for (const record of records) {
+      if (queued.has(record.id) || (await store.getSyncMeta(record.id))) continue;
+      await store.queueInterviewSync(record, 'periodic-edit');
+    }
+    await syncInterviewOutbox(store, remote);
+    await pullCloudInterviews(store, remote);
+    await store.markCloudMigrationComplete();
+    return;
+  }
+  await syncInterviewOutbox(store, remote);
+  await pullCloudInterviews(store, remote);
+}
