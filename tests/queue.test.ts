@@ -308,6 +308,78 @@ void test('structured preparation waits for its connector protocol while V1 rema
     s.close();
   }
 });
+void test('protocol five receives a server contract and retries invalid results under one lease', () => {
+  const { s, a } = setup();
+  const release = {
+    version: CONNECTOR_VERSION,
+    protocol: CONNECTOR_PROTOCOL,
+  };
+  try {
+    const modern = s.redeem(s.pairing(a).code, '协议五电脑', release);
+    const submitted = s.submit(
+      a,
+      'server-contract-123',
+      '服务端合同评估',
+      input,
+      'interview',
+    );
+    const claimed = s.claim(modern.token, true, ['interview'], release)! as {
+      id: string;
+      lease: string;
+      input?: unknown;
+      execution?: { contractVersion: number; attempt: number };
+    };
+    assert.equal(claimed.id, submitted.id);
+    assert.equal(claimed.input, undefined);
+    assert.equal(claimed.execution?.contractVersion, 1);
+    assert.equal(claimed.execution?.attempt, 1);
+
+    const retried = s.finish(modern.token, claimed.id, claimed.lease, {}) as {
+      accepted: boolean;
+      retry?: { execution: { attempt: number; instructions: string } };
+    };
+    assert.equal(retried.accepted, false);
+    assert.equal(retried.retry?.execution.attempt, 2);
+    assert.match(
+      retried.retry?.execution.instructions || '',
+      /上一次结果未通过服务器校验/,
+    );
+    assert.equal(s.get(a, submitted.id).state, 'running');
+
+    assert.deepEqual(
+      s.finish(modern.token, claimed.id, claimed.lease, report),
+      { accepted: true },
+    );
+    assert.equal(s.get(a, submitted.id).state, 'completed');
+  } finally {
+    s.close();
+  }
+});
+
+void test('protocol four keeps the legacy input-only claim route', () => {
+  const { s, a } = setup();
+  const release = { version: '2026.9.14-2', protocol: 4 };
+  try {
+    const legacy = s.redeem(s.pairing(a).code, '协议四电脑', release);
+    const submitted = s.submit(
+      a,
+      'legacy-contract-123',
+      '旧协议评估',
+      input,
+      'interview',
+    );
+    const claimed = s.claim(legacy.token, true, ['interview'], release)! as {
+      id: string;
+      input?: unknown;
+      execution?: unknown;
+    };
+    assert.equal(claimed.id, submitted.id);
+    assert.deepEqual(claimed.input, input);
+    assert.equal(claimed.execution, undefined);
+  } finally {
+    s.close();
+  }
+});
 void test('legacy outline work without a stored scope fails safely on finish', () => {
   const { s, a } = setup();
   const release = {
@@ -986,6 +1058,7 @@ void test('resume jobs require an upgraded connector and validate against resume
     assert.equal(s.claim(d.token, true), null);
     const claimed = s.claim(d.token, true, ['interview', 'resume'])!;
     assert.equal(claimed.kind, 'resume');
+    assert.ok('input' in claimed);
     assert.deepEqual(claimed.input, { ...resumeInput, outlineVersion: 1 });
     const report = reading;
     s.finish(d.token, claimed.id, claimed.lease, report);
@@ -1106,6 +1179,7 @@ void test('written-test supplements require a capable connector and reuse comple
       'written-test',
     ])!;
     assert.equal(claimed.kind, 'written-test');
+    assert.ok('input' in claimed);
     assert.deepEqual(claimed.input, writtenTestInput);
     s.finish(device.token, claimed.id, claimed.lease, writtenTestResult);
     assert.deepEqual(s.get(a, job.id).report, writtenTestResult);

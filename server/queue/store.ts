@@ -31,11 +31,13 @@ import {
   OUTLINE_CONNECTOR_PROTOCOL,
   OUTLINE_V2_CONNECTOR_PROTOCOL,
   OUTLINE_V3_CONNECTOR_PROTOCOL,
+  SERVER_DRIVEN_EXECUTION_PROTOCOL,
   connectorSupportsOutline,
   connectorUpdateState,
   validateConnectorReport,
   type ConnectorReport,
 } from '../../lib/connector-release.ts';
+import { executionContractFor } from '../execution-contract.ts';
 export type JobKind =
   | 'interview'
   | 'resume'
@@ -73,7 +75,7 @@ export class QueueStore {
       CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,user TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS pairs(hash TEXT PRIMARY KEY,user TEXT NOT NULL,expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,user TEXT NOT NULL,name TEXT NOT NULL,hash TEXT UNIQUE NOT NULL,seen INTEGER NOT NULL,ready INTEGER NOT NULL DEFAULT 0,revoked INTEGER NOT NULL DEFAULT 0,version TEXT,protocol INTEGER,versionSeen INTEGER);
-      CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,kind TEXT NOT NULL DEFAULT 'interview',queued INTEGER,started INTEGER,scope TEXT,requiredProtocol INTEGER NOT NULL DEFAULT 1,UNIQUE(user,client));
+      CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,user TEXT NOT NULL,client TEXT NOT NULL,inputHash TEXT NOT NULL,label TEXT NOT NULL,state TEXT NOT NULL,input TEXT,report TEXT,error TEXT,created INTEGER NOT NULL,updated INTEGER NOT NULL,device TEXT,lease TEXT,until INTEGER,kind TEXT NOT NULL DEFAULT 'interview',queued INTEGER,started INTEGER,scope TEXT,requiredProtocol INTEGER NOT NULL DEFAULT 1,attempt INTEGER NOT NULL DEFAULT 1,feedback TEXT,UNIQUE(user,client));
       CREATE TABLE IF NOT EXISTS outline_completions(user TEXT NOT NULL,scope TEXT NOT NULL,job TEXT NOT NULL,inputHash TEXT NOT NULL,completed INTEGER NOT NULL,PRIMARY KEY(user,scope));
       CREATE TABLE IF NOT EXISTS artifacts(user TEXT NOT NULL,device TEXT NOT NULL,id TEXT NOT NULL,name TEXT NOT NULL,sha256 TEXT NOT NULL,bytes INTEGER NOT NULL,modified INTEGER NOT NULL,seen INTEGER NOT NULL,PRIMARY KEY(device,id));
       CREATE INDEX IF NOT EXISTS jobs_owner_created ON jobs(user,created);
@@ -109,6 +111,12 @@ export class QueueStore {
       this.db.exec(
         'ALTER TABLE jobs ADD COLUMN requiredProtocol INTEGER NOT NULL DEFAULT 1',
       );
+    if (!jobColumns.some((column) => column.name === 'attempt'))
+      this.db.exec(
+        'ALTER TABLE jobs ADD COLUMN attempt INTEGER NOT NULL DEFAULT 1',
+      );
+    if (!jobColumns.some((column) => column.name === 'feedback'))
+      this.db.exec('ALTER TABLE jobs ADD COLUMN feedback TEXT');
     this.db
       .prepare(
         "UPDATE jobs SET state='failed',input=NULL,report=NULL,error='旧版提纲任务缺少面试记录范围，请重新提交。',updated=? WHERE kind='outline' AND scope IS NULL AND state IN ('queued','running','paused','completed')",
@@ -836,7 +844,7 @@ export class QueueStore {
     const lease = token();
     const row = this.db
       .prepare(
-        `UPDATE jobs SET state='running',device=?,lease=?,until=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND requiredProtocol<=? AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1) OR (kind='outline' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY ${PREPARATION_PRIORITY},queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId`,
+        `UPDATE jobs SET state='running',device=?,lease=?,until=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND requiredProtocol<=? AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1) OR (kind='outline' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY ${PREPARATION_PRIORITY},queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId,attempt,feedback`,
       )
       .get(
         device.id,
@@ -855,15 +863,23 @@ export class QueueStore {
           : 0,
         device.id,
       ) as Row | undefined;
-    return row
+    if (!row) return null;
+    const input = JSON.parse(String(row.input)) as unknown;
+    const base = {
+      id: String(row.id),
+      lease,
+      kind: String(row.kind),
+      artifactId: row.artifactId ? String(row.artifactId) : null,
+    };
+    return connectorProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL
       ? {
-          id: String(row.id),
-          lease,
-          kind: String(row.kind),
-          artifactId: row.artifactId ? String(row.artifactId) : null,
-          input: JSON.parse(String(row.input)) as unknown,
+          ...base,
+          execution: executionContractFor(row.kind as JobKind, input, {
+            attempt: Number(row.attempt || 1),
+            feedback: row.feedback ? String(row.feedback) : undefined,
+          }),
         }
-      : null;
+      : { ...base, input };
   }
   heartbeat(secret: string, id: string, lease: string, connector?: unknown) {
     this.sweep();
@@ -902,7 +918,8 @@ export class QueueStore {
     if (job.device !== device.id || job.lease !== lease)
       throw new QueueError('任务不属于此连接器。', 403);
     let report: string | null = null,
-      error: string | null = null;
+      error: string | null = null,
+      validationFeedback: string | null = null;
     if (failed) {
       const messages: Record<string, string> = {
         'artifact-missing': '本地笔试作品未找到，请放回原 ZIP 后重新提交。',
@@ -944,9 +961,50 @@ export class QueueStore {
                     )
                   : validateReport(result, validateInput(storedInput)),
         );
-      } catch {
+      } catch (validationError) {
+        validationFeedback =
+          validationError instanceof Error
+            ? validationError.message.slice(0, 1000)
+            : '返回结果未通过校验。';
         error = '评估引用或结构校验失败，请核实后重新提交。';
       }
+    }
+    const deviceProtocol = Number(
+      (
+        this.db.prepare('SELECT protocol FROM devices WHERE id=?').get(device.id) as
+          | Row
+          | undefined
+      )?.protocol || 1,
+    );
+    if (
+      !failed &&
+      error &&
+      validationFeedback &&
+      deviceProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
+      Number(job.attempt || 1) < 2
+    ) {
+      const attempt = Number(job.attempt || 1) + 1;
+      this.db
+        .prepare(
+          'UPDATE jobs SET attempt=?,feedback=?,until=?,updated=? WHERE id=?',
+        )
+        .run(
+          attempt,
+          validationFeedback,
+          this.now() + 60000,
+          this.now(),
+          id,
+        );
+      return {
+        accepted: false,
+        retry: {
+          execution: executionContractFor(
+            job.kind as JobKind,
+            JSON.parse(String(job.input)),
+            { attempt, feedback: validationFeedback },
+          ),
+        },
+      };
     }
     if (!error && job.kind === 'outline' && !job.scope) {
       report = null;
