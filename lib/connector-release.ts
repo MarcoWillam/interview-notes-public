@@ -1,9 +1,11 @@
-export const CONNECTOR_VERSION = '2026.9.13-1';
-export const CONNECTOR_PROTOCOL = 3;
+export const CONNECTOR_VERSION = '2026.9.14-2';
+export const CONNECTOR_PROTOCOL = 4;
 export const MINIMUM_CONNECTOR_PROTOCOL = 1;
 export const OUTLINE_CONNECTOR_PROTOCOL = 2;
 export const OUTLINE_V2_CONNECTOR_PROTOCOL = 3;
-export const CONNECTOR_RELEASE_NOTES = '支持五道必问、候选题和能力覆盖矩阵';
+export const OUTLINE_V3_CONNECTOR_PROTOCOL = 4;
+export const CONNECTOR_RELEASE_NOTES =
+  '支持校招潜力型六道必问、两道候选题和亲和短问法';
 
 export const connectorRelease = {
   version: CONNECTOR_VERSION,
@@ -73,12 +75,17 @@ export function connectorSupportsOutlineV2(protocol?: number | null) {
   return Number(protocol || 0) >= OUTLINE_V2_CONNECTOR_PROTOCOL;
 }
 
+export function connectorSupportsOutlineV3(protocol?: number | null) {
+  return Number(protocol || 0) >= OUTLINE_V3_CONNECTOR_PROTOCOL;
+}
+
 export const connectorReleaseInfo = {
   latestVersion: CONNECTOR_VERSION,
   latestProtocol: CONNECTOR_PROTOCOL,
   minimumProtocol: MINIMUM_CONNECTOR_PROTOCOL,
   outlineProtocol: OUTLINE_CONNECTOR_PROTOCOL,
   outlineV2Protocol: OUTLINE_V2_CONNECTOR_PROTOCOL,
+  outlineV3Protocol: OUTLINE_V3_CONNECTOR_PROTOCOL,
   notes: CONNECTOR_RELEASE_NOTES,
   downloadUrl: '/downloads/interview-connector.zip',
 } as const;

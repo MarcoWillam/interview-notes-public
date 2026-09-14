@@ -12,12 +12,15 @@ import type { WrittenTestSupplementResult } from '../../lib/written-test-supplem
 import {
   workSampleRubricLabel,
   type WorkSampleAnalysisV2,
+  type WorkSampleAnalysisV3,
   type WorkSampleAssessment,
 } from '../../lib/work-sample';
 import type { OutlineV2SupplementResult } from '../../lib/outline-v2-supplement';
+import type { OutlineV3SupplementResult } from '../../lib/outline-v3-supplement';
 import { groupAssessmentDimensions } from '../../lib/assessment-groups';
 import type { OutlineRegenerationResult } from '../../lib/outline-regeneration';
 import { exportInterviewOutlineV2 } from '../../lib/interview-outline-v2';
+import { exportInterviewOutlineV3 } from '../../lib/interview-outline-v3';
 import {
   controlRemoteJob,
   remoteRequest,
@@ -47,6 +50,7 @@ type Job = RemoteJob<
   | WrittenTestSupplementResult
   | WorkSampleAssessment
   | WorkSampleAnalysisV2
+  | WorkSampleAnalysisV3
   | OutlineRegenerationResult
 >;
 
@@ -94,7 +98,7 @@ function downloadReport(job: Job) {
 
 function downloadOutline(value: OutlineRegenerationResult) {
   if ('outline' in value) {
-    const markdown = `# 重新生成的面试提纲\n\n${exportInterviewOutlineV2(value.outline)}`;
+    const markdown = `# 重新生成的面试提纲\n\n${value.outline.version === 3 ? exportInterviewOutlineV3(value.outline) : exportInterviewOutlineV2(value.outline)}`;
     const url = URL.createObjectURL(
       new Blob([markdown], { type: 'text/markdown;charset=utf-8' }),
     );
@@ -473,7 +477,7 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
 function OutlineV2SupplementTaskResult({
   value,
 }: {
-  value: OutlineV2SupplementResult;
+  value: OutlineV2SupplementResult | OutlineV3SupplementResult;
 }) {
   return (
     <section>

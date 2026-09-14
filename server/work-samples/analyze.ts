@@ -16,14 +16,18 @@ import {
   validateWorkSampleEvidenceFiles,
   validateWorkSampleInput,
   workSampleInstructionsFor,
+  workSampleEmbeddedInstructionsFor,
   workSampleOutputSchema,
   workSampleSchema,
+  workSampleAssessmentV3Schema,
   type WorkSampleAnalysisResult,
   type WorkSampleAnalysisV2,
+  type WorkSampleAnalysisV3,
   type WorkSampleAssessment,
   type WorkSampleInput,
   type WorkSampleInputV1,
   type WorkSampleInputV2,
+  type WorkSampleInputV3,
 } from '../../lib/work-sample.ts';
 import { safeWorkSamplePath } from '../../lib/interview-questions.ts';
 import { AnalysisError } from '../analysis.ts';
@@ -179,13 +183,14 @@ export async function readResumeAndWorkSampleWithCodex(
           workSampleRubric: aiPmWorkSampleRubricContext,
         },
         signal,
-        `${resumeInstructionsFor(version)}\n只使用 work_sample 工具读取笔试作品。必须返回 workSample。${version === 2 ? 'outline 的第 2–4 道必问题必须与 workSample.questions 的问题文本、文件路径和逐字引用完全一致，source=work-sample' : '第 2–4 题必须与 workSample.questions 完全一致，questionSource=work-sample'}；引用只能来自 UTF-8 文本或源码。\n${workSampleInstructionsFor(1)}`,
+        `${resumeInstructionsFor(version)}\n只使用 work_sample 工具读取笔试作品。必须返回 workSample。${version === 3 ? 'outline 的第 5–6 道必问题必须与 workSample.questions 的问题文本、文件路径和逐字引用完全一致，source=work-sample；workSample.questions 恰好两道，主问题自然、亲和且为 12–30 字' : version === 2 ? 'outline 的第 2–4 道必问题必须与 workSample.questions 的问题文本、文件路径和逐字引用完全一致，source=work-sample' : '第 2–4 题必须与 workSample.questions 完全一致，questionSource=work-sample'}；引用只能来自 UTF-8 文本或源码。\n${workSampleEmbeddedInstructionsFor(version)}`,
         {
           ...resumeContract,
           required: [...resumeContract.required, 'workSample'],
           properties: {
             ...resumeContract.properties,
-            workSample: workSampleSchema,
+            workSample:
+              version === 3 ? workSampleAssessmentV3Schema : workSampleSchema,
           },
         },
         { root: directory, readable: manifest.readable },
@@ -218,6 +223,12 @@ export function analyzeWorkSampleWithCodex(
   dependencies?: Dependencies,
 ): Promise<WorkSampleAnalysisV2>;
 export function analyzeWorkSampleWithCodex(
+  value: WorkSampleInputV3,
+  zipPath: string,
+  signal: AbortSignal,
+  dependencies?: Dependencies,
+): Promise<WorkSampleAnalysisV3>;
+export function analyzeWorkSampleWithCodex(
   value: WorkSampleInput,
   zipPath: string,
   signal: AbortSignal,
@@ -236,7 +247,7 @@ export async function analyzeWorkSampleWithCodex(
     signal,
     dependencies,
     async (directory, manifest, run) => {
-      const version = input.outlineVersion === 2 ? 2 : 1;
+      const version = input.outlineVersion ?? 1;
       const raw = await run(
         {
           ...input,
@@ -249,7 +260,7 @@ export async function analyzeWorkSampleWithCodex(
         { root: directory, readable: manifest.readable },
       );
       const result = validateWorkSampleAnalysisResult(
-        replaceCoverage(raw, manifest, version === 2),
+        replaceCoverage(raw, manifest, version !== 1),
         input,
         { conciseQuestions: true },
       );

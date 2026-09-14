@@ -343,7 +343,7 @@ export async function generateWrittenTestSupplementWithCodex(
   signal: AbortSignal,
 ): Promise<unknown> {
   const normalized = validateWrittenTestSupplementInput(input);
-  const version = normalized.outlineVersion === 2 ? 2 : 1;
+  const version = normalized.outlineVersion ?? 1;
   return runStructuredCodex(
     normalized,
     signal,
@@ -356,7 +356,7 @@ export async function regenerateOutlineWithCodex(
   signal: AbortSignal,
 ): Promise<unknown> {
   const input = validateOutlineRegenerationInput(value);
-  const version = input.outlineVersion === 2 ? 2 : 1;
+  const version = input.outlineVersion ?? 1;
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     const raw = await runStructuredCodex(
@@ -375,7 +375,9 @@ export async function regenerateOutlineWithCodex(
       lastError = error;
       if (
         attempt > 0 ||
-        !/12–30|一个问点/.test(error instanceof Error ? error.message : '')
+        !/12–30|一个问点|自然、亲和/.test(
+          error instanceof Error ? error.message : '',
+        )
       )
         throw error;
     }

@@ -13,6 +13,11 @@ import {
   type InterviewOutlineV2,
   type InterviewQuestionV2,
 } from '../lib/interview-outline-v2.ts';
+import {
+  calculateOutlineCoverageV3,
+  type InterviewOutlineV3,
+  type InterviewQuestionV3,
+} from '../lib/interview-outline-v3.ts';
 
 const question = (index: number, source: 'role' | 'work-sample' = 'role') => ({
   question: `${source === 'work-sample' ? '作品' : '原提纲'}问题 ${index + 1}`,
@@ -194,4 +199,80 @@ void test('late V2 work replaces reserve questions while preserving required que
     outline.reserveQuestions,
   );
   assert.equal(next.workSample.artifact.id, workSample.artifact.id);
+});
+
+const v3Stems = [
+  '最近有没有一件没人要求但你主动做的事？',
+  '遇到陌生问题时你通常会怎么开始学？',
+  '哪件事一度很难推进后来你怎么处理的？',
+  '和同伴想法不同时你会怎么推动事情继续？',
+  '同学说AI功能不好用你会先了解什么？',
+  '为校园设计AI功能时你会从哪里开始？',
+  '这份作品里哪个取舍最值得我们聊聊？',
+  '如果重新验证一次你最想先调整什么？',
+];
+
+function v3Question(index: number, required: boolean): InterviewQuestionV3 {
+  return {
+    id: `v3-${index + 1}`,
+    question: v3Stems[index],
+    required,
+    estimatedMinutes: required ? 5 : 4,
+    primaryDimension: v2Dimensions[[4, 5, 6, 7, 0, 2, 1, 3][index]],
+    secondaryDimensions:
+      index === 4 ? [v2Dimensions[1]] : index === 5 ? [v2Dimensions[3]] : [],
+    source: 'role',
+    goal: '了解候选人的实际思考和行动方式',
+    resumeEvidence: null,
+    workSampleEvidence: null,
+    listenFor: ['候选人自己的判断依据'],
+    riskSignals: ['只给结论，无法说明自己的行动'],
+    probes: [{ condition: '回答比较笼统', question: '当时你先做了哪一步？' }],
+  };
+}
+
+void test('late V3 work keeps six required questions and replaces two reserve questions', () => {
+  const all = Array.from({ length: 8 }, (_, index) =>
+    v3Question(index, index < 6),
+  );
+  const outline: InterviewOutlineV3 = {
+    version: 3,
+    estimatedMinutes: 30,
+    requiredQuestions: all.slice(0, 6),
+    reserveQuestions: all.slice(6),
+    archivedReserveQuestions: [],
+    coverage: calculateOutlineCoverageV3(all, v2Dimensions),
+  };
+  const supplementQuestions = all.slice(6).map((item, index) => ({
+    ...item,
+    id: `v3-work-${index + 1}`,
+    question: workSample.questions[index].question,
+    source: 'work-sample' as const,
+    workSampleEvidence: workSample.questions[index].workSampleEvidence!,
+  }));
+  const v3State = {
+    ...state,
+    resumeReading: { ...reading, interviewQuestions: undefined, outline },
+  };
+  const next = applyLateWorkSample(v3State, {
+    version: 3,
+    workSample: { ...workSample, questions: workSample.questions.slice(0, 2) },
+    outlineSupplement: {
+      version: 3,
+      kind: 'work-sample',
+      questions: supplementQuestions,
+    },
+  });
+  assert.deepEqual(
+    next.resumeReading.outline?.requiredQuestions,
+    outline.requiredQuestions,
+  );
+  assert.deepEqual(
+    next.resumeReading.outline?.reserveQuestions,
+    supplementQuestions,
+  );
+  assert.deepEqual(
+    next.resumeReading.outline?.archivedReserveQuestions,
+    outline.reserveQuestions,
+  );
 });

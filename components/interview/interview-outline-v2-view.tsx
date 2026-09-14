@@ -2,6 +2,7 @@ import type {
   InterviewOutlineV2,
   InterviewQuestionV2,
 } from '../../lib/interview-outline-v2';
+import type { InterviewOutlineV3 } from '../../lib/interview-outline-v3';
 
 const sourceLabels: Record<InterviewQuestionV2['source'], string> = {
   role: '岗位通用',
@@ -88,12 +89,12 @@ function InterviewQuestionV2Card({
 export function InterviewOutlineV2View({
   outline,
 }: {
-  outline: InterviewOutlineV2;
+  outline: InterviewOutlineV2 | InterviewOutlineV3;
 }) {
   return (
     <section className="interview-guide outline-v2">
       <header className="outline-v2-heading">
-        <h4>必问题 · 5 道</h4>
+        <h4>必问题 · {outline.requiredQuestions.length} 道</h4>
         <span>预计 {outline.estimatedMinutes} 分钟</span>
       </header>
       <div className="interview-question-list">

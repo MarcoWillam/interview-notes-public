@@ -171,9 +171,7 @@ export function ResumeReadingView({
           </button>
         </div>
       </div>
-      {value.outline?.version === 2 && (
-        <InterviewOutlineV2View outline={value.outline} />
-      )}
+      {value.outline && <InterviewOutlineV2View outline={value.outline} />}
       {!value.outline && !!questions.length && (
         <section className="interview-guide">
           <h4>
@@ -200,8 +198,8 @@ export function ResumeReadingView({
             <div>
               <strong>需要补充笔试复盘？</strong>
               <p>
-                {value.outline?.version === 2
-                  ? '保留 5 道必问题，由 Codex 更新候选题并归档当前候选题。'
+                {value.outline
+                  ? `保留 ${value.outline.requiredQuestions.length} 道必问题，由 Codex 更新候选题并归档当前候选题。`
                   : '保留原 6 道提纲，由 Codex 额外生成 3 道复盘题。'}
               </p>
             </div>
@@ -233,8 +231,8 @@ export function ResumeReadingView({
             <div>
               <strong>候选人补交了笔试作品？</strong>
               <p>
-                {value.outline?.version === 2
-                  ? '保留 5 道必问题，Codex 读取本地 ZIP 后更新候选题并归档当前候选题。'
+                {value.outline
+                  ? `保留 ${value.outline.requiredQuestions.length} 道必问题，Codex 读取本地 ZIP 后更新候选题并归档当前候选题。`
                   : '保留现有提纲，Codex 读取本地 ZIP 后追加 3 道作品复盘题。'}
               </p>
             </div>

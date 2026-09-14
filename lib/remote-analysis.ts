@@ -23,9 +23,11 @@ import {
   type WorkSampleAssessment,
   type WorkSampleAnalysisResult,
   type WorkSampleAnalysisV2,
+  type WorkSampleAnalysisV3,
   type WorkSampleInput,
   type WorkSampleInputV1,
   type WorkSampleInputV2,
+  type WorkSampleInputV3,
   type WorkSampleReference,
 } from './work-sample.ts';
 import {
@@ -349,6 +351,28 @@ export function submitRemoteWorkSample(
     scope?: string;
   },
 ): Promise<WorkSampleAnalysisV2>;
+export function submitRemoteWorkSample(
+  input: WorkSampleInputV3,
+  label: string,
+  signal: AbortSignal,
+  onProgress: (job: RemoteJob<WorkSampleAnalysisV3>) => void,
+  dependencies?: {
+    fetcher: typeof fetch;
+    pollMs: number;
+    scope?: string;
+  },
+): Promise<WorkSampleAnalysisV3>;
+export function submitRemoteWorkSample(
+  input: WorkSampleInput,
+  label: string,
+  signal: AbortSignal,
+  onProgress: (job: RemoteJob<WorkSampleAnalysisResult>) => void,
+  dependencies?: {
+    fetcher: typeof fetch;
+    pollMs: number;
+    scope?: string;
+  },
+): Promise<WorkSampleAnalysisResult>;
 export function submitRemoteWorkSample(
   input: WorkSampleInput,
   label: string,

@@ -27,7 +27,8 @@ export function canRegenerateOutline(value: OutlineRegenerationState) {
       value.reading.interviewQuestions.every(
         (question) => question.questionSource,
       )) ||
-      value.reading?.outline?.version === 2) &&
+      value.reading?.outline?.version === 2 ||
+      value.reading?.outline?.version === 3) &&
     !value.transcript.trim() &&
     !value.report &&
     !value.confirmed &&
@@ -44,12 +45,15 @@ export async function createOutlineRegenerationInput(value: {
   reading: ResumeReading;
 }): Promise<OutlineRegenerationInput> {
   const revision = await outlineRevision(value);
-  if (value.reading.outline?.version === 2)
+  if (
+    value.reading.outline?.version === 2 ||
+    value.reading.outline?.version === 3
+  )
     return validateOutlineRegenerationInput({
       ...value.standards,
       resumeText: value.resumeText,
       revision,
-      outlineVersion: 2,
+      outlineVersion: value.reading.outline.version,
       outline: value.reading.outline,
       workSample: value.reading.workSample || null,
     });
