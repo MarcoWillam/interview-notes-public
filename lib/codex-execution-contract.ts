@@ -22,9 +22,13 @@ export type CodexExecutionArtifact = {
   sha256: string;
   bytes: number;
   coveragePointer: string;
-  requiredEvidence: Array<{
+  evidenceRules: Array<{
     collectionPointer: string;
-    itemPointer?: string;
+    evidencePointer?: string;
+    evidenceArray: boolean;
+    required: boolean;
+    pathPointer: string;
+    excerptPointer: string;
   }>;
 };
 
@@ -97,7 +101,7 @@ function validateArtifact(value: unknown): CodexExecutionArtifact {
   if (!record(value)) throw new Error('作品执行合同缺少附件。');
   exactKeys(
     value,
-    ['id', 'sha256', 'bytes', 'coveragePointer', 'requiredEvidence'],
+    ['id', 'sha256', 'bytes', 'coveragePointer', 'evidenceRules'],
     '附件合同',
   );
   if (
@@ -114,19 +118,39 @@ function validateArtifact(value: unknown): CodexExecutionArtifact {
   )
     throw new Error('附件大小无效。');
   if (
-    !Array.isArray(value.requiredEvidence) ||
-    value.requiredEvidence.length < 1 ||
-    value.requiredEvidence.length > 8
+    !Array.isArray(value.evidenceRules) ||
+    value.evidenceRules.length < 1 ||
+    value.evidenceRules.length > 8
   )
     throw new Error('作品证据规则无效。');
-  const requiredEvidence = value.requiredEvidence.map((rule) => {
+  const evidenceRules = value.evidenceRules.map((rule) => {
     if (!record(rule)) throw new Error('作品证据规则无效。');
-    exactKeys(rule, ['collectionPointer', 'itemPointer'], '作品证据规则');
+    exactKeys(
+      rule,
+      [
+        'collectionPointer',
+        'evidencePointer',
+        'evidenceArray',
+        'required',
+        'pathPointer',
+        'excerptPointer',
+      ],
+      '作品证据规则',
+    );
+    if (
+      typeof rule.evidenceArray !== 'boolean' ||
+      typeof rule.required !== 'boolean'
+    )
+      throw new Error('作品证据规则无效。');
     return {
       collectionPointer: jsonPointer(rule.collectionPointer),
-      ...(rule.itemPointer === undefined
+      ...(rule.evidencePointer === undefined
         ? {}
-        : { itemPointer: jsonPointer(rule.itemPointer) }),
+        : { evidencePointer: jsonPointer(rule.evidencePointer) }),
+      evidenceArray: rule.evidenceArray,
+      required: rule.required,
+      pathPointer: jsonPointer(rule.pathPointer),
+      excerptPointer: jsonPointer(rule.excerptPointer),
     };
   });
   return {
@@ -134,7 +158,7 @@ function validateArtifact(value: unknown): CodexExecutionArtifact {
     sha256: value.sha256,
     bytes: Number(value.bytes),
     coveragePointer: jsonPointer(value.coveragePointer),
-    requiredEvidence,
+    evidenceRules,
   };
 }
 

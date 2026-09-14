@@ -333,6 +333,16 @@ void test('protocol five receives a server contract and retries invalid results 
     assert.equal(claimed.input, undefined);
     assert.equal(claimed.execution?.contractVersion, 1);
     assert.equal(claimed.execution?.attempt, 1);
+    s.heartbeat(modern.token, claimed.id, claimed.lease, {
+      version: '2026.9.14-2',
+      protocol: 4,
+    });
+    assert.deepEqual(
+      s.db
+        .prepare('SELECT leaseProtocol FROM jobs WHERE id=?')
+        .get(claimed.id)?.leaseProtocol,
+      5,
+    );
 
     assert.throws(
       () =>
@@ -413,12 +423,27 @@ void test('protocol four keeps the legacy input-only claim route', () => {
     );
     const claimed = s.claim(legacy.token, true, ['interview'], release)! as {
       id: string;
+      lease: string;
       input?: unknown;
       execution?: unknown;
     };
     assert.equal(claimed.id, submitted.id);
     assert.deepEqual(claimed.input, input);
     assert.equal(claimed.execution, undefined);
+    s.heartbeat(legacy.token, claimed.id, claimed.lease, {
+      version: CONNECTOR_VERSION,
+      protocol: CONNECTOR_PROTOCOL,
+    });
+    assert.deepEqual(
+      s.db
+        .prepare('SELECT leaseProtocol FROM jobs WHERE id=?')
+        .get(claimed.id)?.leaseProtocol,
+      4,
+    );
+    assert.deepEqual(
+      s.finish(legacy.token, claimed.id, claimed.lease, report),
+      { accepted: true },
+    );
   } finally {
     s.close();
   }
@@ -736,6 +761,7 @@ void test('legacy job databases gain artifact binding columns without losing wor
     assert.ok(columns.some((column) => column.name === 'artifactId'));
     assert.ok(columns.some((column) => column.name === 'scope'));
     assert.ok(columns.some((column) => column.name === 'requiredProtocol'));
+    assert.ok(columns.some((column) => column.name === 'leaseProtocol'));
     assert.equal(
       migrated.db
         .prepare('SELECT requiredProtocol FROM jobs WHERE id=?')

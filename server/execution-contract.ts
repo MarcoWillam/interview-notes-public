@@ -40,10 +40,22 @@ function artifactContract(
     sha256: reference.sha256,
     bytes: reference.bytes,
     coveragePointer: nested ? '/workSample/coverage' : '/coverage',
-    requiredEvidence: [
+    evidenceRules: [
       {
         collectionPointer: nested ? '/workSample/questions' : '/questions',
-        itemPointer: '/workSampleEvidence',
+        evidencePointer: '/workSampleEvidence',
+        evidenceArray: false,
+        required: true,
+        pathPointer: '/path',
+        excerptPointer: '/excerpt',
+      },
+      {
+        collectionPointer: nested ? '/workSample/dimensions' : '/dimensions',
+        evidencePointer: '/evidence',
+        evidenceArray: true,
+        required: false,
+        pathPointer: '/path',
+        excerptPointer: '/excerpt',
       },
     ],
   };
