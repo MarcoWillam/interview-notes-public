@@ -464,6 +464,7 @@ export default function Home({
       setNotice('已从当前浏览器恢复面试记录。');
     },
     reset,
+    { cloud: !!workspaceAccount && !workspaceAccount.preview },
   );
   const outlineLiveRef = useRef({
     recordId: library.id,
@@ -2005,7 +2006,17 @@ export default function Home({
           currentId={view === 'workbench' ? library.id : ''}
           disabled={!library.ready || library.working || !!busy}
           saveStatus={
-            library.unsaved ? '正在保存到本地…' : '已保存在当前浏览器'
+            library.unsaved
+              ? '正在保存…'
+              : workspaceAccount?.preview || !workspaceAccount
+                ? '已保存在当前浏览器'
+                : library.syncStatus === 'conflict'
+                  ? '需要处理冲突'
+                  : library.syncStatus === 'pending'
+                    ? '等待同步到云端'
+                    : library.syncStatus === 'syncing'
+                      ? '正在同步到云端…'
+                      : '已同步到云端'
           }
           onCreate={() => {
             if (hasContent) setResetOpen(true);

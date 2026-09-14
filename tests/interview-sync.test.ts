@@ -4,6 +4,7 @@ import { IDBFactory } from 'fake-indexeddb';
 import { createLocalStore, type SavedInterview } from '../lib/local/store.ts';
 import {
   InterviewSyncConflict,
+  cloudVersionReason,
   migrateAndSyncInterviews,
   syncInterviewOutbox,
   type InterviewSyncTransport,
@@ -151,4 +152,23 @@ void test('first migration uploads local records and then pulls cloud-only recor
 
   await migrateAndSyncInterviews(store, remote.value);
   assert.equal(remote.calls.filter((call) => call.startsWith('put:')).length, 1);
+});
+
+void test('business milestones choose durable version reasons', () => {
+  assert.equal(
+    cloudVersionReason(record, { ...record, confirmed: true }),
+    'manually-confirmed',
+  );
+  assert.equal(
+    cloudVersionReason(record, {
+      ...record,
+      transcript: '新导入记录',
+      transcriptName: '记录.txt',
+    }),
+    'transcript-imported',
+  );
+  assert.equal(
+    cloudVersionReason(record, { ...record, candidate: '普通编辑' }),
+    'periodic-edit',
+  );
 });

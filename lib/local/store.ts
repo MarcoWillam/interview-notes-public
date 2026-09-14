@@ -16,7 +16,10 @@ import type {
   CloudInterviewSummary,
   CloudVersionReason,
 } from '../cloud-interview.ts';
-export type SavedInterview = CloudInterview;
+export type SavedInterview = CloudInterview & {
+  /** Older local records may predate creation-time tracking. */
+  createdAt?: number;
+};
 export type InterviewSyncMeta = {
   id: string;
   revision: number;
@@ -450,6 +453,10 @@ export function createLocalStore(
             syncedAt: Date.now(),
           } satisfies InterviewSyncMeta);
         };
+      }),
+    dropPendingSync: (id: string) =>
+      run<void>(['syncOutbox'], 'readwrite', (tx) => {
+        tx.objectStore('syncOutbox').delete(id);
       }),
     saveRemoteInterview: (record: SavedInterview, revision: number) =>
       run<void>(['interviews', 'syncMeta'], 'readwrite', (tx) => {
