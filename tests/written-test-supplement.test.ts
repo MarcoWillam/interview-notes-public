@@ -15,6 +15,11 @@ import {
   type InterviewQuestionV2,
 } from '../lib/interview-outline-v2.ts';
 import { builtInRoleTemplates } from '../lib/default-role-templates.ts';
+import {
+  calculateOutlineCoverageV3,
+  type InterviewOutlineV3,
+  type InterviewQuestionV3,
+} from '../lib/interview-outline-v3.ts';
 
 const resumeText = '姓名：张晓明\n负责 AI 助手的用户访谈与方案设计。';
 const standards = {
@@ -201,4 +206,76 @@ void test('V2 written-test supplement uses the current outline and a separate st
   assert.match(writtenTestSupplementInstructionsFor(2), /候选题/);
   assert.match(writtenTestSupplementInstructionsFor(2), /八项维度全部覆盖/);
   assert.doesNotMatch(writtenTestSupplementInstructionsFor(2), /六道题/);
+});
+
+function v3Outline(): InterviewOutlineV3 {
+  const dimensions = builtInRoleTemplates[0].dimensionText.split('、');
+  const stems = [
+    '最近有没有一件没人要求但你主动做的事？',
+    '遇到陌生问题时你通常会怎么开始学？',
+    '哪件事一度很难推进后来你怎么处理的？',
+    '和同伴想法不同时你会怎么推动事情继续？',
+    '同学说AI功能不好用你会先了解什么？',
+    '为校园设计AI功能时你会从哪里开始？',
+    '哪段经历最能说明你理解真实用户？',
+    '如果验证结果不理想你会先调整什么？',
+  ];
+  const order = [4, 5, 6, 7, 0, 2, 1, 3];
+  const all: InterviewQuestionV3[] = stems.map((question, index) => ({
+    id: `v3-outline-${index + 1}`,
+    question,
+    required: index < 6,
+    estimatedMinutes: index < 6 ? 5 : 4,
+    primaryDimension: dimensions[order[index]],
+    secondaryDimensions:
+      index === 4 ? [dimensions[1]] : index === 5 ? [dimensions[3]] : [],
+    source: 'role',
+    goal: '了解候选人的实际思考和行动方式',
+    resumeEvidence: null,
+    workSampleEvidence: null,
+    listenFor: ['候选人自己的行动'],
+    riskSignals: ['无法说明自己的行动'],
+    probes: [{ condition: '回答笼统', question: '当时你先做了哪一步？' }],
+  }));
+  return {
+    version: 3,
+    estimatedMinutes: 30,
+    requiredQuestions: all.slice(0, 6),
+    reserveQuestions: all.slice(6),
+    archivedReserveQuestions: [],
+    coverage: calculateOutlineCoverageV3(all, dimensions),
+  };
+}
+
+void test('V3 written-test supplement replaces two reserve questions', () => {
+  const template = builtInRoleTemplates[0];
+  const raw = {
+    ...template,
+    resumeText,
+    outlineVersion: 3 as const,
+    outline: v3Outline(),
+  };
+  const input = validateWrittenTestSupplementInput(raw);
+  const questions = [0, 2].map((dimensionIndex, index) => ({
+    ...v3Outline().reserveQuestions[index],
+    id: `v3-written-${index + 1}`,
+    question:
+      index === 0
+        ? '回看这份笔试你最想先解决哪个问题？'
+        : '如果验证结果相反你会先修改哪处判断？',
+    primaryDimension: template.dimensionText.split('、')[dimensionIndex],
+    source: 'written-test' as const,
+  }));
+  const output = {
+    version: 3 as const,
+    kind: 'written-test' as const,
+    questions,
+  };
+  assert.deepEqual(validateWrittenTestSupplement(output, input), output);
+  assert.equal(
+    writtenTestSupplementOutputSchema(3).properties.questions.maxItems,
+    2,
+  );
+  assert.match(writtenTestSupplementInstructionsFor(3), /两道/);
+  assert.match(writtenTestSupplementInstructionsFor(3), /亲和/);
 });

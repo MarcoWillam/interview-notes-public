@@ -10,6 +10,10 @@ import {
   type InterviewQuestionV2,
 } from '../lib/interview-outline-v2.ts';
 import { builtInRoleTemplates } from '../lib/default-role-templates.ts';
+import {
+  calculateOutlineCoverageV3,
+  type InterviewQuestionV3,
+} from '../lib/interview-outline-v3.ts';
 
 const reading = {
   summary: '简历自述。',
@@ -82,7 +86,8 @@ void test('regeneration input reuses persisted resume and current outline', asyn
     standards,
     reading,
   });
-  if (input.outlineVersion === 2) throw new Error('expected V1 fixture');
+  if (input.outlineVersion !== undefined && input.outlineVersion !== 1)
+    throw new Error('expected V1 fixture');
   assert.equal(input.interviewQuestions.length, 6);
   assert.match(input.revision, /^outline-/);
   assert.equal(input.writtenTestSupplement, null);
@@ -163,5 +168,61 @@ void test('V2 outline is eligible and its complete snapshot enters regeneration 
     reading: v2Reading,
   });
   assert.equal(input.outlineVersion, 2);
+  assert.deepEqual('outline' in input ? input.outline : null, outline);
+});
+
+void test('V3 potential outline is eligible and keeps its six-plus-two snapshot', async () => {
+  const template = builtInRoleTemplates[0];
+  const dimensions = template.dimensionText.split('、');
+  const stems = [
+    '最近有没有一件没人要求但你主动做的事？',
+    '遇到陌生问题时你通常会怎么开始学？',
+    '哪件事一度很难推进后来你怎么处理的？',
+    '和同伴想法不同时你会怎么推动事情继续？',
+    '同学说AI功能不好用你会先了解什么？',
+    '为校园设计AI功能时你会从哪里开始？',
+    '哪段经历最能说明你理解真实用户？',
+    '如果验证结果不理想你会先调整什么？',
+  ];
+  const order = [4, 5, 6, 7, 0, 2, 1, 3];
+  const all: InterviewQuestionV3[] = stems.map((question, index) => ({
+    id: `workflow-v3-${index + 1}`,
+    question,
+    required: index < 6,
+    estimatedMinutes: index < 6 ? 5 : 4,
+    primaryDimension: dimensions[order[index]],
+    secondaryDimensions:
+      index === 4 ? [dimensions[1]] : index === 5 ? [dimensions[3]] : [],
+    source: 'role',
+    goal: '了解候选人的实际思考和行动方式',
+    resumeEvidence: null,
+    workSampleEvidence: null,
+    listenFor: ['候选人自己的行动'],
+    riskSignals: ['无法说明自己的行动'],
+    probes: [{ condition: '回答笼统', question: '当时你先做了哪一步？' }],
+  }));
+  const outline = {
+    version: 3 as const,
+    estimatedMinutes: 30,
+    requiredQuestions: all.slice(0, 6),
+    reserveQuestions: all.slice(6),
+    archivedReserveQuestions: [],
+    coverage: calculateOutlineCoverageV3(all, dimensions),
+  };
+  const v3Reading = { ...reading, interviewQuestions: undefined, outline };
+  const state = {
+    resumeText: '负责用户访谈并整理需求。',
+    reading: v3Reading,
+    transcript: '',
+    report: null,
+    confirmed: false,
+  };
+  assert.equal(canRegenerateOutline(state), true);
+  const input = await createOutlineRegenerationInput({
+    resumeText: state.resumeText,
+    standards: template,
+    reading: v3Reading,
+  });
+  assert.equal(input.outlineVersion, 3);
   assert.deepEqual('outline' in input ? input.outline : null, outline);
 });

@@ -21,16 +21,18 @@ import {
 } from '@/lib/remote-analysis';
 import {
   validateWrittenTestSupplement,
-  type WrittenTestSupplementInput,
   type WrittenTestSupplementResult,
 } from '@/lib/written-test-supplement';
 import type {
   WorkSampleAnalysisResult,
   WorkSampleAssessment,
-  WorkSampleInput,
   WorkSampleReference,
 } from '@/lib/work-sample';
 import { validateWorkSampleAnalysisResult } from '@/lib/work-sample';
+import {
+  createPreparationWorkSampleInput,
+  createPreparationWrittenTestInput,
+} from '@/lib/preparation-analysis-inputs';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FileText,
@@ -175,7 +177,7 @@ export default function Home({
   const [reportRequirements, setReportRequirements] = useState('');
   const [sourceTemplateId, setSourceTemplateId] = useState<string | null>(null);
   const [templateModified, setTemplateModified] = useState(false);
-  const [outlineVersion, setOutlineVersion] = useState<1 | 2>(1);
+  const [outlineVersion, setOutlineVersion] = useState<1 | 2 | 3>(1);
   const [hasWrittenTest, setHasWrittenTest] = useState(false);
   const [writtenTestConfirmed, setWrittenTestConfirmed] = useState(false);
   const [resumeText, setResumeText] = useState('');
@@ -541,34 +543,20 @@ export default function Home({
           }
           if (!resumeReading)
             throw new Error('当前面试提纲已变化，未应用作品结果。');
-          const analysisInput: WorkSampleInput =
-            outlineVersion === 2 && resumeReading.outline
-              ? {
-                  role,
-                  requirements,
-                  dimensionText,
-                  focus,
-                  scoringGuidance,
-                  reportRequirements,
-                  resumeText,
-                  workSample: reference,
-                  outlineVersion: 2,
-                  outline: resumeReading.outline,
-                }
-              : {
-                  role,
-                  requirements,
-                  dimensionText,
-                  focus,
-                  scoringGuidance,
-                  reportRequirements,
-                  resumeText,
-                  workSample: reference,
-                  existingQuestions: [
-                    ...(resumeReading.interviewQuestions || []),
-                    ...(resumeReading.writtenTestSupplement || []),
-                  ],
-                };
+          const analysisInput = createPreparationWorkSampleInput(
+            {
+              role,
+              requirements,
+              dimensionText,
+              focus,
+              scoringGuidance,
+              reportRequirements,
+              resumeText,
+              outlineVersion,
+            },
+            resumeReading,
+            reference,
+          );
           const result = validateWorkSampleAnalysisResult(
             job.report,
             analysisInput,
@@ -592,7 +580,7 @@ export default function Home({
           setWrittenTestConfirmed(true);
           setNotice(
             'version' in result
-              ? '已恢复作品分析，3 道作品复盘题已更新到候选题。'
+              ? `已恢复作品分析，${result.version === 3 ? 2 : 3} 道作品复盘题已更新到候选题。`
               : '已恢复完成的作品分析，并追加 3 道作品复盘题。',
           );
           return;
@@ -655,29 +643,19 @@ export default function Home({
       return;
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const supplementInput: WrittenTestSupplementInput =
-      outlineVersion === 2 && resumeReading.outline
-        ? {
-            resumeText,
-            role,
-            requirements,
-            dimensionText,
-            focus,
-            scoringGuidance,
-            reportRequirements,
-            outlineVersion: 2,
-            outline: resumeReading.outline,
-          }
-        : {
-            resumeText,
-            role,
-            requirements,
-            dimensionText,
-            focus,
-            scoringGuidance,
-            reportRequirements,
-            existingQuestions: resumeReading.interviewQuestions || [],
-          };
+    const supplementInput = createPreparationWrittenTestInput(
+      {
+        resumeText,
+        role,
+        requirements,
+        dimensionText,
+        focus,
+        scoringGuidance,
+        reportRequirements,
+        outlineVersion,
+      },
+      resumeReading,
+    );
     const recover = async () => {
       try {
         const job = await remoteRequest<RemoteJob<WrittenTestSupplementResult>>(
@@ -696,7 +674,7 @@ export default function Home({
           setWrittenTestJobId(undefined);
           setNotice(
             'version' in result
-              ? '已恢复并将 3 道笔试复盘题更新到候选题。'
+              ? `已恢复并将 ${result.version === 3 ? 2 : 3} 道笔试复盘题更新到候选题。`
               : '已恢复并追加 3 道笔试复盘题。',
           );
           return;
@@ -1290,29 +1268,10 @@ export default function Home({
       const context = resumeContext.current;
       if (!context.queuedCodex)
         throw new Error('请使用当前队列版工作台连接 Codex 后生成补充题。');
-      const supplementInput: WrittenTestSupplementInput =
-        context.outlineVersion === 2 && reading.outline
-          ? {
-              resumeText: context.resumeText,
-              role: context.role,
-              requirements: context.requirements,
-              dimensionText: context.dimensionText,
-              focus: context.focus,
-              scoringGuidance: context.scoringGuidance,
-              reportRequirements: context.reportRequirements,
-              outlineVersion: 2,
-              outline: reading.outline,
-            }
-          : {
-              resumeText: context.resumeText,
-              role: context.role,
-              requirements: context.requirements,
-              dimensionText: context.dimensionText,
-              focus: context.focus,
-              scoringGuidance: context.scoringGuidance,
-              reportRequirements: context.reportRequirements,
-              existingQuestions: reading.interviewQuestions || [],
-            };
+      const supplementInput = createPreparationWrittenTestInput(
+        context,
+        reading,
+      );
       const value = await submitRemoteWrittenTest(
         supplementInput,
         `${context.candidate || resumeName || '未命名候选人'} · 笔试复盘补充`.slice(
@@ -1346,7 +1305,7 @@ export default function Home({
       };
       setNotice(
         'version' in result
-          ? '已将 3 道笔试复盘题更新到候选题，笔试情况已同步为“有笔试”。'
+          ? `已将 ${result.version === 3 ? 2 : 3} 道笔试复盘题更新到候选题，笔试情况已同步为“有笔试”。`
           : '已追加 3 道笔试复盘题，笔试情况已同步为“有笔试”。',
       );
       setTab('resume');
@@ -1409,16 +1368,6 @@ export default function Home({
       const context = resumeContext.current;
       if (!context.queuedCodex)
         throw new Error('请使用当前队列版工作台连接 Codex 后分析作品。');
-      const common = {
-        resumeText: context.resumeText,
-        role: context.role,
-        requirements: context.requirements,
-        dimensionText: context.dimensionText,
-        focus: context.focus,
-        scoringGuidance: context.scoringGuidance,
-        reportRequirements: context.reportRequirements,
-        workSample: artifact,
-      };
       const progress = (job: RemoteJob<WorkSampleAnalysisResult>) => {
         if (
           analysisController.current === controller &&
@@ -1429,38 +1378,16 @@ export default function Home({
           setRemoteJob({ ...job, report: null });
         }
       };
-      const result =
-        context.outlineVersion === 2 && reading.outline
-          ? await submitRemoteWorkSample(
-              {
-                ...common,
-                outlineVersion: 2,
-                outline: reading.outline,
-              },
-              `${context.candidate || resumeName || '未命名候选人'} · 笔试作品`.slice(
-                0,
-                100,
-              ),
-              controller.signal,
-              progress,
-              { fetcher: fetch, pollMs: 2000, scope: library.id },
-            )
-          : await submitRemoteWorkSample(
-              {
-                ...common,
-                existingQuestions: [
-                  ...(reading.interviewQuestions || []),
-                  ...(reading.writtenTestSupplement || []),
-                ],
-              },
-              `${context.candidate || resumeName || '未命名候选人'} · 笔试作品`.slice(
-                0,
-                100,
-              ),
-              controller.signal,
-              progress,
-              { fetcher: fetch, pollMs: 2000, scope: library.id },
-            );
+      const result = await submitRemoteWorkSample(
+        createPreparationWorkSampleInput(context, reading, artifact),
+        `${context.candidate || resumeName || '未命名候选人'} · 笔试作品`.slice(
+          0,
+          100,
+        ),
+        controller.signal,
+        progress,
+        { fetcher: fetch, pollMs: 2000, scope: library.id },
+      );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
       const next = applyLateWorkSample(
@@ -1487,7 +1414,7 @@ export default function Home({
       };
       setNotice(
         'version' in result
-          ? '作品已分析，五道必问题保留，3 道作品复盘题已更新到候选题。'
+          ? `作品已分析，${result.version === 3 ? '六' : '五'}道必问题保留，${result.version === 3 ? 2 : 3} 道作品复盘题已更新到候选题。`
           : '作品已分析，原提纲保留，并在下方追加 3 道作品复盘题。',
       );
       setTab('resume');
@@ -2185,7 +2112,7 @@ export default function Home({
                       ? busy === 'resume-read'
                         ? 'Codex 正在阅读简历。可以关闭网页，稍后从评估任务查看结果。'
                         : busy === 'written-test'
-                          ? 'Codex 正在生成 3 道笔试复盘补充题。可以关闭网页，稍后从任务中心查看结果。'
+                          ? `Codex 正在生成 ${outlineVersion === 3 ? 2 : 3} 道笔试复盘补充题。可以关闭网页，稍后从任务中心查看结果。`
                           : busy === 'work-sample'
                             ? 'Codex 正在只读分析笔试作品。可以关闭网页，稍后从任务中心查看结果。'
                             : busy === 'outline'
@@ -2866,16 +2793,18 @@ export default function Home({
             <AlertDialogContent className="written-test-supplement-dialog">
               <AlertDialogTitle>补充笔试复盘题</AlertDialogTitle>
               <AlertDialogDescription>
-                {outlineVersion === 2
-                  ? 'Codex 将生成 3 道笔试复盘候选题，替换当前候选区并归档此前候选题。5 道必问题保持不变；成功后笔试情况会同步为“有笔试”，且不能再次生成。'
-                  : 'Codex 将额外生成 3 道笔试复盘题，追加在原有 6 道提纲下方，不修改原提纲。成功后笔试情况会同步为“有笔试”，且不能再次生成。'}
+                {outlineVersion === 3
+                  ? 'Codex 将生成 2 道笔试复盘候选题，替换当前候选区并归档此前候选题。6 道必问题保持不变；成功后笔试情况会同步为“有笔试”，且不能再次生成。'
+                  : outlineVersion === 2
+                    ? 'Codex 将生成 3 道笔试复盘候选题，替换当前候选区并归档此前候选题。5 道必问题保持不变；成功后笔试情况会同步为“有笔试”，且不能再次生成。'
+                    : 'Codex 将额外生成 3 道笔试复盘题，追加在原有 6 道提纲下方，不修改原提纲。成功后笔试情况会同步为“有笔试”，且不能再次生成。'}
               </AlertDialogDescription>
               <AlertDialogFooter>
                 <AlertDialogCancel>取消</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={() => void runWrittenTestSupplement()}
                 >
-                  确认并生成 3 道题
+                  确认并生成 {outlineVersion === 3 ? 2 : 3} 道题
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -2890,9 +2819,11 @@ export default function Home({
             <AlertDialogContent className="work-sample-confirmation-dialog">
               <AlertDialogTitle>补交笔试作品</AlertDialogTitle>
               <AlertDialogDescription>
-                {outlineVersion === 2
-                  ? '选择保存在已配对电脑 works/ 目录中的 ZIP。Codex 将从产品经理视角只读分析；生成的 3 道作品复盘候选题会替换当前候选区并归档此前候选题，5 道必问题保持不变。成功后不能再次分析作品。'
-                  : '选择保存在已配对电脑 works/ 目录中的 ZIP。Codex 将从产品经理视角只读分析；原提纲保留，追加三题，成功后不能再次分析作品。'}
+                {outlineVersion === 3
+                  ? '选择保存在已配对电脑 works/ 目录中的 ZIP。Codex 将从产品经理视角只读分析；生成的 2 道作品复盘候选题会替换当前候选区并归档此前候选题，6 道必问题保持不变。成功后不能再次分析作品。'
+                  : outlineVersion === 2
+                    ? '选择保存在已配对电脑 works/ 目录中的 ZIP。Codex 将从产品经理视角只读分析；生成的 3 道作品复盘候选题会替换当前候选区并归档此前候选题，5 道必问题保持不变。成功后不能再次分析作品。'
+                    : '选择保存在已配对电脑 works/ 目录中的 ZIP。Codex 将从产品经理视角只读分析；原提纲保留，追加三题，成功后不能再次分析作品。'}
               </AlertDialogDescription>
               <WorkSamplePicker
                 artifacts={workSampleArtifacts}

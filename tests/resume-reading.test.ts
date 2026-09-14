@@ -198,12 +198,12 @@ void test('complete standards and six grounded interview questions survive valid
   );
 });
 
-void test('resume input defaults to V1 and accepts V2 only for untouched built-in product standards', () => {
+void test('resume input defaults to V1 and accepts structured versions for untouched built-in product standards', () => {
   assert.equal(validateResumeInput(input).outlineVersion, 1);
   assert.equal(validateResumeInput(v2Input()).outlineVersion, 2);
-  assert.throws(
-    () => validateResumeInput({ ...v2Input(), outlineVersion: 3 }),
-    /提纲版本/,
+  assert.equal(
+    validateResumeInput({ ...v2Input(), outlineVersion: 3 }).outlineVersion,
+    3,
   );
   assert.throws(
     () =>
@@ -246,7 +246,7 @@ void test('V2 resume reading requires a V2 outline and rejects V1 questions', ()
         { ...value, interviewQuestions: structuredResult.interviewQuestions },
         v2Input(),
       ),
-    /V2 结果不能包含旧版提纲/,
+    /结构化结果不能包含旧版提纲/,
   );
   assert.throws(
     () =>
@@ -254,7 +254,7 @@ void test('V2 resume reading requires a V2 outline and rejects V1 questions', ()
         { ...structuredResult, outline: v2Outline() },
         input,
       ),
-    /旧版结果不能包含 V2 提纲/,
+    /旧版结果不能包含结构化提纲/,
   );
 });
 

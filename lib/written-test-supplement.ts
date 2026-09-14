@@ -18,6 +18,15 @@ import {
   validateOutlineV2Supplement,
   type OutlineV2SupplementResult,
 } from './outline-v2-supplement.ts';
+import {
+  validateInterviewOutlineV3,
+  type InterviewOutlineV3,
+} from './interview-outline-v3.ts';
+import {
+  outlineV3SupplementSchema,
+  validateOutlineV3Supplement,
+  type OutlineV3SupplementResult,
+} from './outline-v3-supplement.ts';
 
 export type WrittenTestSupplementInputV1 = InterviewStandards & {
   resumeText: string;
@@ -29,15 +38,22 @@ export type WrittenTestSupplementInputV2 = InterviewStandards & {
   outlineVersion: 2;
   outline: InterviewOutlineV2;
 };
+export type WrittenTestSupplementInputV3 = InterviewStandards & {
+  resumeText: string;
+  outlineVersion: 3;
+  outline: InterviewOutlineV3;
+};
 export type WrittenTestSupplementInput =
   | WrittenTestSupplementInputV1
-  | WrittenTestSupplementInputV2;
+  | WrittenTestSupplementInputV2
+  | WrittenTestSupplementInputV3;
 export type WrittenTestSupplementResultV1 = {
   questions: InterviewQuestion[];
 };
 export type WrittenTestSupplementResult =
   | WrittenTestSupplementResultV1
-  | OutlineV2SupplementResult;
+  | OutlineV2SupplementResult
+  | OutlineV3SupplementResult;
 
 function text(value: unknown, max: number): string {
   if (typeof value !== 'string' || value.length > max || !value.trim())
@@ -72,7 +88,7 @@ export function validateWrittenTestSupplementInput(
   const standards = normalizeStandards(raw);
   validateStandards(standards, false);
   const resumeText = text(raw.resumeText, 30000);
-  if (raw.outlineVersion === 2) {
+  if (raw.outlineVersion === 2 || raw.outlineVersion === 3) {
     const template = builtInRoleTemplates[0];
     const fields = [
       'role',
@@ -83,15 +99,22 @@ export function validateWrittenTestSupplementInput(
       'reportRequirements',
     ] as const;
     if (fields.some((field) => standards[field] !== template[field]))
-      throw new Error('V2 笔试补充仅支持内置 AI 产品经理模板。');
+      throw new Error('结构化笔试补充仅支持内置 AI 产品经理模板。');
     const dimensions = standards.dimensionText.split('、');
-    const outline = validateInterviewOutlineV2(raw.outline, {
+    const outlineContext = {
       role: standards.role,
       dimensions,
       resumeText,
-      requireProductCore: true,
       hasWrittenTest: false,
       hasWorkSample: false,
+    };
+    if (raw.outlineVersion === 3) {
+      const outline = validateInterviewOutlineV3(raw.outline, outlineContext);
+      return { ...standards, resumeText, outlineVersion: 3, outline };
+    }
+    const outline = validateInterviewOutlineV2(raw.outline, {
+      ...outlineContext,
+      requireProductCore: true,
     });
     return { ...standards, resumeText, outlineVersion: 2, outline };
   }
@@ -124,6 +147,12 @@ export function validateWrittenTestSupplement(
 ): WrittenTestSupplementResult {
   if (input.outlineVersion === 2)
     return validateOutlineV2Supplement(value, {
+      kind: 'written-test',
+      outline: input.outline,
+      dimensions: input.dimensionText.split('、'),
+    });
+  if (input.outlineVersion === 3)
+    return validateOutlineV3Supplement(value, {
       kind: 'written-test',
       outline: input.outline,
       dimensions: input.dimensionText.split('、'),
@@ -181,16 +210,23 @@ export const writtenTestSupplementSchema = {
 const writtenTestSupplementV2Instructions =
   '你是 AI 产品经理校招面试准备助手。请基于输入的岗位标准和现有 V2 提纲，只生成三道笔试复盘候选题，用于替换现有候选题，五道必问题保持不变。你没有看到候选人的实际答卷，不得声称已经阅读答卷或知道其答案。三题共同覆盖统一笔试目的中的问题定义、用户理解、方案范围与取舍、AI 核心价值、人与 AI 责任、用户控制、失败降级和验证假设，并核实候选人自己的判断。替换后，五道必问题与三道新候选题必须让岗位八项维度全部覆盖；优先把当前必问题尚未覆盖的维度设为新题主维度。每题 required=false、source=written-test、resumeEvidence=null、workSampleEvidence=null；主问题为 8–24 个字符且只含一个问点；预计 3–7 分钟；使用一个主维度和最多两个辅助维度；提供验证目标、观察点、风险信号与条件追问。编号不得与 outline 中任何当前或历史问题重复，问题不得与五道必问题或彼此重复。version 返回 2，kind 返回 written-test，只返回符合结构的 JSON。';
 
-export function writtenTestSupplementInstructionsFor(version: 1 | 2) {
-  return version === 2
-    ? writtenTestSupplementV2Instructions
-    : writtenTestSupplementInstructions;
+const writtenTestSupplementV3Instructions =
+  '你是 AI 产品经理校招面试准备助手。请基于输入的岗位标准和现有 V3 提纲，只生成两道笔试复盘候选题，用于替换现有两道候选题，六道必问题保持不变。你没有看到候选人的实际答卷，不得声称已经阅读答卷或知道其答案。问题用于核实候选人自己的判断、取舍和验证方法，不要求成熟工作经验。每题 required=false、source=written-test、resumeEvidence=null、workSampleEvidence=null；主问题为 12–30 个字符，只问一个核心问题，使用自然、亲和且可以直接念出的表达；预计 3–6 分钟；使用一个主维度和最多两个辅助维度。提供验证目标、观察点、风险信号与条件追问。编号和问题不得与当前或历史问题重复。version 返回 3，kind 返回 written-test，只返回符合结构的 JSON。';
+
+export function writtenTestSupplementInstructionsFor(version: 1 | 2 | 3) {
+  return version === 3
+    ? writtenTestSupplementV3Instructions
+    : version === 2
+      ? writtenTestSupplementV2Instructions
+      : writtenTestSupplementInstructions;
 }
 
-export function writtenTestSupplementOutputSchema(version: 1 | 2) {
-  return version === 2
-    ? outlineV2SupplementSchema('written-test')
-    : writtenTestSupplementSchema;
+export function writtenTestSupplementOutputSchema(version: 1 | 2 | 3) {
+  return version === 3
+    ? outlineV3SupplementSchema('written-test')
+    : version === 2
+      ? outlineV2SupplementSchema('written-test')
+      : writtenTestSupplementSchema;
 }
 
 export function exportWrittenTestSupplement(

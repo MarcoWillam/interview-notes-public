@@ -2,9 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   validateWorkSampleAssessment,
+  validateWorkSampleInput,
+  validateWorkSampleAnalysisResult,
   validateWorkSampleEvidenceFiles,
   validateWorkSampleReference,
   exportWorkSampleAssessment,
+  workSampleInstructionsFor,
+  workSampleEmbeddedInstructionsFor,
+  workSampleOutputSchema,
   workSampleRubricLabel,
   type WorkSampleAssessment,
 } from '../lib/work-sample.ts';
@@ -12,6 +17,12 @@ import {
   AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
   aiPmWorkSampleRubric,
 } from '../lib/work-sample-rubric.ts';
+import { builtInRoleTemplates } from '../lib/default-role-templates.ts';
+import {
+  calculateOutlineCoverageV3,
+  type InterviewOutlineV3,
+  type InterviewQuestionV3,
+} from '../lib/interview-outline-v3.ts';
 
 const reference = {
   id: 'artifact-12345678',
@@ -80,6 +91,115 @@ void test('AI PM work sample rubric fixes the unified written-test purpose', () 
       ['Demo 与表达', 15],
     ],
   );
+});
+
+void test('V3 work sample contract returns two friendly review questions', () => {
+  const schema = workSampleOutputSchema(3);
+  if (!('version' in schema.properties)) throw new Error('expected V3 schema');
+  assert.deepEqual(schema.properties.version.enum, [3]);
+  assert.equal(schema.properties.workSample.properties.questions.maxItems, 2);
+  assert.equal(
+    schema.properties.outlineSupplement.properties.questions.maxItems,
+    2,
+  );
+  assert.match(workSampleInstructionsFor(3), /两道/);
+  assert.match(workSampleInstructionsFor(3), /12–30/);
+  assert.match(workSampleInstructionsFor(3), /亲和/);
+  assert.match(workSampleEmbeddedInstructionsFor(3), /恰好两道/);
+  assert.doesNotMatch(workSampleEmbeddedInstructionsFor(3), /恰好三道/);
+});
+
+function v3Outline(): InterviewOutlineV3 {
+  const roleDimensions = builtInRoleTemplates[0].dimensionText.split('、');
+  const stems = [
+    '最近有没有一件没人要求但你主动做的事？',
+    '遇到陌生问题时你通常会怎么开始学？',
+    '哪件事一度很难推进后来你怎么处理的？',
+    '和同伴想法不同时你会怎么推动事情继续？',
+    '同学说AI功能不好用你会先了解什么？',
+    '为校园设计AI功能时你会从哪里开始？',
+    '哪段经历最能说明你理解真实用户？',
+    '如果验证结果不理想你会先调整什么？',
+  ];
+  const order = [4, 5, 6, 7, 0, 2, 1, 3];
+  const all: InterviewQuestionV3[] = stems.map((question, index) => ({
+    id: `work-v3-${index + 1}`,
+    question,
+    required: index < 6,
+    estimatedMinutes: index < 6 ? 5 : 4,
+    primaryDimension: roleDimensions[order[index]],
+    secondaryDimensions:
+      index === 4
+        ? [roleDimensions[1]]
+        : index === 5
+          ? [roleDimensions[3]]
+          : [],
+    source: 'role',
+    goal: '了解候选人的实际思考和行动方式',
+    resumeEvidence: null,
+    workSampleEvidence: null,
+    listenFor: ['候选人自己的行动'],
+    riskSignals: ['无法说明自己的行动'],
+    probes: [{ condition: '回答笼统', question: '当时你先做了哪一步？' }],
+  }));
+  return {
+    version: 3,
+    estimatedMinutes: 30,
+    requiredQuestions: all.slice(0, 6),
+    reserveQuestions: all.slice(6),
+    archivedReserveQuestions: [],
+    coverage: calculateOutlineCoverageV3(all, roleDimensions),
+  };
+}
+
+void test('V3 later work submission accepts the six-plus-two outline', () => {
+  const template = builtInRoleTemplates[0];
+  const input = {
+    ...template,
+    resumeText: '姓名：林小满。完成校园 AI 项目。',
+    workSample: reference,
+    outlineVersion: 3 as const,
+    outline: v3Outline(),
+  };
+  const validated = validateWorkSampleInput(input);
+  assert.equal(validated.outlineVersion, 3);
+  assert.equal(validated.outline.requiredQuestions.length, 6);
+});
+
+void test('V3 validates two matching work-review questions', () => {
+  const template = builtInRoleTemplates[0];
+  const input = validateWorkSampleInput({
+    ...template,
+    resumeText: '姓名：林小满。完成校园 AI 项目。',
+    workSample: reference,
+    outlineVersion: 3,
+    outline: v3Outline(),
+  });
+  assert.equal(input.outlineVersion, 3);
+  const workSample = {
+    ...assessment,
+    questions: assessment.questions.slice(0, 2),
+  };
+  const supplementQuestions = input.outline.reserveQuestions.map(
+    (question, index) => ({
+      ...question,
+      id: `work-review-${index + 1}`,
+      question: workSample.questions[index].question,
+      source: 'work-sample' as const,
+      resumeEvidence: null,
+      workSampleEvidence: evidence,
+    }),
+  );
+  const result = {
+    version: 3 as const,
+    workSample,
+    outlineSupplement: {
+      version: 3 as const,
+      kind: 'work-sample' as const,
+      questions: supplementQuestions,
+    },
+  };
+  assert.deepEqual(validateWorkSampleAnalysisResult(result, input), result);
 });
 
 void test('work sample references accept only bounded public metadata', () => {

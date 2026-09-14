@@ -222,7 +222,7 @@ void test('outline regeneration requires a current connector and reports its ver
   }
 });
 
-void test('V2 preparation waits for protocol 3 while V1 remains claimable', () => {
+void test('structured preparation waits for its connector protocol while V1 remains claimable', () => {
   const { s, a } = setup();
   try {
     const protocol2 = s.redeem(s.pairing(a).code, '协议二电脑', {
@@ -230,6 +230,10 @@ void test('V2 preparation waits for protocol 3 while V1 remains claimable', () =
       protocol: 2,
     });
     const protocol3 = s.redeem(s.pairing(a).code, '协议三电脑', {
+      version: '2026.9.13-1',
+      protocol: 3,
+    });
+    const protocol4 = s.redeem(s.pairing(a).code, '协议四电脑', {
       version: CONNECTOR_VERSION,
       protocol: CONNECTOR_PROTOCOL,
     });
@@ -257,10 +261,38 @@ void test('V2 preparation waits for protocol 3 while V1 remains claimable', () =
     );
     assert.equal(
       s.claim(protocol3.token, true, ['resume'], {
+        version: '2026.9.13-1',
+        protocol: 3,
+      })?.id,
+      v2.id,
+    );
+    const v3 = s.submit(
+      a,
+      'resume-v3-protocol',
+      'V3 简历阅读',
+      {
+        ...template,
+        resumeText: resumeInput.resumeText,
+        hasWrittenTest: false,
+        outlineVersion: 3,
+      },
+      'resume',
+      'record-v3-protocol',
+    );
+    assert.equal(v3.requiredProtocol, 4);
+    assert.equal(
+      s.claim(protocol3.token, true, ['resume'], {
+        version: '2026.9.13-1',
+        protocol: 3,
+      }),
+      null,
+    );
+    assert.equal(
+      s.claim(protocol4.token, true, ['resume'], {
         version: CONNECTOR_VERSION,
         protocol: CONNECTOR_PROTOCOL,
       })?.id,
-      v2.id,
+      v3.id,
     );
     const v1 = s.submit(
       a,

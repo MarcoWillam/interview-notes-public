@@ -6,6 +6,7 @@ import { normalizeStandards, type InterviewStandards } from './standards.ts';
 import type { ResumeReading } from './resume-reading.ts';
 import type { WrittenTestSupplementResult } from './written-test-supplement.ts';
 import { applyOutlineV2Supplement } from './outline-v2-supplement.ts';
+import { applyOutlineV3Supplement } from './outline-v3-supplement.ts';
 
 export const COMMON_TEMPLATE_ID = '__common__';
 export const TEMPLATE_STATUS_VALUE = '__template_status__';
@@ -126,18 +127,18 @@ export function supportsWrittenTest(
 export function outlineVersionForTemplate(
   sourceTemplateId: string | null | undefined,
   templateModified: boolean,
-): 1 | 2 {
+): 1 | 3 {
   if (templateModified) return 1;
   return sourceTemplateId === BUILTIN_TEMPLATE_IDS.aiProductManager ||
     sourceTemplateId === BUILTIN_TEMPLATE_IDS.productOperations
-    ? 2
+    ? 3
     : 1;
 }
 
 export function outlineVersionForStandards(
   sourceTemplateId: string | null | undefined,
   standards: Partial<InterviewStandards>,
-): 1 | 2 {
+): 1 | 3 {
   const canonical = builtInRoleTemplates.find(
     (template) => template.id === sourceTemplateId,
   );
@@ -154,10 +155,15 @@ export function normalizeOutlineVersion(value: {
     outline?: { version?: unknown } | null;
     interviewQuestions?: unknown[];
   } | null;
-}): 1 | 2 {
+}): 1 | 2 | 3 {
+  if (value.resumeReading?.outline?.version === 3) return 3;
   if (value.resumeReading?.outline?.version === 2) return 2;
   if (value.resumeReading?.interviewQuestions?.length) return 1;
-  if (value.outlineVersion === 1 || value.outlineVersion === 2)
+  if (
+    value.outlineVersion === 1 ||
+    value.outlineVersion === 2 ||
+    value.outlineVersion === 3
+  )
     return value.outlineVersion;
   return outlineVersionForTemplate(
     value.sourceTemplateId,
@@ -227,7 +233,17 @@ export function applyWrittenTestSupplement(
   result: WrittenTestSupplementResult,
 ): ResumeReading {
   if ('version' in result) {
-    if (!reading.outline) throw new Error('V2 面试提纲不存在。');
+    if (!reading.outline) throw new Error('结构化面试提纲不存在。');
+    if (result.version === 3) {
+      if (reading.outline.version !== 3)
+        throw new Error('笔试补充结果与面试提纲版本不一致。');
+      return {
+        ...reading,
+        outline: applyOutlineV3Supplement(reading.outline, result),
+      };
+    }
+    if (reading.outline.version !== 2)
+      throw new Error('笔试补充结果与面试提纲版本不一致。');
     return {
       ...reading,
       outline: applyOutlineV2Supplement(reading.outline, result),

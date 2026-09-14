@@ -30,6 +30,7 @@ import {
   CONNECTOR_VERSION,
   OUTLINE_CONNECTOR_PROTOCOL,
   OUTLINE_V2_CONNECTOR_PROTOCOL,
+  OUTLINE_V3_CONNECTOR_PROTOCOL,
   connectorSupportsOutline,
   connectorUpdateState,
   validateConnectorReport,
@@ -533,9 +534,12 @@ export class QueueStore {
       safeLabel = label.slice(0, 100) || '未命名面试',
       requiredProtocol =
         'outlineVersion' in validatedInput &&
-        validatedInput.outlineVersion === 2
-          ? OUTLINE_V2_CONNECTOR_PROTOCOL
-          : 1;
+        validatedInput.outlineVersion === 3
+          ? OUTLINE_V3_CONNECTOR_PROTOCOL
+          : 'outlineVersion' in validatedInput &&
+              validatedInput.outlineVersion === 2
+            ? OUTLINE_V2_CONNECTOR_PROTOCOL
+            : 1;
     if (
       kind === 'outline' &&
       !this.db

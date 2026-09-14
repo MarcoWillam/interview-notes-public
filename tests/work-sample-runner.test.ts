@@ -19,6 +19,11 @@ import {
   type InterviewOutlineV2,
   type InterviewQuestionV2,
 } from '../lib/interview-outline-v2.ts';
+import {
+  calculateOutlineCoverageV3,
+  type InterviewOutlineV3,
+  type InterviewQuestionV3,
+} from '../lib/interview-outline-v3.ts';
 import { validateWorkSampleInput } from '../lib/work-sample.ts';
 
 const standards = {
@@ -296,6 +301,106 @@ void test('initial V2 analysis returns one outline contract and binds work evide
         },
       ),
       /文件依据不一致/,
+    );
+  } finally {
+    await f.cleanup();
+  }
+});
+
+void test('initial V3 analysis binds two work questions to the last two required questions', async () => {
+  const f = await fixture();
+  try {
+    const template = builtInRoleTemplates[0];
+    const dimensions = template.dimensionText.split('、');
+    const work = assessment(f.reference);
+    work.questions = work.questions.slice(0, 2).map((item, index) => ({
+      ...item,
+      dimensions: [dimensions[index === 0 ? 0 : 2]],
+    }));
+    const stems = [
+      '最近有没有一件没人要求但你主动做的事？',
+      '遇到陌生问题时你通常会怎么开始学？',
+      '哪件事一度很难推进后来你怎么处理的？',
+      '和同伴想法不同时你会怎么推动事情继续？',
+      work.questions[0].question,
+      work.questions[1].question,
+      '哪段经历最能说明你理解真实用户？',
+      '如果验证结果不理想你会先调整什么？',
+    ];
+    const order = [4, 5, 6, 7, 0, 2, 1, 3];
+    const all: InterviewQuestionV3[] = order.map((dimensionIndex, index) => ({
+      id: `v3-outline-${index + 1}`,
+      question: stems[index],
+      required: index < 6,
+      estimatedMinutes: index < 6 ? 5 : 4,
+      primaryDimension: dimensions[dimensionIndex],
+      secondaryDimensions:
+        index === 4 ? [dimensions[1]] : index === 5 ? [dimensions[3]] : [],
+      source: index === 4 || index === 5 ? 'work-sample' : 'role',
+      goal: '了解候选人的实际思考和行动方式',
+      resumeEvidence: null,
+      workSampleEvidence:
+        index === 4 || index === 5
+          ? work.questions[index - 4].workSampleEvidence!
+          : null,
+      listenFor: ['候选人自己的判断依据'],
+      riskSignals: ['只给结论，无法说明自己的行动'],
+      probes: [{ condition: '回答比较笼统', question: '当时你先做了哪一步？' }],
+    }));
+    const outline: InterviewOutlineV3 = {
+      version: 3,
+      estimatedMinutes: 30,
+      requiredQuestions: all.slice(0, 6),
+      reserveQuestions: all.slice(6),
+      archivedReserveQuestions: [],
+      coverage: calculateOutlineCoverageV3(all, dimensions),
+    };
+    const report = {
+      candidateName: '张三',
+      candidateNameEvidence: '姓名：张三。',
+      summary: '候选人简历自述与作品均待面试核实。',
+      sections: ['教育背景', '工作经历', '项目经验', '技能'].map((name) => ({
+        name,
+        items: [],
+      })),
+      outline,
+      followUps: [],
+      workSample: work,
+    };
+    const result = await readResumeAndWorkSampleWithCodex(
+      {
+        ...template,
+        resumeText,
+        hasWrittenTest: true,
+        outlineVersion: 3,
+        workSample: f.reference,
+      },
+      f.zip,
+      new AbortController().signal,
+      {
+        runStructured: async (_input, _signal, instructions, schema) => {
+          const contract = schema as {
+            properties: {
+              workSample: { properties: { questions: { maxItems: number } } };
+            };
+          };
+          assert.equal(
+            contract.properties.workSample.properties.questions.maxItems,
+            2,
+          );
+          assert.match(instructions, /第 5–6 道必问题/);
+          assert.match(instructions, /恰好两道/);
+          assert.doesNotMatch(instructions, /questions 必须恰好三道/);
+          return report;
+        },
+      },
+    );
+    assert.equal(result.outline?.version, 3);
+    assert.deepEqual(
+      result.outline?.requiredQuestions
+        .slice(4, 6)
+        .map(({ workSampleEvidence }) => workSampleEvidence),
+      work.questions.map(({ workSampleEvidence }) => workSampleEvidence),
     );
   } finally {
     await f.cleanup();

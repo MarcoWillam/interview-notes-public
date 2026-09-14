@@ -36,7 +36,7 @@ export type SavedInterview = {
   reportRequirements?: string;
   sourceTemplateId?: string | null;
   templateModified?: boolean;
-  outlineVersion?: 1 | 2;
+  outlineVersion?: 1 | 2 | 3;
   hasWrittenTest?: boolean;
   writtenTestConfirmed?: boolean;
   workSample?: import('../work-sample.ts').WorkSampleAssessment | null;

@@ -10,7 +10,7 @@ void test('V2 outline separates required, reserve, archived and coverage views',
     ),
     'utf8',
   );
-  assert.match(source, /必问题 · 5 道/);
+  assert.match(source, /必问题 ·.*requiredQuestions\.length/);
   assert.match(source, /候选题 ·/);
   assert.match(source, /能力覆盖/);
   assert.match(source, /此前候选题/);
@@ -56,4 +56,27 @@ void test('V2 supplement confirmations describe reserve replacement and history'
   );
   assert.match(source, /替换当前候选区并归档此前候选题/);
   assert.match(source, /5 道必问题保持不变/);
+});
+
+void test('structured outline surface renders V2 and V3 counts from the result', async () => {
+  const [source, reading] = await Promise.all([
+    readFile(
+      new URL(
+        '../components/interview/interview-outline-v2-view.tsx',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+    readFile(
+      new URL(
+        '../components/interview/resume-reading-view.tsx',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+  ]);
+  assert.match(source, /outline\.requiredQuestions\.length/);
+  assert.match(source, /outline\.reserveQuestions\.length/);
+  assert.match(reading, /value\.outline/);
+  assert.doesNotMatch(reading, /value\.outline\?\.version === 2 &&/);
 });

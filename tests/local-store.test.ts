@@ -192,10 +192,13 @@ void test('legacy resume verification remains readable without adding it to new 
   assert.doesNotMatch(page, /\bresumeChecked\b/);
 });
 void test('resume outline generation has one preflight entry and no repeat-reading copy', async () => {
-  const page = await readFile(
-    new URL('../app/page.tsx', import.meta.url),
-    'utf8',
-  );
+  const [page, preparationInputs] = await Promise.all([
+    readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
+    readFile(
+      new URL('../lib/preparation-analysis-inputs.ts', import.meta.url),
+      'utf8',
+    ),
+  ]);
   assert.match(page, /function openResumeOutlinePreflight\(/);
   assert.match(page, /resumeOutlineLocked\(resumeReading\)/);
   assert.match(page, /提纲已生成/);
@@ -203,7 +206,8 @@ void test('resume outline generation has one preflight entry and no repeat-readi
   assert.doesNotMatch(page, /重新阅读简历|替换并自动阅读/);
   assert.match(page, /outlineVersionForStandards/);
   assert.match(page, /outlineVersion:\s*context\.outlineVersion/);
-  assert.match(page, /reading\.outline/);
+  assert.match(page, /createPreparationWrittenTestInput/);
+  assert.match(preparationInputs, /reading\.outline/);
 });
 void test('resume outline confirmation uses the styled select and fixed-size radio controls', async () => {
   const [page, css] = await Promise.all([

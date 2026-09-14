@@ -8,11 +8,14 @@ import { unzipSync } from 'fflate';
 
 const root = resolve(import.meta.dirname, '..');
 
-void test('connector package includes the outline V2 runtime modules', () => {
+void test('connector package includes the structured outline runtime modules', () => {
   for (const file of [
     'lib/interview-outline-v2.ts',
     'lib/interview-outline-v2-prompt.ts',
     'lib/outline-v2-supplement.ts',
+    'lib/interview-outline-v3.ts',
+    'lib/interview-outline-v3-prompt.ts',
+    'lib/outline-v3-supplement.ts',
   ])
     assert.ok(connectorPackageFiles.includes(file), `${file} must be packaged`);
 });

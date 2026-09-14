@@ -27,6 +27,13 @@ import {
   type InterviewOutlineV2,
 } from './interview-outline-v2.ts';
 import { resumeOutlineV2Instructions } from './interview-outline-v2-prompt.ts';
+import {
+  exportInterviewOutlineV3,
+  interviewOutlineV3Schema,
+  validateInterviewOutlineV3,
+  type InterviewOutlineV3,
+} from './interview-outline-v3.ts';
+import { resumeOutlineV3Instructions } from './interview-outline-v3-prompt.ts';
 import { builtInRoleTemplates } from './default-role-templates.ts';
 
 export type {
@@ -37,14 +44,14 @@ export type {
 export type ResumeInput = InterviewStandards & {
   resumeText: string;
   hasWrittenTest: boolean;
-  outlineVersion?: 1 | 2;
+  outlineVersion?: 1 | 2 | 3;
   workSample?: WorkSampleReference;
 };
 export type ResumeReading = {
   candidateName?: string | null;
   candidateNameEvidence?: string | null;
   interviewQuestions?: InterviewQuestion[];
-  outline?: InterviewOutlineV2;
+  outline?: InterviewOutlineV2 | InterviewOutlineV3;
   writtenTestSupplement?: InterviewQuestion[];
   workSample?: WorkSampleAssessment;
   summary: string;
@@ -64,9 +71,9 @@ export function validateResumeInput(value: unknown): ResumeInput {
   const standards = normalizeStandards(v);
   validateStandards(standards, false);
   const outlineVersion = v.outlineVersion === undefined ? 1 : v.outlineVersion;
-  if (outlineVersion !== 1 && outlineVersion !== 2)
+  if (outlineVersion !== 1 && outlineVersion !== 2 && outlineVersion !== 3)
     throw new Error('面试提纲版本不正确。');
-  if (outlineVersion === 2) {
+  if (outlineVersion === 2 || outlineVersion === 3) {
     const fields = [
       'role',
       'requirements',
@@ -207,26 +214,41 @@ export function validateResumeReading(
       : { ...normalizedInput, hasWrittenTest: false };
   let interviewQuestions: InterviewQuestion[] | undefined;
   let writtenTestSupplement: InterviewQuestion[] | undefined;
-  let outline: InterviewOutlineV2 | undefined;
-  if (normalizedInput.outlineVersion === 2) {
+  let outline: InterviewOutlineV2 | InterviewOutlineV3 | undefined;
+  if (
+    normalizedInput.outlineVersion === 2 ||
+    normalizedInput.outlineVersion === 3
+  ) {
     if (v.interviewQuestions !== undefined)
-      throw new Error('V2 结果不能包含旧版提纲。');
+      throw new Error('结构化结果不能包含旧版提纲。');
     if (v.writtenTestSupplement !== undefined)
-      throw new Error('V2 结果不能包含旧版笔试补充题。');
-    if (v.outline === undefined) throw new Error('V2 面试提纲缺失。');
-    outline = validateInterviewOutlineV2(v.outline, {
+      throw new Error('结构化结果不能包含旧版笔试补充题。');
+    if (v.outline === undefined)
+      throw new Error(
+        normalizedInput.outlineVersion === 3
+          ? 'V3 面试提纲缺失。'
+          : 'V2 面试提纲缺失。',
+      );
+    const outlineContext = {
       role: normalizedInput.role,
       dimensions: normalizedInput.dimensionText
         .split(/[、,，\n]/)
         .map((dimension) => dimension.trim())
         .filter(Boolean),
       resumeText: normalizedInput.resumeText,
-      requireProductCore: true,
       hasWrittenTest: normalizedInput.hasWrittenTest,
       hasWorkSample: normalizedInput.workSample !== undefined,
-    });
+    };
+    outline =
+      normalizedInput.outlineVersion === 3
+        ? validateInterviewOutlineV3(v.outline, outlineContext)
+        : validateInterviewOutlineV2(v.outline, {
+            ...outlineContext,
+            requireProductCore: true,
+          });
   } else {
-    if (v.outline !== undefined) throw new Error('旧版结果不能包含 V2 提纲。');
+    if (v.outline !== undefined)
+      throw new Error('旧版结果不能包含结构化提纲。');
     interviewQuestions =
       v.interviewQuestions === undefined
         ? undefined
@@ -262,7 +284,7 @@ export function validateResumeReading(
         ? validateWorkSampleAssessment(v.workSample, {
             reference: normalizedInput.workSample,
             dimensionText: normalizedInput.dimensionText,
-            questionCount: 3,
+            questionCount: normalizedInput.outlineVersion === 3 ? 2 : 3,
             existingQuestions: [],
             conciseQuestions: options.conciseQuestions,
           })
@@ -279,7 +301,18 @@ export function validateResumeReading(
   )
     throw new Error('作品评估问题与第 2–4 题不一致。');
   if (workSample && outline) {
-    const reviewQuestions = outline.requiredQuestions.slice(1, 4);
+    const activeQuestions = [
+      ...outline.requiredQuestions,
+      ...outline.reserveQuestions,
+    ];
+    const sourcedReviewQuestions = activeQuestions.filter(
+      ({ source }) => source === 'work-sample',
+    );
+    const reviewQuestions = sourcedReviewQuestions.length
+      ? sourcedReviewQuestions
+      : outline.version === 3
+        ? outline.requiredQuestions.slice(4, 6)
+        : outline.requiredQuestions.slice(1, 4);
     if (
       reviewQuestions.length !== workSample.questions.length ||
       reviewQuestions.some((question, index) => {
@@ -292,7 +325,7 @@ export function validateResumeReading(
         );
       })
     )
-      throw new Error('作品评估问题与 V2 第 2–4 题的文件依据不一致。');
+      throw new Error('作品评估问题与结构化提纲的作品题文件依据不一致。');
   }
   return {
     candidateName: validIdentity ? (v.candidateName as string) : null,
@@ -314,8 +347,14 @@ const resumeReadingBaseInstructions =
 const resumeOutlineV1Instructions =
   'interviewQuestions 必须包含恰好六道不同的结构化行为问题，组成 30–40 分钟面试提纲。每题 question 必须是可直接念出的 12–30 字短句，只核实一个核心判断，最多一个问号；项目背景、过程、行动、结果和反思拆入 reason、listenFor 与 probes，不得堆在主问题中。每题必须返回 questionSource：由简历原文触发时为 resume，并提供 resumeText 中逐字连续的 resumeEvidence；无简历依据的岗位通用题为 role，resumeEvidence 为 null。非作品题的 workSampleEvidence 必须为 null；作品题必须返回文件路径和逐字引用。输入 hasWrittenTest 表示候选人是否完成既有 AI 产品经理笔试。为 true 时，第 2–4 题必须是 questionSource=written-test 的笔试复盘题，分别围绕问题定义与用户理解、方案范围与取舍、AI 核心价值、人与 AI 责任、用户控制、失败降级和验证假设，要求候选人自己复述判断；不得假装知道答卷内容，resumeEvidence 必须为 null。为 false 时不得出现笔试、答卷或复盘笔试措辞，也不得返回 written-test 来源。每题 question 与 reason 非空；dimensions 为输入 dimensionText 中的 1–2 个维度，保持维度原名，不得新增；listenFor 列出 1–3 个观察点，probes 列出 1–2 个追问。自驱力是必问主题，即使维度列表没有“自驱力”，也必须在问题内容或理由中覆盖主动发现问题、推动行动的具体经历，而 dimensions 仍只能选择输入维度。';
 
-export function resumeInstructionsFor(version: 1 | 2) {
-  return `${resumeReadingBaseInstructions}${version === 2 ? resumeOutlineV2Instructions : resumeOutlineV1Instructions}`;
+export function resumeInstructionsFor(version: 1 | 2 | 3) {
+  return `${resumeReadingBaseInstructions}${
+    version === 3
+      ? resumeOutlineV3Instructions
+      : version === 2
+        ? resumeOutlineV2Instructions
+        : resumeOutlineV1Instructions
+  }`;
 }
 
 const resumeBaseSchemaProperties = {
@@ -391,13 +430,26 @@ const resumeSchemaV2 = {
   },
 } as const;
 
+const resumeSchemaV3 = {
+  ...resumeSchemaV2,
+  properties: {
+    ...resumeSchemaV2.properties,
+    outline: interviewOutlineV3Schema,
+  },
+} as const;
+
 export function resumeOutputSchema(version: 1): typeof resumeSchemaV1;
 export function resumeOutputSchema(version: 2): typeof resumeSchemaV2;
+export function resumeOutputSchema(version: 3): typeof resumeSchemaV3;
 export function resumeOutputSchema(
-  version: 1 | 2,
-): typeof resumeSchemaV1 | typeof resumeSchemaV2;
-export function resumeOutputSchema(version: 1 | 2) {
-  return version === 2 ? resumeSchemaV2 : resumeSchemaV1;
+  version: 1 | 2 | 3,
+): typeof resumeSchemaV1 | typeof resumeSchemaV2 | typeof resumeSchemaV3;
+export function resumeOutputSchema(version: 1 | 2 | 3) {
+  return version === 3
+    ? resumeSchemaV3
+    : version === 2
+      ? resumeSchemaV2
+      : resumeSchemaV1;
 }
 
 export const resumeInstructions = resumeInstructionsFor(1);
@@ -460,7 +512,14 @@ export function exportResumeReading(reading: ResumeReading): string {
           ]),
         ]
       : []),
-    ...(reading.outline ? ['', exportInterviewOutlineV2(reading.outline)] : []),
+    ...(reading.outline
+      ? [
+          '',
+          reading.outline.version === 3
+            ? exportInterviewOutlineV3(reading.outline)
+            : exportInterviewOutlineV2(reading.outline),
+        ]
+      : []),
     ...(reading.writtenTestSupplement?.length
       ? ['', exportWrittenTestSupplement(reading.writtenTestSupplement)]
       : []),

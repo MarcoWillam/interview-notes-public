@@ -53,7 +53,8 @@ const input = validateOutlineRegenerationInput({
   writtenTestSupplement: null,
   workSample: null,
 });
-if (input.outlineVersion === 2) throw new Error('expected V1 fixture');
+if (input.outlineVersion !== undefined && input.outlineVersion !== 1)
+  throw new Error('expected V1 fixture');
 
 void test('outline regeneration preserves counts and source positions', () => {
   const result = validateOutlineRegenerationResult(

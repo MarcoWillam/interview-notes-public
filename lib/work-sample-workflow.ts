@@ -5,6 +5,7 @@ import type {
   WorkSampleAssessment,
 } from './work-sample.ts';
 import { applyOutlineV2Supplement } from './outline-v2-supplement.ts';
+import { applyOutlineV3Supplement } from './outline-v3-supplement.ts';
 
 export type WorkSampleWorkflowState = {
   sourceTemplateId?: string | null;
@@ -18,7 +19,8 @@ export function canSubmitWorkSample(value: WorkSampleWorkflowState) {
   return (
     value.sourceTemplateId === BUILTIN_TEMPLATE_IDS.aiProductManager &&
     ((value.resumeReading?.interviewQuestions?.length || 0) >= 6 ||
-      value.resumeReading?.outline?.version === 2) &&
+      value.resumeReading?.outline?.version === 2 ||
+      value.resumeReading?.outline?.version === 3) &&
     !value.workSample &&
     !value.resumeReading?.workSample &&
     !value.workSampleJobId
@@ -74,14 +76,25 @@ export function applyLateWorkSample<T extends WorkSampleWorkflowState>(
       ? value.resumeReading.outline
         ? {
             ...value.resumeReading,
-            outline: applyOutlineV2Supplement(
-              value.resumeReading.outline,
-              result.outlineSupplement,
-            ),
+            outline:
+              result.version === 3 && value.resumeReading.outline.version === 3
+                ? applyOutlineV3Supplement(
+                    value.resumeReading.outline,
+                    result.outlineSupplement,
+                  )
+                : result.version === 2 &&
+                    value.resumeReading.outline.version === 2
+                  ? applyOutlineV2Supplement(
+                      value.resumeReading.outline,
+                      result.outlineSupplement,
+                    )
+                  : (() => {
+                      throw new Error('作品分析结果与面试提纲版本不一致。');
+                    })(),
             workSample,
           }
         : (() => {
-            throw new Error('V2 面试提纲不存在。');
+            throw new Error('结构化面试提纲不存在。');
           })()
       : { ...value.resumeReading, workSample };
   return {

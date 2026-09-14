@@ -143,14 +143,14 @@ void test('written-test support belongs only to the built-in AI PM source', () =
   assert.equal(supportsWrittenTest(COMMON_TEMPLATE_ID), false);
 });
 
-void test('only untouched built-in product roles use outline V2', () => {
+void test('untouched built-in product roles use the campus-potential V3 outline', () => {
   assert.equal(
     outlineVersionForTemplate(BUILTIN_TEMPLATE_IDS.aiProductManager, false),
-    2,
+    3,
   );
   assert.equal(
     outlineVersionForTemplate(BUILTIN_TEMPLATE_IDS.productOperations, false),
-    2,
+    3,
   );
   assert.equal(
     outlineVersionForTemplate(BUILTIN_TEMPLATE_IDS.aiEngineering, false),
@@ -163,9 +163,9 @@ void test('only untouched built-in product roles use outline V2', () => {
   assert.equal(outlineVersionForTemplate('custom-role', false), 1);
 });
 
-void test('V2 requires the canonical built-in standards snapshot, not only its id', () => {
+void test('V3 requires the canonical built-in standards snapshot, not only its id', () => {
   const builtIn = builtInRoleTemplates[0];
-  assert.equal(outlineVersionForStandards(builtIn.id, builtIn), 2);
+  assert.equal(outlineVersionForStandards(builtIn.id, builtIn), 3);
   assert.equal(
     outlineVersionForStandards(builtIn.id, {
       ...builtIn,
@@ -187,7 +187,16 @@ void test('restored records infer outline version from saved reading before temp
   );
   assert.equal(
     normalizeOutlineVersion({
-      outlineVersion: 2,
+      outlineVersion: undefined,
+      sourceTemplateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
+      templateModified: false,
+      resumeReading: { outline: { version: 3 } },
+    }),
+    3,
+  );
+  assert.equal(
+    normalizeOutlineVersion({
+      outlineVersion: 3,
       sourceTemplateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
       templateModified: false,
       resumeReading: { interviewQuestions: [{}] },
