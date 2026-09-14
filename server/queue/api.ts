@@ -1,5 +1,11 @@
 import { QueueStore, QueueError, type JobKind } from './store.ts';
 import { connectorReleaseInfo } from '../../lib/connector-release.ts';
+import { MAX_CLOUD_INTERVIEW_BYTES } from '../../lib/cloud-interview.ts';
+import {
+  InterviewStoreError,
+  RevisionConflict,
+} from '../interviews/store.ts';
+export const MAX_API_BODY_BYTES = MAX_CLOUD_INTERVIEW_BYTES + 256 * 1024;
 export type QueueConfig = {
   origin: string;
   previewUser?: string;
@@ -39,6 +45,9 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
     try {
       const path = new URL(request.url).pathname,
         method = request.method;
+      const bodyLimit = path.startsWith('/api/interviews/')
+        ? MAX_API_BODY_BYTES
+        : 550000;
       const origin = request.headers.get('origin');
       if (
         (origin && origin !== config.origin) ||
@@ -50,16 +59,18 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
       if (!worker && method !== 'GET' && origin !== config.origin)
         throw new QueueError('请从工作台提交请求。', 403);
       let body: Record<string, unknown> = {};
-      if (method === 'POST') {
+      const bodyMethod = method === 'POST' || method === 'PUT' || method === 'DELETE';
+      const contentType = request.headers.get('content-type');
+      if (bodyMethod && (method !== 'DELETE' || contentType)) {
         if (
-          !request.headers.get('content-type')?.startsWith('application/json')
+          !contentType?.startsWith('application/json')
         )
           throw new QueueError('请使用 JSON 请求。', 415);
         const text = await request.text();
-        if (new TextEncoder().encode(text).length > 550000)
+        if (new TextEncoder().encode(text).length > bodyLimit)
           throw new QueueError('资料超过大小限制。', 413);
         try {
-          const value: unknown = JSON.parse(text);
+          const value: unknown = JSON.parse(text || '{}');
           if (!value || typeof value !== 'object' || Array.isArray(value))
             throw new Error();
           body = value as Record<string, unknown>;
@@ -187,6 +198,97 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
       }
       if (!user) throw new QueueError('请先登录工作台。', 401);
       requireAccount();
+      if (path === '/api/interviews' && method === 'GET') {
+        const trash = new URL(request.url).searchParams.get('trash') === '1';
+        const interviews = store.interviews
+          .list(user.id, trash)
+          .filter((item) => trash ? item.deletedAt !== null : item.deletedAt === null);
+        return json({ interviews });
+      }
+      if (path === '/api/interview-workspace') {
+        if (method === 'GET') return json(store.interviews.workspace(user.id));
+        if (method === 'PUT')
+          return json(
+            store.interviews.putWorkspace(
+              user.id,
+              Number(body.baseRevision),
+              str('mutationId', 100),
+              body.workspace,
+            ),
+          );
+      }
+      if (path.startsWith('/api/interviews/')) {
+        const parts = path
+          .slice('/api/interviews/'.length)
+          .split('/')
+          .map((part) => decodeURIComponent(part));
+        const [id, section, value, action] = parts;
+        if (!id || !/^[a-zA-Z0-9-]{8,100}$/.test(id))
+          throw new InterviewStoreError('面试记录不存在。', 404);
+        if (!section) {
+          if (method === 'GET') return json(store.interviews.get(user.id, id));
+          if (method === 'PUT')
+            return json(
+              store.interviews.put(
+                user.id,
+                id,
+                Number(body.baseRevision),
+                str('mutationId', 100),
+                body.record,
+                body.reason ?? 'periodic-edit',
+              ),
+              Number(body.baseRevision) === 0 ? 201 : 200,
+            );
+          if (method === 'DELETE')
+            return json(
+              store.interviews.remove(
+                user.id,
+                id,
+                Number(body.baseRevision),
+                str('mutationId', 100),
+              ),
+            );
+        }
+        if (section === 'restore' && parts.length === 2 && method === 'POST')
+          return json(
+            store.interviews.restoreDeleted(
+              user.id,
+              id,
+              Number(body.baseRevision),
+              str('mutationId', 100),
+            ),
+          );
+        if (section === 'versions') {
+          if (!value && method === 'GET')
+            return json({ versions: store.interviews.versions(user.id, id) });
+          const revision = Number(value);
+          if (!Number.isSafeInteger(revision) || revision < 1)
+            throw new InterviewStoreError('面试历史版本不存在。', 404);
+          if (!action && method === 'GET')
+            return json(store.interviews.version(user.id, id, revision));
+          if (action === 'restore' && method === 'POST')
+            return json(
+              store.interviews.restoreVersion(
+                user.id,
+                id,
+                revision,
+                Number(body.baseRevision),
+                str('mutationId', 100),
+              ),
+            );
+        }
+        if (section === 'pending-results') {
+          if (!value && method === 'GET')
+            return json({
+              results: store.interviews.pendingResults(user.id, id),
+            });
+          if (value && action === 'discard' && method === 'POST') {
+            store.interviews.discardPendingResult(user.id, id, value);
+            return json({ ok: true });
+          }
+        }
+        throw new InterviewStoreError('面试记录接口不存在。', 404);
+      }
       if (path === '/api/status' && method === 'GET') {
         const devices = store.devices(user.id);
         const online = devices.some((d) => d.online && d.ready);
@@ -264,12 +366,18 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
       }
       throw new QueueError('接口不存在。', 404);
     } catch (e) {
+      if (e instanceof RevisionConflict)
+        return json({ error: e.message, current: e.current }, e.status);
       return json(
         {
           error:
-            e instanceof QueueError ? e.message : '服务暂不可用，请稍后重试。',
+            e instanceof QueueError || e instanceof InterviewStoreError
+              ? e.message
+              : '服务暂不可用，请稍后重试。',
         },
-        e instanceof QueueError ? e.status : 500,
+        e instanceof QueueError || e instanceof InterviewStoreError
+          ? e.status
+          : 500,
       );
     }
   };
