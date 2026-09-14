@@ -12,7 +12,32 @@ import {
   replacementForPreviousBuiltInRoleTemplate,
 } from '../default-role-templates.ts';
 import type { CloudInterview } from '../cloud-interview.ts';
+import type {
+  CloudInterviewSummary,
+  CloudVersionReason,
+} from '../cloud-interview.ts';
 export type SavedInterview = CloudInterview;
+export type InterviewSyncMeta = {
+  id: string;
+  revision: number;
+  syncedAt: number;
+};
+export type InterviewSyncOutbox = {
+  id: string;
+  operation: 'put' | 'delete';
+  mutationId: string;
+  baseRevision: number;
+  record?: SavedInterview;
+  reason: CloudVersionReason;
+  queuedAt: number;
+};
+export type InterviewConflict = {
+  id: string;
+  interviewId: string;
+  local: SavedInterview;
+  remote: CloudInterviewSummary;
+  createdAt: number;
+};
 export type InterviewGroup = {
   id: string;
   name: string;
@@ -60,7 +85,7 @@ export function createLocalStore(
   name = 'interview-notes-local',
 ) {
   const connection = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = factory.open(name, 7);
+    const request = factory.open(name, 8);
     request.onupgradeneeded = (event) => {
       const db = request.result;
       if (event.oldVersion < 1) {
@@ -152,6 +177,11 @@ export function createLocalStore(
             if (replacement) preferences.put(replacement);
           };
         }
+      }
+      if (event.oldVersion < 8) {
+        db.createObjectStore('syncMeta', { keyPath: 'id' });
+        db.createObjectStore('syncOutbox', { keyPath: 'id' });
+        db.createObjectStore('conflicts', { keyPath: 'id' });
       }
     };
     request.onsuccess = () => {
@@ -349,6 +379,111 @@ export function createLocalStore(
       if (!interview) throw new Error('面试记录已不存在');
       await put('interviews', { ...interview, groupId });
     },
+    getSyncMeta: (id: string) => read<InterviewSyncMeta>('syncMeta', id),
+    setSyncMeta: (id: string, revision: number) =>
+      put('syncMeta', { id, revision, syncedAt: Date.now() } satisfies InterviewSyncMeta),
+    listPendingSync: () => all<InterviewSyncOutbox>('syncOutbox'),
+    queueInterviewSync: (
+      record: SavedInterview,
+      reason: CloudVersionReason = 'periodic-edit',
+    ) =>
+      run<void>(['syncOutbox', 'syncMeta'], 'readwrite', (tx) => {
+        const outbox = tx.objectStore('syncOutbox');
+        const currentRequest = outbox.get(record.id);
+        currentRequest.onsuccess = () => {
+          const current = currentRequest.result as InterviewSyncOutbox | undefined;
+          if (current?.operation === 'put') {
+            outbox.put({
+              ...current,
+              record,
+              reason:
+                reason === 'periodic-edit' ? current.reason : reason,
+              queuedAt: Date.now(),
+            } satisfies InterviewSyncOutbox);
+            return;
+          }
+          const metaRequest = tx.objectStore('syncMeta').get(record.id);
+          metaRequest.onsuccess = () => {
+            const meta = metaRequest.result as InterviewSyncMeta | undefined;
+            outbox.put({
+              id: record.id,
+              operation: 'put',
+              mutationId: crypto.randomUUID(),
+              baseRevision: meta?.revision || 0,
+              record,
+              reason,
+              queuedAt: Date.now(),
+            } satisfies InterviewSyncOutbox);
+          };
+        };
+      }),
+    queueInterviewDelete: (record: SavedInterview) =>
+      run<void>(['syncOutbox', 'syncMeta'], 'readwrite', (tx) => {
+        const metaRequest = tx.objectStore('syncMeta').get(record.id);
+        metaRequest.onsuccess = () => {
+          const meta = metaRequest.result as InterviewSyncMeta | undefined;
+          tx.objectStore('syncOutbox').put({
+            id: record.id,
+            operation: 'delete',
+            mutationId: crypto.randomUUID(),
+            baseRevision: meta?.revision || 0,
+            record,
+            reason: 'periodic-edit',
+            queuedAt: Date.now(),
+          } satisfies InterviewSyncOutbox);
+        };
+      }),
+    clearPendingSync: (
+      id: string,
+      mutationId: string,
+      revision: number,
+    ) =>
+      run<void>(['syncOutbox', 'syncMeta'], 'readwrite', (tx) => {
+        const outbox = tx.objectStore('syncOutbox');
+        const request = outbox.get(id);
+        request.onsuccess = () => {
+          const current = request.result as InterviewSyncOutbox | undefined;
+          if (current?.mutationId === mutationId) outbox.delete(id);
+          tx.objectStore('syncMeta').put({
+            id,
+            revision,
+            syncedAt: Date.now(),
+          } satisfies InterviewSyncMeta);
+        };
+      }),
+    saveRemoteInterview: (record: SavedInterview, revision: number) =>
+      run<void>(['interviews', 'syncMeta'], 'readwrite', (tx) => {
+        tx.objectStore('interviews').put(record);
+        tx.objectStore('syncMeta').put({
+          id: record.id,
+          revision,
+          syncedAt: Date.now(),
+        } satisfies InterviewSyncMeta);
+      }),
+    saveInterviewConflict: (
+      local: SavedInterview,
+      remote: CloudInterviewSummary,
+    ) =>
+      put('conflicts', {
+        id: crypto.randomUUID(),
+        interviewId: local.id,
+        local,
+        remote,
+        createdAt: Date.now(),
+      } satisfies InterviewConflict),
+    listInterviewConflicts: () => all<InterviewConflict>('conflicts'),
+    deleteInterviewConflict: (id: string) =>
+      run<void>(['conflicts'], 'readwrite', (tx) => {
+        tx.objectStore('conflicts').delete(id);
+      }),
+    isCloudMigrationComplete: async () =>
+      !!(await read<InterviewSyncMeta>('syncMeta', '@migration')),
+    markCloudMigrationComplete: () =>
+      put('syncMeta', {
+        id: '@migration',
+        revision: 1,
+        syncedAt: Date.now(),
+      } satisfies InterviewSyncMeta),
     listAudio: () => all<AudioRecord>('audio'),
     getAudio: (id: string) => read<AudioRecord>('audio', id),
     discardEmptyAudio: (id: string) =>
