@@ -902,6 +902,7 @@ export class QueueStore {
     result: unknown,
     failed = false,
     failure?: unknown,
+    executionAttempt?: unknown,
   ) {
     this.sweep();
     const device = this.device(secret);
@@ -917,6 +918,39 @@ export class QueueStore {
     if (job.state !== 'running') return { accepted: false };
     if (job.device !== device.id || job.lease !== lease)
       throw new QueueError('任务不属于此连接器。', 403);
+    const deviceProtocol = Number(
+      (
+        this.db.prepare('SELECT protocol FROM devices WHERE id=?').get(device.id) as
+          | Row
+          | undefined
+      )?.protocol || 1,
+    );
+    if (
+      deviceProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
+      executionAttempt !== undefined
+    ) {
+      if (!Number.isSafeInteger(executionAttempt) || Number(executionAttempt) < 1)
+        throw new QueueError('执行合同次数无效。');
+      if (
+        Number(executionAttempt) < Number(job.attempt || 1) &&
+        job.feedback
+      )
+        return {
+          accepted: false,
+          retry: {
+            execution: executionContractFor(
+              job.kind as JobKind,
+              JSON.parse(String(job.input)),
+              {
+                attempt: Number(job.attempt),
+                feedback: String(job.feedback),
+              },
+            ),
+          },
+        };
+      if (Number(executionAttempt) !== Number(job.attempt || 1))
+        throw new QueueError('执行合同已过期，请重新领取任务。', 409);
+    }
     let report: string | null = null,
       error: string | null = null,
       validationFeedback: string | null = null;
@@ -969,13 +1003,6 @@ export class QueueStore {
         error = '评估引用或结构校验失败，请核实后重新提交。';
       }
     }
-    const deviceProtocol = Number(
-      (
-        this.db.prepare('SELECT protocol FROM devices WHERE id=?').get(device.id) as
-          | Row
-          | undefined
-      )?.protocol || 1,
-    );
     if (
       !failed &&
       error &&

@@ -237,7 +237,14 @@ export async function runConnector(
                 finished = await connectorRequest(
                   server,
                   '/api/worker/finish',
-                  { id: job.id, lease: job.lease, report, failed, failure },
+                  {
+                    id: job.id,
+                    lease: job.lease,
+                    report,
+                    failed,
+                    failure,
+                    attempt: execution.attempt,
+                  },
                   credentials.token,
                   taskSignal,
                 );

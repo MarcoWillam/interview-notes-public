@@ -334,7 +334,15 @@ void test('protocol five receives a server contract and retries invalid results 
     assert.equal(claimed.execution?.contractVersion, 1);
     assert.equal(claimed.execution?.attempt, 1);
 
-    const retried = s.finish(modern.token, claimed.id, claimed.lease, {}) as {
+    const retried = s.finish(
+      modern.token,
+      claimed.id,
+      claimed.lease,
+      {},
+      false,
+      undefined,
+      1,
+    ) as {
       accepted: boolean;
       retry?: { execution: { attempt: number; instructions: string } };
     };
@@ -346,8 +354,28 @@ void test('protocol five receives a server contract and retries invalid results 
     );
     assert.equal(s.get(a, submitted.id).state, 'running');
 
+    const repeatedFinish = s.finish(
+      modern.token,
+      claimed.id,
+      claimed.lease,
+      {},
+      false,
+      undefined,
+      1,
+    ) as { retry?: { execution: { attempt: number } } };
+    assert.equal(repeatedFinish.retry?.execution.attempt, 2);
+    assert.equal(s.get(a, submitted.id).state, 'running');
+
     assert.deepEqual(
-      s.finish(modern.token, claimed.id, claimed.lease, report),
+      s.finish(
+        modern.token,
+        claimed.id,
+        claimed.lease,
+        report,
+        false,
+        undefined,
+        2,
+      ),
       { accepted: true },
     );
     assert.equal(s.get(a, submitted.id).state, 'completed');
