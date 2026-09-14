@@ -55,14 +55,14 @@ export function assertInterviewJobInputMatches(
   const expectedStandards = standards(record);
   const comparableStandards =
     kind === 'interview'
-      ? Object.entries(expectedStandards).filter(
-          ([key]) => key !== 'dimensionText',
-        )
+      ? Object.entries(expectedStandards)
+          .filter(([key]) => key !== 'dimensionText')
+          .map(([key, value]) => [key, value.trim()] as const)
       : Object.entries(expectedStandards);
   for (const [key, value] of comparableStandards)
     if ((input[key] || '') !== value)
       throw new Error('任务资料与云端面试记录不一致。');
-  if ((input.resumeText || '') !== record.resumeText)
+  if ((input.resumeText || '') !== record.resumeText.trim())
     throw new Error('任务简历与云端面试记录不一致。');
   if (kind === 'resume') {
     if (
@@ -78,7 +78,7 @@ export function assertInterviewJobInputMatches(
       .map((item) => item.trim())
       .filter(Boolean);
     if (
-      input.transcript !== record.transcript ||
+      input.transcript !== record.transcript.trim() ||
       !equal(input.dimensions, dimensions) ||
       !equal(input.workSample, record.workSample)
     )
