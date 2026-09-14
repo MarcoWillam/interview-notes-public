@@ -123,6 +123,46 @@ void test('bound task input must match the server record snapshot', () => {
   }
 });
 
+void test('bound interview assessment matches the record dimension array', () => {
+  const { store, user } = setup();
+  try {
+    const record = {
+      ...cloudRecord('record-binding-interview'),
+      transcript: '候选人：我先访谈用户，再根据反馈调整方案。',
+      reviewed: true,
+    };
+    store.interviews.put(
+      user,
+      record.id,
+      0,
+      'mutation-create-interview',
+      record,
+    );
+    assert.doesNotThrow(() =>
+      store.submit(
+        user,
+        'client-binding-interview',
+        '生成辅助评估',
+        {
+          role: record.role,
+          requirements: record.requirements,
+          transcript: record.transcript,
+          dimensions: ['需求分析', '沟通协作'],
+          resumeText: record.resumeText,
+          focus: record.focus,
+          scoringGuidance: record.scoringGuidance,
+          reportRequirements: record.reportRequirements,
+        },
+        'interview',
+        '',
+        { interviewId: record.id, interviewRevision: 1 },
+      ),
+    );
+  } finally {
+    store.close();
+  }
+});
+
 void test('relevant edits retain a completed result for confirmation', () => {
   const { store, user, secret } = setup();
   try {
