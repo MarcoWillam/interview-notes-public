@@ -106,15 +106,30 @@ async function verifyEvidence(
 ) {
   const questions = atPointer(result, pointer);
   if (!Array.isArray(questions)) throw new Error('作品结果缺少文件依据。');
+  for (const question of questions) {
+    if (
+      !question ||
+      typeof question !== 'object' ||
+      !(question as Record<string, unknown>).workSampleEvidence
+    )
+      throw new Error('作品问题缺少文件依据。');
+  }
+  const evidenceItems: Record<string, unknown>[] = [];
+  const collect = (value: unknown) => {
+    if (Array.isArray(value)) {
+      for (const item of value) collect(item);
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    const record = value as Record<string, unknown>;
+    if ('path' in record || 'excerpt' in record) evidenceItems.push(record);
+    for (const item of Object.values(record)) collect(item);
+  };
+  collect(result);
+  if (!evidenceItems.length) throw new Error('作品结果缺少文件依据。');
   const allowed = new Set(readable);
   const cache = new Map<string, string>();
-  for (const question of questions) {
-    if (!question || typeof question !== 'object')
-      throw new Error('作品问题格式不正确。');
-    const evidence = (question as Record<string, unknown>).workSampleEvidence;
-    if (!evidence || typeof evidence !== 'object')
-      throw new Error('作品问题缺少文件依据。');
-    const item = evidence as Record<string, unknown>;
+  for (const item of evidenceItems) {
     const path = safeRelativePath(item.path);
     if (!allowed.has(path)) throw new Error('作品证据文件不在允许范围内。');
     if (typeof item.excerpt !== 'string' || !item.excerpt.trim())

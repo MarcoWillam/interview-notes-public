@@ -757,3 +757,45 @@ void test('generic work-sample contract injects observed coverage and verifies c
     await f.cleanup();
   }
 });
+
+void test('generic work-sample contract rejects fabricated dimension evidence', async () => {
+  const f = await fixture();
+  try {
+    await assert.rejects(
+      () =>
+        executeWorkSampleContract(
+          {
+            contractVersion: 1,
+            runner: 'structured-work-sample',
+            instructions: '只依据本地作品返回 JSON。',
+            schema: { type: 'object', properties: {} },
+            payload: { workSample: f.reference },
+            artifact: {
+              id: f.reference.id,
+              sha256: f.reference.sha256,
+              bytes: f.reference.bytes,
+              coveragePointer: '/coverage',
+              evidencePointer: '/questions',
+            },
+            attempt: 1,
+            maxAttempts: 2,
+          },
+          f.zip,
+          new AbortController().signal,
+          {
+            runStructured: async () => {
+              const result = assessment(f.reference);
+              result.dimensions[0].evidence[0] = {
+                path: 'docs/brief.md',
+                excerpt: '文件中不存在的判断',
+              };
+              return result;
+            },
+          },
+        ),
+      /无法在文件中找到/,
+    );
+  } finally {
+    await f.cleanup();
+  }
+});

@@ -90,6 +90,21 @@ void test('execution contract rejects unsafe schemas and invalid JSON pointers',
       }),
     /JSON 指针/,
   );
+  assert.throws(
+    () =>
+      validateCodexExecutionContract({
+        ...textContract,
+        runner: 'structured-work-sample',
+        artifact: {
+          id: 'artifact-12345678',
+          sha256: 'a'.repeat(64),
+          bytes: 4096,
+          coveragePointer: '/__proto__/coverage',
+          evidencePointer: '/questions',
+        },
+      }),
+    /JSON 指针/,
+  );
 });
 
 void test('execution contract stays below the connector response limit', () => {
