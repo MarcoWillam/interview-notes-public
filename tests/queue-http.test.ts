@@ -15,6 +15,12 @@ import {
   AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
   aiPmWorkSampleRubric,
 } from '../lib/work-sample-rubric.ts';
+import {
+  CONNECTOR_VERSION,
+  SERVER_DRIVEN_EXECUTION_PROTOCOL,
+} from '../lib/connector-release.ts';
+import { followUpInputFixture } from './fixtures/follow-up-outline.ts';
+import type { CloudInterview } from '../lib/cloud-interview.ts';
 const resumeInput = {
   role: '产品经理',
   requirements: '用户研究与需求分析',
@@ -147,6 +153,31 @@ async function fixture(trustProxy?: boolean) {
     },
   };
 }
+const saveFollowUpRecord = (store: QueueStore, user: string, id: string) => {
+  const input = followUpInputFixture();
+  const record: CloudInterview = {
+    id,
+    createdAt: 1_000_000,
+    updatedAt: 1_000_000,
+    candidate: '张三',
+    role: input.role,
+    requirements: input.requirements,
+    dimensionText: input.dimensionText,
+    focus: input.focus,
+    scoringGuidance: input.scoringGuidance,
+    reportRequirements: input.reportRequirements,
+    resumeText: input.resumeText,
+    resumeName: 'resume.txt',
+    resumeReading: input.resumeReading,
+    outlineVersion: input.outlineVersion,
+    transcript: '',
+    reviewed: false,
+    report: null,
+    conclusion: '',
+    confirmed: false,
+  };
+  return store.interviews.put(user, id, 0, `create-${id}`, record);
+};
 void test('HTTP queue holds offline jobs, pairs a connector, and returns a validated result', async () => {
   const f = await fixture();
   const controller = new AbortController();
@@ -254,6 +285,89 @@ void test('HTTP queue accepts an explicit interview task kind from the browser c
     const job = (await submitted.json()) as { id: string; kind: string };
     assert.equal(job.kind, 'interview');
     assert.equal(f.store.get(f.user, job.id).kind, 'interview');
+  } finally {
+    await f.close();
+  }
+});
+void test('HTTP queue accepts only bound follow-up outline tasks', async () => {
+  const f = await fixture();
+  try {
+    const input = followUpInputFixture();
+    const unbound = await f.api('/api/jobs', 'POST', {
+      client: 'follow-up-http-unbound-123',
+      kind: 'follow-up-outline',
+      scope: 'record-follow-up-http-123',
+      label: '补充追问 · 自驱力',
+      input,
+    });
+    assert.equal(unbound.status, 400);
+    const record = saveFollowUpRecord(
+      f.store,
+      f.user,
+      'record-follow-up-http-123',
+    );
+    const mismatched = await f.api('/api/jobs', 'POST', {
+      client: 'follow-up-http-mismatch-123',
+      kind: 'follow-up-outline',
+      scope: 'record-other-follow-up-http-123',
+      interviewId: record.record.id,
+      interviewRevision: record.revision,
+      label: '补充追问 · 自驱力',
+      input,
+    });
+    assert.equal(mismatched.status, 409);
+    const submitted = await f.api('/api/jobs', 'POST', {
+      client: 'follow-up-http-bound-123',
+      kind: 'follow-up-outline',
+      scope: record.record.id,
+      interviewId: record.record.id,
+      interviewRevision: record.revision,
+      label: '补充追问 · 自驱力',
+      input,
+    });
+    assert.equal(submitted.status, 202);
+    const job = (await submitted.json()) as {
+      kind: string;
+      requiredProtocol: number;
+    };
+    assert.equal(job.kind, 'follow-up-outline');
+    assert.equal(job.requiredProtocol, SERVER_DRIVEN_EXECUTION_PROTOCOL);
+    const protocol4 = f.store.redeem(f.store.pairing(f.user).code, '协议四电脑', {
+      version: '2026.9.13-1',
+      protocol: 4,
+    });
+    const oldClaim = await connectorRequest(
+      f.origin,
+      '/api/worker/claim',
+      {
+        ready: true,
+        kinds: ['follow-up-outline'],
+        connector: { version: '2026.9.13-1', protocol: 4 },
+      },
+      protocol4.token,
+    );
+    assert.equal(oldClaim.job, null);
+    const protocol5 = f.store.redeem(f.store.pairing(f.user).code, '协议五电脑', {
+      version: CONNECTOR_VERSION,
+      protocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
+    });
+    const currentClaim = await connectorRequest(
+      f.origin,
+      '/api/worker/claim',
+      {
+        ready: true,
+        kinds: ['follow-up-outline'],
+        connector: {
+          version: CONNECTOR_VERSION,
+          protocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
+        },
+      },
+      protocol5.token,
+    );
+    assert.equal(
+      (currentClaim.job as { kind?: string }).kind,
+      'follow-up-outline',
+    );
   } finally {
     await f.close();
   }
