@@ -47,3 +47,8 @@ next-env.d.ts
 *.sqlite-wal
 /public/pdf-assets/
 /public/downloads/
+
+# local/openai config (account-identifying, not for OSS)
+.openai/
+*.command
+/works/

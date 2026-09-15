@@ -87,6 +87,18 @@ npm run build
 
 自动测试覆盖输入边界、本地保存、历史兼容、引用校验、V2 五加三题量与八维覆盖、笔试/作品候选题更新，以及账号隔离、单次配对、会话来源、任务持久化、协议分流、租约、暂停、恢复、停止、去重、优先级和真实 HTTP 连接器流程；测试替身不调用收费模型。任务中心另经过本机生产构建页面检查。
 
-设计见 [产品说明](docs/spec.md) 和 [本次实施计划](docs/superpowers/plans/2026-09-08-remote-queue.md)。
+设计见 [产品说明](docs/spec.md)。
 
 附件解析使用 PDF.js，构建前脚本将所需字库复制到本地静态资源，运行时不访问第三方字库服务。参考 [PDF.js 官方示例](https://mozilla.github.io/pdf.js/examples/)。自动测试包含中文 CMap 加载、简历阅读引用与历史恢复。本轮使用虚构简历完成真实 Codex 阅读，四类要点及引用校验通过。
+
+## 许可证
+
+本项目以 MIT 许可证开源，详见 [LICENSE](LICENSE)。
+
+## 安全
+
+仓库刻意不包含任何 API key、token 或凭据；模型分析运行在用户本机 Codex。如发现漏洞，请按 [SECURITY.md](SECURITY.md) 私下报告，不要公开提 Issue。
+
+## 参与贡献
+
+开发环境、测试命令与提交约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
