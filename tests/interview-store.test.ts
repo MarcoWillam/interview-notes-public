@@ -264,3 +264,30 @@ void test('follow-up results persist once per job even across direct application
     queue.close();
   }
 });
+
+void test('applying an older pending follow-up preserves a newer active job marker', () => {
+  const { queue, records, alice } = setup();
+  try {
+    const input = followUpInputFixture();
+    const olderJobId = 'follow-up-job-older-12345';
+    const newerJobId = 'follow-up-job-newer-12345';
+    const record = {
+      ...baseRecord,
+      resumeText: input.resumeText,
+      resumeReading: input.resumeReading,
+      followUpOutlineJobId: newerJobId,
+    };
+    records.put(alice, record.id, 0, 'mutation-follow-up-newer', record);
+    records.savePendingResult(
+      alice, record.id, olderJobId, 'follow-up-outline', 1, followUpResultFixture(),
+    );
+    const applied = records.applyPendingResult(
+      alice, record.id, olderJobId, 1, 'mutation-follow-up-older-apply',
+    );
+    assert.equal(applied.record.followUpOutlineJobId, newerJobId);
+    assert.equal(applied.record.outlineSupplements?.[0].jobId, olderJobId);
+    assert.equal(records.pendingResults(alice, record.id)[0].state, 'applied');
+  } finally {
+    queue.close();
+  }
+});
