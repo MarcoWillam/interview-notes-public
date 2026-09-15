@@ -79,7 +79,7 @@ import {
   type Report,
 } from '@/lib/interview';
 import { useInterviewLibrary } from '@/hooks/use-interview-library';
-import type { NewInterviewSeed } from '@/lib/local/store';
+import type { NewInterviewSeed, SavedInterview } from '@/lib/local/store';
 import {
   applyWrittenTestSupplement,
   appliedTemplateState,
@@ -423,6 +423,71 @@ export default function Home({
     scoringGuidance,
     reportRequirements,
   };
+  function releaseRecordTaskWaits() {
+    analysisController.current?.abort();
+    analysisController.current = null;
+    followUpController.current?.abort();
+    followUpController.current = null;
+    busyRef.current = false;
+    setBusy(null);
+    setRemoteJob(null);
+    setCancelling(false);
+    cancelledRemotely.current = false;
+  }
+  function finishAnalysisWait(controller: AbortController) {
+    if (analysisController.current !== controller) return;
+    analysisController.current = null;
+    busyRef.current = false;
+    setBusy(null);
+  }
+  async function restoreInterview(saved: SavedInterview) {
+    const sameFollowUpRecord = followUpRecordId.current === saved.id;
+    followUpRecordId.current = saved.id;
+    releaseRecordTaskWaits();
+    setError('');
+    setPendingCandidateName(null);
+    setPendingResume(null);
+    setPendingResumeOutline(null);
+    setPendingWrittenTestSupplement(false);
+    setPendingOutlineRegeneration(false);
+    setLateWorkSampleOpen(false);
+    setLateWorkSampleArtifact(null);
+    setCandidate(saved.candidate);
+    setRole(saved.role);
+    setRequirements(saved.requirements);
+    setDimensionText(saved.dimensionText);
+    setFocus(saved.focus || '');
+    setScoringGuidance(saved.scoringGuidance || '');
+    setReportRequirements(saved.reportRequirements || '');
+    setSourceTemplateId(saved.sourceTemplateId ?? null);
+    setTemplateModified(saved.templateModified ?? false);
+    setOutlineVersion(saved.outlineVersion ?? 1);
+    setHasWrittenTest(saved.hasWrittenTest ?? false);
+    setWrittenTestConfirmed(saved.writtenTestConfirmed ?? false);
+    setResumeText(saved.resumeText || '');
+    setResumeName(saved.resumeName || '');
+    setResumeReading(saved.resumeReading || null);
+    setOutlineSupplements(saved.outlineSupplements || []);
+    setFollowUpOutlineJobId(saved.followUpOutlineJobId);
+    if (!sameFollowUpRecord) setFollowUpOutlineDraft('');
+    setWorkSample(saved.workSample || saved.resumeReading?.workSample || null);
+    setWorkSampleJobId(saved.workSampleJobId);
+    setWrittenTestJobId(saved.writtenTestJobId);
+    setOutlineRegeneratedAt(saved.outlineRegeneratedAt);
+    setOutlineRegenerationJobId(saved.outlineRegenerationJobId);
+    setOutlineRevision(saved.outlineRevision);
+    setResumeBodyOpen(false);
+    setTranscript(saved.transcript);
+    setTranscriptName(
+      saved.transcriptName || (saved.transcript ? '历史面试记录' : ''),
+    );
+    setReviewed(saved.reviewed);
+    setReport(saved.report);
+    setConclusion(saved.conclusion);
+    setConfirmed(saved.confirmed);
+    setTab('resume');
+    setNotice('已从当前浏览器恢复面试记录。');
+  }
   const library = useInterviewLibrary(
     {
       candidate,
@@ -455,69 +520,18 @@ export default function Home({
       outlineSupplements,
       followUpOutlineJobId,
     },
-    async (saved) => {
-      const sameFollowUpRecord = followUpRecordId.current === saved.id;
-      followUpRecordId.current = saved.id;
-      if (followUpController.current) {
-        followUpController.current.abort();
-        followUpController.current = null;
-        busyRef.current = false;
-        setBusy(null);
-      }
-      setRemoteJob(null);
-      setError('');
-      analysisController.current?.abort();
-      analysisController.current = null;
-      setPendingCandidateName(null);
-      setPendingResume(null);
-      setPendingResumeOutline(null);
-      setPendingWrittenTestSupplement(false);
-      setPendingOutlineRegeneration(false);
-      setLateWorkSampleOpen(false);
-      setLateWorkSampleArtifact(null);
-      setCandidate(saved.candidate);
-      setRole(saved.role);
-      setRequirements(saved.requirements);
-      setDimensionText(saved.dimensionText);
-      setFocus(saved.focus || '');
-      setScoringGuidance(saved.scoringGuidance || '');
-      setReportRequirements(saved.reportRequirements || '');
-      setSourceTemplateId(saved.sourceTemplateId ?? null);
-      setTemplateModified(saved.templateModified ?? false);
-      setOutlineVersion(saved.outlineVersion ?? 1);
-      setHasWrittenTest(saved.hasWrittenTest ?? false);
-      setWrittenTestConfirmed(saved.writtenTestConfirmed ?? false);
-      setResumeText(saved.resumeText || '');
-      setResumeName(saved.resumeName || '');
-      setResumeReading(saved.resumeReading || null);
-      setOutlineSupplements(saved.outlineSupplements || []);
-      setFollowUpOutlineJobId(saved.followUpOutlineJobId);
-      if (!sameFollowUpRecord) setFollowUpOutlineDraft('');
-      setWorkSample(
-        saved.workSample || saved.resumeReading?.workSample || null,
-      );
-      setWorkSampleJobId(saved.workSampleJobId);
-      setWrittenTestJobId(saved.writtenTestJobId);
-      setOutlineRegeneratedAt(saved.outlineRegeneratedAt);
-      setOutlineRegenerationJobId(saved.outlineRegenerationJobId);
-      setOutlineRevision(saved.outlineRevision);
-      setResumeBodyOpen(false);
-      setTranscript(saved.transcript);
-      setTranscriptName(
-        saved.transcriptName || (saved.transcript ? '历史面试记录' : ''),
-      );
-      setReviewed(saved.reviewed);
-      setReport(saved.report);
-      setConclusion(saved.conclusion);
-      setConfirmed(saved.confirmed);
-      setTab('resume');
-      setNotice('已从当前浏览器恢复面试记录。');
-    },
+    restoreInterview,
     reset,
     {
       cloud: !!workspaceAccount && !workspaceAccount.preview,
     },
   );
+  async function refreshCurrentAnalysisRecord(controller: AbortController) {
+    await library.refreshFromCloud();
+    return (
+      analysisController.current === controller && !controller.signal.aborted
+    );
+  }
   const libraryRef = useRef(library);
   useEffect(() => {
     libraryRef.current = library;
@@ -1232,7 +1246,7 @@ export default function Home({
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
-      await library.refreshFromCloud();
+      if (!(await refreshCurrentAnalysisRecord(controller))) return;
       setResumeReading(valueRead);
       setWorkSample(valueRead.workSample || null);
       setWorkSampleJobId(undefined);
@@ -1553,7 +1567,7 @@ export default function Home({
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
-      await library.refreshFromCloud();
+      if (!(await refreshCurrentAnalysisRecord(controller))) return;
       const live = outlineLiveRef.current;
       if (!live.reading?.interviewQuestions && !live.reading?.outline)
         throw new Error('面试记录已变化，未应用过期提纲。');
@@ -1676,7 +1690,7 @@ export default function Home({
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
-      await library.refreshFromCloud();
+      if (!(await refreshCurrentAnalysisRecord(controller))) return;
       const result: WrittenTestSupplementResult = value;
       setResumeReading(applyWrittenTestSupplement(reading, result));
       setHasWrittenTest(true);
@@ -1780,7 +1794,7 @@ export default function Home({
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
-      await library.refreshFromCloud();
+      if (!(await refreshCurrentAnalysisRecord(controller))) return;
       const next = applyLateWorkSample(
         {
           sourceTemplateId,
@@ -1998,7 +2012,7 @@ export default function Home({
           setRemoteJob,
           { fetcher: fetch, pollMs: 2000, ...recordBinding },
         );
-        await library.refreshFromCloud();
+        if (!(await refreshCurrentAnalysisRecord(controller))) return;
       } else {
         const r = await fetch('/api/analyze', {
           method: 'POST',
@@ -2016,12 +2030,14 @@ export default function Home({
             (data as Report & { error?: string }).error || '生成评估失败',
           );
       }
+      if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
       setReport(data);
       setConfirmed(false);
       setTab('report');
       setNotice('辅助评估已生成，请核实引用与判断后填写最终意见。');
     } catch (e) {
+      if (analysisController.current !== controller) return;
       setError(
         controller.signal.aborted
           ? queuedCodex
@@ -2036,9 +2052,7 @@ export default function Home({
               : '分析失败',
       );
     } finally {
-      analysisController.current = null;
-      busyRef.current = false;
-      setBusy(null);
+      finishAnalysisWait(controller);
     }
   }
   async function cancelAnalysis() {
@@ -2097,8 +2111,7 @@ export default function Home({
   }
   function reset(seed: NewInterviewSeed) {
     followUpRecordId.current = '';
-    analysisController.current?.abort();
-    analysisController.current = null;
+    releaseRecordTaskWaits();
     setStandards(seed.standards);
     setSourceTemplateId(seed.sourceTemplateId);
     setTemplateModified(false);
@@ -2114,11 +2127,6 @@ export default function Home({
     setOutlineSupplements([]);
     setFollowUpOutlineJobId(undefined);
     setFollowUpOutlineDraft('');
-    followUpController.current?.abort();
-    followUpController.current = null;
-    busyRef.current = false;
-    setBusy(null);
-    setRemoteJob(null);
     setWorkSample(null);
     setWorkSampleJobId(undefined);
     setWrittenTestJobId(undefined);
@@ -2231,11 +2239,20 @@ export default function Home({
   }
   async function openInterviewFromTaskCenter(id: string) {
     if (taskCenterNavigationRef.current) return;
-    taskCenterNavigationRef.current = true;
-    setTaskCenterOpeningId(id);
     setError('');
     setTab('resume');
     setView('workbench');
+    if (busyRef.current && (!queuedCodex || !remoteJob?.id)) {
+      setError(
+        queuedCodex
+          ? '当前任务尚未确认进入服务器队列，请等待任务中心出现后再切换记录。'
+          : '本地分析正在运行，请等待完成或先取消分析，再切换面试记录。',
+      );
+      return;
+    }
+    taskCenterNavigationRef.current = true;
+    setTaskCenterOpeningId(id);
+    if (busyRef.current) releaseRecordTaskWaits();
     try {
       await library.open(id);
     } catch (reason) {

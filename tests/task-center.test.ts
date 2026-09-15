@@ -33,6 +33,7 @@ async function loadView() {
 async function loadPageHandler(
   name: string,
   environment: Record<string, unknown>,
+  dependencies: string[] = [],
 ) {
   const source = await readFile(
     new URL('../app/page.tsx', import.meta.url),
@@ -45,14 +46,19 @@ async function loadPageHandler(
     true,
     ts.ScriptKind.TSX,
   );
-  let code = '';
+  const functions = new Map<string, string>();
   const visit = (node: ts.Node) => {
-    if (ts.isFunctionDeclaration(node) && node.name?.text === name)
-      code = node.getText(file);
+    if (ts.isFunctionDeclaration(node) && node.name)
+      functions.set(node.name.text, node.getText(file));
     ts.forEachChild(node, visit);
   };
   visit(file);
-  assert.ok(code, `${name} must exist`);
+  assert.ok(functions.has(name), `${name} must exist`);
+  for (const dependency of dependencies)
+    assert.ok(functions.has(dependency), `${dependency} must exist`);
+  const code = [...dependencies, name]
+    .map((functionName) => functions.get(functionName))
+    .join('\n');
   const output = ts.transpile(code, { target: ts.ScriptTarget.ES2022 });
   return compileFunction(
     `${output}; return ${name};`,
@@ -240,28 +246,49 @@ void test('task center navigation opens a record while analysis is busy', async 
   const opened: string[] = [];
   const state: Record<string, unknown> = {};
   const busyRef = { current: true };
-  const handler = await loadPageHandler('openInterviewFromTaskCenter', {
-    taskCenterNavigationRef: { current: false },
-    setTaskCenterOpeningId: (value: unknown) => {
-      state.pending = value;
-    },
-    setError: (value: unknown) => {
-      state.error = value;
-    },
-    setTab: (value: unknown) => {
-      state.tab = value;
-    },
-    setView: (value: unknown) => {
-      state.view = value;
-    },
-    library: {
-      open: async (id: string) => {
-        opened.push(id);
-        await wait;
+  const analysis = new AbortController();
+  const followUp = new AbortController();
+  const handler = await loadPageHandler(
+    'openInterviewFromTaskCenter',
+    {
+      taskCenterNavigationRef: { current: false },
+      setTaskCenterOpeningId: (value: unknown) => {
+        state.pending = value;
+      },
+      setError: (value: unknown) => {
+        state.error = value;
+      },
+      setTab: (value: unknown) => {
+        state.tab = value;
+      },
+      setView: (value: unknown) => {
+        state.view = value;
+      },
+      library: {
+        open: async (id: string) => {
+          opened.push(id);
+          await wait;
+        },
+      },
+      busyRef,
+      busy: 'analyze',
+      queuedCodex: true,
+      remoteJob: { id: 'server-job', state: 'running' },
+      analysisController: { current: analysis },
+      followUpController: { current: followUp },
+      cancelledRemotely: { current: false },
+      setBusy: (value: unknown) => {
+        state.busy = value;
+      },
+      setRemoteJob: (value: unknown) => {
+        state.remoteJob = value;
+      },
+      setCancelling: (value: unknown) => {
+        state.cancelling = value;
       },
     },
-    busyRef,
-  });
+    ['releaseRecordTaskWaits'],
+  );
 
   const opening = handler('interview-two');
   await new Promise<void>((resolve) => setImmediate(resolve));
@@ -269,35 +296,102 @@ void test('task center navigation opens a record while analysis is busy', async 
   assert.equal(state.pending, 'interview-two');
   assert.equal(state.tab, 'resume');
   assert.equal(state.view, 'workbench');
-  assert.equal(busyRef.current, true);
+  assert.equal(busyRef.current, false);
+  assert.equal(analysis.signal.aborted, true);
+  assert.equal(followUp.signal.aborted, true);
+  assert.equal(state.busy, null);
+  assert.equal(state.remoteJob, null);
   release();
   await opening;
   assert.equal(state.pending, null);
 });
 
+void test('task center navigation blocks local or unidentified work', async () => {
+  for (const boundary of ['local', 'unidentified'] as const) {
+    const state: Record<string, unknown> = {};
+    const analysis = new AbortController();
+    let opens = 0;
+    const handler = await loadPageHandler(
+      'openInterviewFromTaskCenter',
+      {
+        taskCenterNavigationRef: { current: false },
+        setTaskCenterOpeningId: (value: unknown) => {
+          state.pending = value;
+        },
+        setError: (value: unknown) => {
+          state.error = value;
+        },
+        setTab: (value: unknown) => {
+          state.tab = value;
+        },
+        setView: (value: unknown) => {
+          state.view = value;
+        },
+        library: {
+          open: async () => {
+            opens++;
+          },
+        },
+        busyRef: { current: true },
+        busy: boundary === 'local' ? 'analyze' : 'resume-read',
+        queuedCodex: boundary === 'unidentified',
+        remoteJob: null,
+        analysisController: { current: analysis },
+        followUpController: { current: null },
+        cancelledRemotely: { current: false },
+        setBusy() {},
+        setRemoteJob() {},
+        setCancelling() {},
+      },
+      ['releaseRecordTaskWaits'],
+    );
+
+    await handler('interview-two');
+    assert.equal(opens, 0, boundary);
+    assert.equal(analysis.signal.aborted, false, boundary);
+    assert.equal(state.pending, undefined, boundary);
+    assert.equal(state.view, 'workbench', boundary);
+    assert.match(String(state.error), /完成|取消|任务中心/, boundary);
+  }
+});
+
 void test('task center navigation exposes open failures and releases pending state', async () => {
   const state: Record<string, unknown> = {};
   const navigation = { current: false };
-  const handler = await loadPageHandler('openInterviewFromTaskCenter', {
-    taskCenterNavigationRef: navigation,
-    setTaskCenterOpeningId: (value: unknown) => {
-      state.pending = value;
-    },
-    setError: (value: unknown) => {
-      state.error = value;
-    },
-    setTab: (value: unknown) => {
-      state.tab = value;
-    },
-    setView: (value: unknown) => {
-      state.view = value;
-    },
-    library: {
-      open: async () => {
-        throw new Error('记录已不存在');
+  const handler = await loadPageHandler(
+    'openInterviewFromTaskCenter',
+    {
+      taskCenterNavigationRef: navigation,
+      setTaskCenterOpeningId: (value: unknown) => {
+        state.pending = value;
       },
+      setError: (value: unknown) => {
+        state.error = value;
+      },
+      setTab: (value: unknown) => {
+        state.tab = value;
+      },
+      setView: (value: unknown) => {
+        state.view = value;
+      },
+      library: {
+        open: async () => {
+          throw new Error('记录已不存在');
+        },
+      },
+      busyRef: { current: false },
+      busy: null,
+      queuedCodex: true,
+      remoteJob: null,
+      analysisController: { current: null },
+      followUpController: { current: null },
+      cancelledRemotely: { current: false },
+      setBusy() {},
+      setRemoteJob() {},
+      setCancelling() {},
     },
-  });
+    ['releaseRecordTaskWaits'],
+  );
 
   await handler('missing-interview');
   assert.equal(state.tab, 'resume');
@@ -305,6 +399,189 @@ void test('task center navigation exposes open failures and releases pending sta
   assert.equal(state.pending, null);
   assert.equal(navigation.current, false);
   assert.match(String(state.error), /记录已不存在/);
+});
+
+function lifecycleEnvironment() {
+  const state: Record<string, unknown> = {};
+  const environment: Record<string, unknown> = {
+    followUpRecordId: { current: 'record-one' },
+    busyRef: { current: true },
+    analysisController: { current: new AbortController() },
+    followUpController: { current: new AbortController() },
+    cancelledRemotely: { current: true },
+    outlineVersionForStandards: () => 2,
+  };
+  for (const name of [
+    'Busy',
+    'RemoteJob',
+    'Cancelling',
+    'Error',
+    'PendingCandidateName',
+    'PendingResume',
+    'PendingResumeOutline',
+    'PendingWrittenTestSupplement',
+    'PendingOutlineRegeneration',
+    'LateWorkSampleOpen',
+    'LateWorkSampleArtifact',
+    'Candidate',
+    'Role',
+    'Requirements',
+    'DimensionText',
+    'Focus',
+    'ScoringGuidance',
+    'ReportRequirements',
+    'SourceTemplateId',
+    'TemplateModified',
+    'OutlineVersion',
+    'HasWrittenTest',
+    'WrittenTestConfirmed',
+    'ResumeText',
+    'ResumeName',
+    'ResumeReading',
+    'OutlineSupplements',
+    'FollowUpOutlineJobId',
+    'FollowUpOutlineDraft',
+    'WorkSample',
+    'WorkSampleJobId',
+    'WrittenTestJobId',
+    'OutlineRegeneratedAt',
+    'OutlineRegenerationJobId',
+    'OutlineRevision',
+    'ResumeBodyOpen',
+    'Transcript',
+    'TranscriptName',
+    'Reviewed',
+    'Report',
+    'Conclusion',
+    'Confirmed',
+    'Tab',
+    'Notice',
+    'Standards',
+    'PendingImport',
+    'ResetOpen',
+  ]) {
+    environment[`set${name}`] = (value: unknown) => {
+      state[name[0].toLowerCase() + name.slice(1)] = value;
+    };
+  }
+  return { environment, state };
+}
+
+void test('restore and reset execute the shared record task cleanup', async () => {
+  for (const lifecycle of ['restoreInterview', 'reset'] as const) {
+    const { environment, state } = lifecycleEnvironment();
+    const analysis = (
+      environment.analysisController as { current: AbortController }
+    ).current;
+    const followUp = (
+      environment.followUpController as { current: AbortController }
+    ).current;
+    const handler = await loadPageHandler(lifecycle, environment, [
+      'releaseRecordTaskWaits',
+    ]);
+    if (lifecycle === 'restoreInterview') {
+      await (
+        handler as unknown as (saved: Record<string, unknown>) => Promise<void>
+      )({
+        id: 'record-two',
+        candidate: '李四',
+        role: 'AI 产品经理',
+        requirements: '岗位要求',
+        dimensionText: '自驱力',
+        resumeText: '简历',
+        transcript: '',
+        reviewed: false,
+        report: null,
+        conclusion: '',
+        confirmed: false,
+        outlineSupplements: [],
+        followUpOutlineJobId: 'target-follow-up-job',
+      });
+      assert.equal(state.followUpOutlineJobId, 'target-follow-up-job');
+    } else {
+      (handler as unknown as (seed: Record<string, unknown>) => void)({
+        standards: {
+          role: 'AI 产品经理',
+          requirements: '岗位要求',
+          dimensionText: '自驱力',
+          focus: '',
+          scoringGuidance: '',
+          reportRequirements: '',
+        },
+        sourceTemplateId: 'ai-product-manager',
+      });
+    }
+    assert.equal(analysis.signal.aborted, true, lifecycle);
+    assert.equal(followUp.signal.aborted, true, lifecycle);
+    assert.equal(
+      (environment.analysisController as { current: unknown }).current,
+      null,
+      lifecycle,
+    );
+    assert.equal(
+      (environment.followUpController as { current: unknown }).current,
+      null,
+      lifecycle,
+    );
+    assert.equal(
+      (environment.busyRef as { current: boolean }).current,
+      false,
+      lifecycle,
+    );
+    assert.equal(state.busy, null, lifecycle);
+    assert.equal(state.remoteJob, null, lifecycle);
+  }
+});
+
+void test('an old async completion cannot release a new record task', async () => {
+  const state: Record<string, unknown> = {};
+  const oldController = new AbortController();
+  const newController = new AbortController();
+  const analysisController = { current: newController };
+  const busyRef = { current: true };
+  const finish = await loadPageHandler('finishAnalysisWait', {
+    analysisController,
+    busyRef,
+    setBusy: (value: unknown) => {
+      state.busy = value;
+    },
+  });
+
+  (finish as unknown as (controller: AbortController) => void)(oldController);
+  assert.equal(analysisController.current, newController);
+  assert.equal(busyRef.current, true);
+  assert.equal(state.busy, undefined);
+  const source = await readFile(
+    new URL('../app/page.tsx', import.meta.url),
+    'utf8',
+  );
+  const analyze = source.slice(
+    source.indexOf('async function analyze()'),
+    source.indexOf('async function cancelAnalysis()'),
+  );
+  assert.match(analyze, /finally\s*\{[\s\S]*finishAnalysisWait\(controller\)/);
+});
+
+void test('a cloud refresh from an old record cannot continue on the new record', async () => {
+  const oldController = new AbortController();
+  const newController = new AbortController();
+  const analysisController = { current: oldController };
+  const refresh = await loadPageHandler('refreshCurrentAnalysisRecord', {
+    analysisController,
+    library: {
+      refreshFromCloud: async () => {
+        analysisController.current = newController;
+      },
+    },
+  });
+
+  assert.equal(
+    await (
+      refresh as unknown as (controller: AbortController) => Promise<boolean>
+    )(oldController),
+    false,
+  );
+  assert.equal(analysisController.current, newController);
 });
 
 void test('task center labels work samples and names the offline target computer', async () => {
