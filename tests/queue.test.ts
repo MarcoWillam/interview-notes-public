@@ -286,6 +286,67 @@ void test('follow-up outline repairs one invalid protocol five result under its 
     s.close();
   }
 });
+
+void test('follow-up outline permits only one active task per bound interview', () => {
+  const { s, a } = setup();
+  try {
+    const record = saveFollowUpRecord(s, a, 'record-follow-up-active-123');
+    const binding = {
+      interviewId: record.record.id,
+      interviewRevision: record.revision,
+    };
+    const first = s.submit(
+      a,
+      'follow-up-active-first-123',
+      '补充追问 · 自驱力',
+      followUpInputFixture(),
+      'follow-up-outline',
+      record.record.id,
+      binding,
+    );
+    const submitDifferentFocus = (client: string) =>
+      s.submit(
+        a,
+        client,
+        '补充追问 · 学习力',
+        { ...followUpInputFixture(), requestedFocus: '学习力' },
+        'follow-up-outline',
+        record.record.id,
+        binding,
+      );
+    assert.throws(
+      () => submitDifferentFocus('follow-up-active-queued-123'),
+      /当前面试记录已有补充追问任务/,
+    );
+    s.action(a, first.id, 'pause');
+    assert.throws(
+      () => submitDifferentFocus('follow-up-active-paused-123'),
+      /当前面试记录已有补充追问任务/,
+    );
+    s.action(a, first.id, 'resume');
+    const device = s.redeem(s.pairing(a).code, '协议五电脑', {
+      version: CONNECTOR_VERSION,
+      protocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
+    });
+    assert.equal(
+      s.claim(device.token, true, ['follow-up-outline'], {
+        version: CONNECTOR_VERSION,
+        protocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
+      })?.id,
+      first.id,
+    );
+    assert.throws(
+      () => submitDifferentFocus('follow-up-active-running-123'),
+      /当前面试记录已有补充追问任务/,
+    );
+    s.action(a, first.id, 'stop');
+    const next = submitDifferentFocus('follow-up-active-cancelled-123');
+    assert.notEqual(next.id, first.id);
+    assert.equal(next.state, 'queued');
+  } finally {
+    s.close();
+  }
+});
 void test('outline regeneration requires a current connector and reports its version', () => {
   const { s, a } = setup();
   const outlineInput = {

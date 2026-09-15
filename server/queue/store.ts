@@ -141,6 +141,9 @@ export class QueueStore {
     this.db.exec(
       "CREATE UNIQUE INDEX IF NOT EXISTS outline_record_once ON jobs(user,scope) WHERE kind='outline' AND scope IS NOT NULL AND state IN ('queued','running','paused','completed')",
     );
+    this.db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS follow_up_outline_record_once ON jobs(user,scope) WHERE kind='follow-up-outline' AND scope IS NOT NULL AND state IN ('queued','running','paused')",
+    );
     const deviceColumns = this.db
       .prepare('PRAGMA table_info(devices)')
       .all() as Row[];
@@ -740,6 +743,11 @@ export class QueueStore {
       if (kind === 'outline')
         throw new QueueError(
           '当前面试记录已有提纲重新生成任务，请在任务中心查看。',
+          409,
+        );
+      if (kind === 'follow-up-outline')
+        throw new QueueError(
+          '当前面试记录已有补充追问任务，请等待完成或先停止任务。',
           409,
         );
       throw insertError;
