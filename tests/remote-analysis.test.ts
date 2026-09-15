@@ -5,10 +5,15 @@ import {
   controlRemoteJob,
   listRemoteArtifacts,
   submitRemoteAnalysis,
+  submitRemoteFollowUpOutline,
   submitRemoteWorkSample,
   submitRemoteWrittenTest,
   type RemoteJob,
 } from '../lib/remote-analysis.ts';
+import {
+  followUpInputFixture,
+  followUpResultFixture,
+} from './fixtures/follow-up-outline.ts';
 import {
   AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
   aiPmWorkSampleRubric,
@@ -403,6 +408,126 @@ void test('written-test supplement uses its own kind and validates the completed
     ),
     writtenTestResult,
   );
+});
+
+void test('follow-up outline submission sends its kind, input, binding revision, and generated label', async () => {
+  const input = followUpInputFixture();
+  const requests: Array<Record<string, unknown>> = [];
+  const fetcher: typeof fetch = async (_url, options) => {
+    requests.push(
+      JSON.parse(options?.body as string) as Record<string, unknown>,
+    );
+    return Response.json({
+      id: 'follow-up-outline-job',
+      kind: 'follow-up-outline',
+      label: '补充追问 · 自驱力',
+      state: 'completed',
+      report: followUpResultFixture(),
+      resultDisposition: 'applied',
+    });
+  };
+
+  const result = await submitRemoteFollowUpOutline(
+    input,
+    new AbortController().signal,
+    () => {},
+    {
+      fetcher,
+      pollMs: 0,
+      scope: 'interview-12345678',
+      interviewId: 'interview-12345678',
+      interviewRevision: 7,
+    },
+  );
+
+  assert.equal(result.questions.length, 2);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].kind, 'follow-up-outline');
+  assert.deepEqual(requests[0].input, input);
+  assert.equal(requests[0].scope, 'interview-12345678');
+  assert.equal(requests[0].interviewId, 'interview-12345678');
+  assert.equal(requests[0].interviewRevision, 7);
+  assert.equal(requests[0].label, '补充追问 · 自驱力');
+});
+
+void test('follow-up outline submission validates the completed result against its input', async () => {
+  const input = followUpInputFixture();
+  const fetcher: typeof fetch = async () =>
+    Response.json({
+      id: 'follow-up-invalid-result',
+      kind: 'follow-up-outline',
+      state: 'completed',
+      report: { ...followUpResultFixture(), requestedFocus: '学习力' },
+    });
+
+  await assert.rejects(
+    submitRemoteFollowUpOutline(input, new AbortController().signal, () => {}, {
+      fetcher,
+      pollMs: 0,
+    }),
+    /关注点与当前请求不一致/,
+  );
+});
+
+void test('follow-up outline retries reuse the original client idempotency key after an ambiguous response', async () => {
+  const input = { ...followUpInputFixture(), requestedFocus: '挑战力' };
+  const clients: string[] = [];
+  let attempts = 0;
+  const fetcher: typeof fetch = async (_url, options) => {
+    const body = JSON.parse(options?.body as string) as { client: string };
+    clients.push(body.client);
+    if (++attempts === 1)
+      throw new DOMException('response lost', 'TimeoutError');
+    return Response.json({
+      id: 'follow-up-retry-job',
+      kind: 'follow-up-outline',
+      state: 'completed',
+      report: {
+        ...followUpResultFixture(),
+        requestedFocus: input.requestedFocus,
+      },
+    });
+  };
+
+  await assert.rejects(
+    submitRemoteFollowUpOutline(input, new AbortController().signal, () => {}, {
+      fetcher,
+      pollMs: 0,
+    }),
+  );
+  await submitRemoteFollowUpOutline(
+    input,
+    new AbortController().signal,
+    () => {},
+    { fetcher, pollMs: 0 },
+  );
+
+  assert.equal(clients.length, 2);
+  assert.equal(clients[0], clients[1]);
+});
+
+void test('aborting follow-up outline polling does not cancel the server task', async () => {
+  const controller = new AbortController();
+  const methods: string[] = [];
+  const fetcher: typeof fetch = async (_url, options) => {
+    methods.push(options?.method || 'GET');
+    return Response.json({
+      id: 'follow-up-aborted-job',
+      kind: 'follow-up-outline',
+      state: 'queued',
+    });
+  };
+
+  await assert.rejects(
+    submitRemoteFollowUpOutline(
+      followUpInputFixture(),
+      controller.signal,
+      () => controller.abort(),
+      { fetcher, pollMs: 0 },
+    ),
+    { name: 'AbortError' },
+  );
+  assert.deepEqual(methods, ['POST']);
 });
 
 void test('V2 written-test submission preserves its outline discriminant and validates the reserve result', async () => {
