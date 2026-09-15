@@ -26,6 +26,16 @@ void test('补充追问规范化关注点并固定返回两题', () => {
   assert.equal(result.questions.length, 2);
 });
 
+void test('兼容历史记录中为空的可选面试标准字段', () => {
+  for (const field of ['focus', 'scoringGuidance', 'reportRequirements'] as const) {
+    const input = validateFollowUpOutlineInput({
+      ...followUpInputFixture(),
+      [field]: '',
+    });
+    assert.equal(input[field], '');
+  }
+});
+
 void test('补充追问拒绝过短关注点、长问题、重复题和伪造简历依据', () => {
   assert.throws(() =>
     validateFollowUpOutlineInput({
@@ -123,6 +133,23 @@ void test('条件追问问题至少包含两个字符', () => {
       input,
     ),
   );
+});
+
+void test('输出字段按 Unicode 码点计算长度', () => {
+  const input = validateFollowUpOutlineInput(followUpInputFixture());
+  for (const length of [40, 41]) {
+    const result = validateFollowUpOutlineResult(
+      {
+        ...followUpResultFixture(),
+        questions: followUpResultFixture().questions.map((question) => ({
+          ...question,
+          probes: [{ ...question.probes[0], question: '😀'.repeat(length) }],
+        })),
+      },
+      input,
+    );
+    assert.equal(result.questions[0].probes[0].question, '😀'.repeat(length));
+  }
 });
 
 void test('V2 和 V3 提纲的条件追问对象也拒绝未知字段', () => {
@@ -279,6 +306,38 @@ void test('简历阅读作品评估的嵌套对象拒绝未知字段', () => {
         }),
       /未知字段/,
     );
+});
+
+void test('输入和应用边界拒绝跨组重复内容并规范化任务编号', () => {
+  const group = {
+    ...followUpResultFixture(),
+    id: 'group-12345678',
+    jobId: 'job-12345678',
+    createdAt: 1,
+  };
+  assert.throws(() =>
+    validateFollowUpOutlineInput({
+      ...followUpInputFixture(),
+      existingSupplements: [
+        group,
+        { ...group, id: 'group-87654321', jobId: 'job-87654321' },
+      ],
+    }),
+  );
+  const first = applyFollowUpOutlineResult([], followUpResultFixture(), group);
+  const repeated = applyFollowUpOutlineResult(
+    first,
+    followUpResultFixture(),
+    { id: 'group-other123', jobId: ' job-12345678 ', createdAt: 2 },
+  );
+  assert.equal(repeated.length, 1);
+  assert.throws(() =>
+    applyFollowUpOutlineResult(
+      [{ ...group, jobId: 'short' }],
+      followUpResultFixture(),
+      { id: 'group-other123', jobId: 'job-new1234', createdAt: 2 },
+    ),
+  );
 });
 
 void test('应用结果按 jobId 去重且不改写原提纲', () => {

@@ -96,10 +96,12 @@ function boundedText(
   label: string,
   options: { allowEmpty?: boolean } = {},
 ) {
-  if (typeof value !== 'string' || value.length > maximum) {
+  if (typeof value !== 'string') {
     throw new Error(`${label}为空或超过长度限制。`);
   }
   const result = value.trim();
+  if (characterLength(result) > maximum)
+    throw new Error(`${label}为空或超过长度限制。`);
   if (!options.allowEmpty && !result) throw new Error(`${label}不能为空。`);
   return result;
 }
@@ -535,9 +537,13 @@ export function validateFollowUpOutlineInput(value: unknown): FollowUpOutlineInp
   const role = boundedText(value.role, 200, '岗位');
   const requirements = boundedText(value.requirements, 10000, '岗位要求');
   const dimensionText = boundedText(value.dimensionText, 480, '评估维度');
-  const focus = boundedText(value.focus, 8000, '关注重点');
-  const scoringGuidance = boundedText(value.scoringGuidance, 4000, '评分说明');
-  const reportRequirements = boundedText(value.reportRequirements, 4000, '报告要求');
+  const focus = boundedText(value.focus, 8000, '关注重点', { allowEmpty: true });
+  const scoringGuidance = boundedText(value.scoringGuidance, 4000, '评分说明', {
+    allowEmpty: true,
+  });
+  const reportRequirements = boundedText(value.reportRequirements, 4000, '报告要求', {
+    allowEmpty: true,
+  });
   const resumeText = boundedText(value.resumeText, 30000, '简历原文');
   if (!record(value.resumeReading)) throw new Error('简历阅读结果格式不正确。');
   exactKeys(value.resumeReading, resumeReadingFields, '简历阅读结果');
@@ -597,8 +603,9 @@ export function validateFollowUpOutlineInput(value: unknown): FollowUpOutlineInp
   const requestedFocus = normalizeRequestedFocus(value.requestedFocus);
   if (!Array.isArray(value.existingSupplements) || value.existingSupplements.length > 50)
     throw new Error('已有补充追问分组数量不正确。');
-  const existingSupplements = value.existingSupplements.map((group) =>
-    validateGroup(group, resumeText),
+  const existingSupplements = validateFollowUpOutlineGroups(
+    value.existingSupplements,
+    resumeText,
   );
   return {
     role,
@@ -733,25 +740,17 @@ export function applyFollowUpOutlineResult(
   result: FollowUpOutlineResult,
   metadata: { id: string; jobId: string; createdAt: number },
 ): FollowUpOutlineGroup[] {
-  const existing = current.map((group) => ({
-    ...group,
-    questions: group.questions.map((question) => ({
-      ...question,
-      listenFor: [...question.listenFor],
-      riskSignals: [...question.riskSignals],
-      probes: question.probes.map((probe) => ({ ...probe })),
-    })) as [FollowUpOutlineQuestion, FollowUpOutlineQuestion],
-  }));
-  if (existing.some(({ jobId }) => jobId === metadata.jobId)) return existing;
   const id = boundedText(metadata.id, 100, '补充追问分组编号');
   const jobId = boundedText(metadata.jobId, 100, '补充追问任务编号');
+  if (characterLength(id) < 8 || characterLength(jobId) < 8)
+    throw new Error('补充追问分组或任务编号过短。');
   if (!Number.isSafeInteger(metadata.createdAt) || metadata.createdAt < 0)
     throw new Error('补充追问创建时间无效。');
-  const questions = result.questions.map((question) => ({
-    ...question,
-    listenFor: [...question.listenFor],
-    riskSignals: [...question.riskSignals],
-    probes: question.probes.map((probe) => ({ ...probe })),
-  })) as [FollowUpOutlineQuestion, FollowUpOutlineQuestion];
-  return [...existing, { ...result, questions, id, jobId, createdAt: metadata.createdAt }];
+  const existing = validateFollowUpOutlineGroups(current);
+  if (existing.some((group) => group.jobId === jobId)) return existing;
+  const next = [
+    ...existing,
+    { ...result, id, jobId, createdAt: metadata.createdAt },
+  ];
+  return validateFollowUpOutlineGroups(next);
 }
