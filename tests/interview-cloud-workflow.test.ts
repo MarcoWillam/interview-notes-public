@@ -139,7 +139,7 @@ void test('opening a task interview synchronizes before restoring the latest clo
   const sequence: string[] = [];
   const environment = {
     setWorking: () => {},
-    flush: async () => {
+    flushDirtyForNavigation: async () => {
       sequence.push('flush-current');
     },
     options: { cloud: true },
@@ -207,6 +207,270 @@ void test('opening a task interview synchronizes before restoring the latest clo
   )(...Object.values(failedEnvironment)) as (id: string) => Promise<void>;
   await assert.rejects(failedOpenLatest(local.id), /云端同步失败/);
   assert.deepEqual(failedRestores, []);
+});
+
+void test('opening another record does not supersede an accepted task with an unchanged draft', async () => {
+  const ts = await import('typescript');
+  const { IDBFactory } = await import('fake-indexeddb');
+  const { createLocalStore } = await import('../lib/local/store.ts');
+  const { interviewDraft } =
+    await import('../lib/interview-follow-up-refresh.ts');
+  const source = await readFile(
+    new URL('../hooks/use-interview-library.ts', import.meta.url),
+    'utf8',
+  );
+  const file = ts.createSourceFile(
+    'hook.ts',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const functions = new Map<string, string>();
+  const visit = (node: import('typescript').Node) => {
+    if (ts.isFunctionDeclaration(node) && node.name)
+      functions.set(node.name.text, node.getText(file));
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  const compiled = ts.transpile(
+    [
+      functions.get('flushDirtyForNavigation'),
+      functions.get('openRecord'),
+      functions.get('openLatest'),
+    ].join('\n'),
+    { target: ts.ScriptTarget.ES2022 },
+  );
+  const active = {
+    id: 'record-a',
+    createdAt: 1,
+    updatedAt: 1,
+    candidate: '候选人 A',
+    role: 'AI 产品经理',
+    requirements: '岗位要求',
+    dimensionText: '自驱力',
+    focus: '',
+    scoringGuidance: '',
+    reportRequirements: '',
+    resumeText: '简历 A',
+    resumeName: 'A.docx',
+    resumeReading: null,
+    transcript: '',
+    transcriptName: '',
+    reviewed: false,
+    report: null,
+    conclusion: '',
+    confirmed: false,
+  };
+  const target = {
+    ...active,
+    id: 'record-b',
+    candidate: '候选人 B',
+    resumeText: '简历 B',
+    resumeName: 'B.docx',
+  };
+  const cloudTarget = {
+    ...target,
+    updatedAt: 2,
+    conclusion: '云端最新结论',
+  };
+  const store = createLocalStore(new IDBFactory(), 'navigation-running-task');
+  await store.saveRemoteInterview(active, 5);
+  await store.saveRemoteInterview(target, 1);
+  const activeId = { current: active.id };
+  const writes = { current: Promise.resolve() };
+  const timer = { current: null };
+  const restored: unknown[] = [];
+  let taskApplied = false;
+  let writeCount = 0;
+  const callbacks = {
+    current: {
+      draft: interviewDraft(active),
+      restore: async (record: typeof cloudTarget) => {
+        restored.push(record);
+      },
+    },
+  };
+  const write = (
+    currentId: string,
+    value: ReturnType<typeof interviewDraft>,
+  ) => {
+    writeCount += 1;
+    const next = writes.current.then(async () => {
+      const saved = {
+        ...value,
+        id: currentId,
+        createdAt: 1,
+        updatedAt: Date.now(),
+      };
+      await store.saveInterviewDraft(saved);
+      await store.queueInterviewSync(saved, 'periodic-edit');
+      return saved;
+    });
+    writes.current = next.then(() => {});
+    return next;
+  };
+  const environment = {
+    ready: true,
+    timer,
+    writes,
+    activeId,
+    callbacks,
+    localStore: () => store,
+    interviewDraft,
+    write,
+    setWorking: () => {},
+    options: { cloud: true },
+    synchronize: async () => {
+      const pending = await store.listPendingSync();
+      taskApplied =
+        !pending.some((item) => item.id === active.id) &&
+        (await store.getSyncMeta(active.id))?.revision === 5;
+      await store.saveRemoteInterview(cloudTarget, 2);
+    },
+    setReady: () => {},
+    createdAt: { current: null },
+    normalizeSession: async (record: typeof cloudTarget) => record,
+    selectId: (nextId: string) => {
+      activeId.current = nextId;
+    },
+    visibleDraftBase: { current: new Map() },
+    setSaved: () => {},
+  };
+  const openLatest = compileFunction(
+    `${compiled}; return openLatest;`,
+    Object.keys(environment),
+  )(...Object.values(environment)) as (id: string) => Promise<void>;
+
+  await openLatest(target.id);
+  assert.equal(writeCount, 0);
+  assert.equal((await store.listPendingSync()).length, 0);
+  assert.equal((await store.getSyncMeta(active.id))?.revision, 5);
+  assert.equal(taskApplied, true);
+  assert.deepEqual(restored, [cloudTarget]);
+});
+
+void test('navigation saves only actual draft changes and waits for queued writes', async () => {
+  const ts = await import('typescript');
+  const { IDBFactory } = await import('fake-indexeddb');
+  const { createLocalStore } = await import('../lib/local/store.ts');
+  const { interviewDraft } =
+    await import('../lib/interview-follow-up-refresh.ts');
+  const source = await readFile(
+    new URL('../hooks/use-interview-library.ts', import.meta.url),
+    'utf8',
+  );
+  const file = ts.createSourceFile(
+    'hook.ts',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  let code = '';
+  const visit = (node: import('typescript').Node) => {
+    if (
+      ts.isFunctionDeclaration(node) &&
+      node.name?.text === 'flushDirtyForNavigation'
+    )
+      code = node.getText(file);
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  assert.ok(code, 'flushDirtyForNavigation must exist');
+  const record = {
+    id: 'record-a',
+    createdAt: 1,
+    updatedAt: 1,
+    candidate: '候选人 A',
+    role: 'AI 产品经理',
+    requirements: '岗位要求',
+    dimensionText: '自驱力',
+    focus: '',
+    scoringGuidance: '',
+    reportRequirements: '',
+    resumeText: '简历',
+    resumeName: '简历.docx',
+    resumeReading: null,
+    transcript: '',
+    transcriptName: '',
+    reviewed: false,
+    report: null,
+    conclusion: '',
+    confirmed: false,
+  };
+  const store = createLocalStore(new IDBFactory(), 'navigation-dirty-check');
+  await store.saveRemoteInterview(record, 5);
+  const callbacks = { current: { draft: interviewDraft(record) } };
+  const writes = { current: Promise.resolve() };
+  const activeId = { current: record.id };
+  const pendingTimer = setTimeout(() => {}, 60_000);
+  pendingTimer.unref();
+  const timer = { current: pendingTimer };
+  const savedDrafts: unknown[] = [];
+  const environment = {
+    ready: true,
+    timer,
+    writes,
+    activeId,
+    callbacks,
+    localStore: () => store,
+    interviewDraft,
+    write: async (id: string, draft: ReturnType<typeof interviewDraft>) => {
+      savedDrafts.push(draft);
+      const saved = { ...draft, id, createdAt: 1, updatedAt: Date.now() };
+      await store.saveInterviewDraft(saved);
+      await store.queueInterviewSync(saved, 'periodic-edit');
+    },
+  };
+  const flushDirty = compileFunction(
+    `${ts.transpile(code, { target: ts.ScriptTarget.ES2022 })}; return flushDirtyForNavigation;`,
+    Object.keys(environment),
+  )(...Object.values(environment)) as () => Promise<void>;
+
+  await flushDirty();
+  assert.equal(savedDrafts.length, 0);
+  assert.equal((await store.listPendingSync()).length, 0);
+  assert.equal((await store.getSyncMeta(record.id))?.revision, 5);
+
+  callbacks.current.draft = {
+    ...callbacks.current.draft,
+    candidate: '候选人 A（已编辑）',
+  };
+  await flushDirty();
+  assert.equal(savedDrafts.length, 1);
+  assert.equal(
+    (await store.listPendingSync())[0].record?.candidate,
+    '候选人 A（已编辑）',
+  );
+
+  let releaseQueuedWrite = () => {};
+  writes.current = new Promise<void>((resolve) => {
+    releaseQueuedWrite = resolve;
+  });
+  let settled = false;
+  const waiting = flushDirty().then(() => {
+    settled = true;
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(settled, false);
+  callbacks.current.draft = {
+    ...callbacks.current.draft,
+    conclusion: '等待期间输入的结论',
+  };
+  releaseQueuedWrite();
+  await waiting;
+  assert.equal(
+    (await store.getInterview(record.id))?.conclusion,
+    '等待期间输入的结论',
+  );
+
+  activeId.current = 'new-record';
+  callbacks.current.draft = {
+    ...callbacks.current.draft,
+    candidate: '新记录',
+  };
+  writes.current = Promise.resolve();
+  await flushDirty();
+  assert.equal((await store.getInterview('new-record'))?.candidate, '新记录');
 });
 
 void test('cloud recovery still refreshes after a local write has failed', async () => {

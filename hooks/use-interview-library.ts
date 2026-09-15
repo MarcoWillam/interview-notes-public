@@ -344,6 +344,7 @@ export function useInterviewLibrary(
     }, 400);
     return () => {
       if (timer.current) clearTimeout(timer.current);
+      timer.current = null;
     };
   }, [ready, id, signature]);
   useEffect(() => {
@@ -375,6 +376,31 @@ export function useInterviewLibrary(
     const meta = await localStore().getSyncMeta(id);
     if (!meta) throw new Error('面试记录尚未同步到云端，请稍后重试。');
     return { interviewId: id, interviewRevision: meta.revision };
+  }
+  async function flushDirtyForNavigation() {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    const currentId = activeId.current;
+    if (!ready || !currentId) throw new Error('本地存储尚未就绪');
+    while (activeId.current === currentId) {
+      const queuedWrites = writes.current;
+      await queuedWrites.catch(() => {});
+      if (writes.current !== queuedWrites) continue;
+
+      const value = callbacks.current.draft;
+      const stamp = JSON.stringify(value);
+      const persisted = await localStore().getInterview(currentId);
+      if (
+        activeId.current !== currentId ||
+        writes.current !== queuedWrites ||
+        JSON.stringify(callbacks.current.draft) !== stamp
+      )
+        continue;
+      if (persisted && JSON.stringify(interviewDraft(persisted)) === stamp)
+        return;
+      await write(currentId, value);
+    }
+    throw new Error('面试记录已切换，请重试。');
   }
   async function refreshFollowUpFromCloud(interviewId = id) {
     if (!options.cloud) return;
@@ -511,7 +537,7 @@ export function useInterviewLibrary(
   async function openRecord(nextId: string, latest: boolean) {
     setWorking(true);
     try {
-      await flush();
+      await flushDirtyForNavigation();
       if (latest && options.cloud) await synchronize();
       const row = await localStore().getInterview(nextId);
       if (!row) throw new Error('记录已不存在');
