@@ -329,7 +329,7 @@ async function followUpEnvironment() {
     flushForTask: async (): Promise<
       { interviewId: string; interviewRevision: number } | undefined
     > => ({ interviewId: 'record-one', interviewRevision: 7 }),
-    refreshFromCloud: async (id: string) => {
+    refreshFollowUpFromCloud: async (id: string) => {
       refreshes.push(id);
       state.outlineSupplements = [group];
     },

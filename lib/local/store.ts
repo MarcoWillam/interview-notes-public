@@ -387,7 +387,11 @@ export function createLocalStore(
     },
     getSyncMeta: (id: string) => read<InterviewSyncMeta>('syncMeta', id),
     setSyncMeta: (id: string, revision: number) =>
-      put('syncMeta', { id, revision, syncedAt: Date.now() } satisfies InterviewSyncMeta),
+      put('syncMeta', {
+        id,
+        revision,
+        syncedAt: Date.now(),
+      } satisfies InterviewSyncMeta),
     listPendingSync: () => all<InterviewSyncOutbox>('syncOutbox'),
     queueInterviewSync: (
       record: SavedInterview,
@@ -397,13 +401,14 @@ export function createLocalStore(
         const outbox = tx.objectStore('syncOutbox');
         const currentRequest = outbox.get(record.id);
         currentRequest.onsuccess = () => {
-          const current = currentRequest.result as InterviewSyncOutbox | undefined;
+          const current = currentRequest.result as
+            | InterviewSyncOutbox
+            | undefined;
           if (current?.operation === 'put') {
             outbox.put({
               ...current,
               record,
-              reason:
-                reason === 'periodic-edit' ? current.reason : reason,
+              reason: reason === 'periodic-edit' ? current.reason : reason,
               queuedAt: Date.now(),
             } satisfies InterviewSyncOutbox);
             return;
@@ -439,11 +444,7 @@ export function createLocalStore(
           } satisfies InterviewSyncOutbox);
         };
       }),
-    clearPendingSync: (
-      id: string,
-      mutationId: string,
-      revision: number,
-    ) =>
+    clearPendingSync: (id: string, mutationId: string, revision: number) =>
       run<void>(['syncOutbox', 'syncMeta'], 'readwrite', (tx) => {
         const outbox = tx.objectStore('syncOutbox');
         const request = outbox.get(id);
@@ -461,6 +462,29 @@ export function createLocalStore(
       run<void>(['syncOutbox'], 'readwrite', (tx) => {
         tx.objectStore('syncOutbox').delete(id);
       }),
+    rebaseInterviewDraft: (
+      record: SavedInterview,
+      revision: number,
+      reason: CloudVersionReason = 'periodic-edit',
+    ) =>
+      run<void>(['interviews', 'syncMeta', 'syncOutbox'], 'readwrite', (tx) => {
+        tx.objectStore('interviews').put(record);
+        tx.objectStore('syncMeta').put({
+          id: record.id,
+          revision,
+          syncedAt: Date.now(),
+        } satisfies InterviewSyncMeta);
+        // A new mutation must use the revision that supplied the server fields.
+        tx.objectStore('syncOutbox').put({
+          id: record.id,
+          operation: 'put',
+          mutationId: crypto.randomUUID(),
+          baseRevision: revision,
+          record,
+          reason,
+          queuedAt: Date.now(),
+        } satisfies InterviewSyncOutbox);
+      }),
     saveRemoteInterview: (record: SavedInterview, revision: number) =>
       run<void>(['interviews', 'syncMeta'], 'readwrite', (tx) => {
         tx.objectStore('interviews').put(record);
@@ -470,10 +494,7 @@ export function createLocalStore(
           syncedAt: Date.now(),
         } satisfies InterviewSyncMeta);
       }),
-    saveInterviewConflict: (
-      local: SavedInterview,
-      remote: SavedInterview,
-    ) =>
+    saveInterviewConflict: (local: SavedInterview, remote: SavedInterview) =>
       put('conflicts', {
         id: crypto.randomUUID(),
         interviewId: local.id,
