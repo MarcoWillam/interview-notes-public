@@ -347,6 +347,10 @@ async function followUpEnvironment() {
     outlineSupplements: [],
     normalizeRequestedFocus: domain.normalizeRequestedFocus,
     validateFollowUpOutlineInput: domain.validateFollowUpOutlineInput,
+    clearRemoteTaskDisplay: () => {
+      state.remoteJob = null;
+      state.cancelling = false;
+    },
     submitRemoteFollowUpOutline: async (...args: unknown[]) => {
       submissions.push(args);
       const progress = args[2] as (value: unknown) => void;

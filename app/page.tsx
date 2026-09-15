@@ -159,6 +159,25 @@ export type WorkspaceConnectorUpdate = {
   onOpenDevices: () => void;
   onDismiss?: () => void;
 };
+type BusyKind =
+  | 'import'
+  | 'analyze'
+  | 'resume-read'
+  | 'written-test'
+  | 'work-sample'
+  | 'outline'
+  | 'follow-up-outline'
+  | 'prepare';
+type RemoteWaitKind = Extract<
+  BusyKind,
+  'analyze' | 'resume-read' | 'written-test' | 'work-sample' | 'outline'
+>;
+type RemoteWaitBinding = {
+  controller: AbortController;
+  jobId: string;
+  kind: RemoteWaitKind;
+  recordId: string;
+};
 function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -265,19 +284,10 @@ export default function Home({
   const [report, setReport] = useState<Report | null>(null);
   const [conclusion, setConclusion] = useState('');
   const [confirmed, setConfirmed] = useState(false);
-  const [busy, setBusy] = useState<
-    | 'import'
-    | 'analyze'
-    | 'resume-read'
-    | 'written-test'
-    | 'work-sample'
-    | 'outline'
-    | 'follow-up-outline'
-    | 'prepare'
-    | null
-  >(null);
+  const [busy, setBusy] = useState<BusyKind | null>(null);
   const busyRef = useRef(false);
   const analysisController = useRef<AbortController | null>(null);
+  const remoteWaitRef = useRef<RemoteWaitBinding | null>(null);
   useEffect(
     () => () => {
       analysisController.current?.abort();
@@ -423,6 +433,31 @@ export default function Home({
     scoringGuidance,
     reportRequirements,
   };
+  function clearRemoteTaskDisplay() {
+    remoteWaitRef.current = null;
+    setRemoteJob(null);
+    setCancelling(false);
+    cancelledRemotely.current = false;
+  }
+  function trackRemoteWait(
+    controller: AbortController,
+    job: RemoteJob<unknown>,
+    kind: RemoteWaitKind,
+    recordId: string,
+  ) {
+    if (analysisController.current !== controller || controller.signal.aborted)
+      return;
+    setRemoteJob({ ...job, report: null });
+    if (
+      job.state === 'queued' ||
+      job.state === 'running' ||
+      job.state === 'paused'
+    ) {
+      remoteWaitRef.current = { controller, jobId: job.id, kind, recordId };
+    } else if (remoteWaitRef.current?.controller === controller) {
+      remoteWaitRef.current = null;
+    }
+  }
   function releaseRecordTaskWaits() {
     analysisController.current?.abort();
     analysisController.current = null;
@@ -430,6 +465,7 @@ export default function Home({
     followUpController.current = null;
     busyRef.current = false;
     setBusy(null);
+    remoteWaitRef.current = null;
     setRemoteJob(null);
     setCancelling(false);
     cancelledRemotely.current = false;
@@ -439,6 +475,10 @@ export default function Home({
     analysisController.current = null;
     busyRef.current = false;
     setBusy(null);
+    remoteWaitRef.current = null;
+    setRemoteJob(null);
+    setCancelling(false);
+    cancelledRemotely.current = false;
   }
   async function restoreInterview(saved: SavedInterview) {
     const sameFollowUpRecord = followUpRecordId.current === saved.id;
@@ -1029,6 +1069,7 @@ export default function Home({
   ]);
   async function localAction(action: () => Promise<void>) {
     if (busyRef.current) return;
+    clearRemoteTaskDisplay();
     busyRef.current = true;
     setBusy('prepare');
     try {
@@ -1057,6 +1098,7 @@ export default function Home({
         setError('提纲正在重新生成，请等待完成或先在任务中心停止任务。');
       return;
     }
+    clearRemoteTaskDisplay();
     busyRef.current = true;
     setBusy('import');
     setError('');
@@ -1086,7 +1128,7 @@ export default function Home({
     followUpController.current = null;
     busyRef.current = false;
     setBusy(null);
-    setRemoteJob(null);
+    clearRemoteTaskDisplay();
     setWorkSample(null);
     setWorkSampleJobId(undefined);
     setWrittenTestJobId(undefined);
@@ -1144,6 +1186,7 @@ export default function Home({
   }
   async function resumeFile(file: File) {
     if (busyRef.current || outlineLocked) return;
+    clearRemoteTaskDisplay();
     busyRef.current = true;
     setBusy('import');
     setError('');
@@ -1183,6 +1226,7 @@ export default function Home({
       return;
     }
     const decision = confirmedChoice;
+    const recordId = library.id;
     setPendingResumeOutline(null);
     analysisController.current?.abort();
     const controller = new AbortController();
@@ -1192,9 +1236,7 @@ export default function Home({
     setError('');
     setNotice('');
     setPendingCandidateName(null);
-    setRemoteJob(null);
-    setCancelling(false);
-    cancelledRemotely.current = false;
+    clearRemoteTaskDisplay();
     try {
       const context = resumeContext.current;
       const value = validateResumeInput({
@@ -1231,16 +1273,12 @@ export default function Home({
         (context.candidate || resumeName || '未命名候选人').slice(0, 100),
         controller.signal,
         (job) => {
-          if (
-            analysisController.current === controller &&
-            !controller.signal.aborted
-          )
-            setRemoteJob({ ...job, report: null });
+          trackRemoteWait(controller, job, 'resume-read', recordId);
         },
         {
           fetcher: fetch,
           pollMs: 2000,
-          scope: library.id,
+          scope: recordId,
           ...recordBinding,
         },
       );
@@ -1275,11 +1313,7 @@ export default function Home({
             : '简历阅读失败。',
       );
     } finally {
-      if (analysisController.current === controller) {
-        analysisController.current = null;
-        busyRef.current = false;
-        setBusy(null);
-      }
+      finishAnalysisWait(controller);
     }
   }
   function confirmResumeOutlineGeneration() {
@@ -1358,11 +1392,11 @@ export default function Home({
     const recordId = library.id;
     const controller = new AbortController();
     followUpController.current = controller;
+    clearRemoteTaskDisplay();
     busyRef.current = true;
     setBusy('follow-up-outline');
     setError('');
     setNotice('');
-    setRemoteJob(null);
     const current = () =>
       followUpController.current === controller &&
       followUpRecordId.current === recordId &&
@@ -1469,6 +1503,7 @@ export default function Home({
       return false;
     }
     busyRef.current = true;
+    clearRemoteTaskDisplay();
     setBusy('prepare');
     try {
       await library.flush({ outlineSupplements: next });
@@ -1524,9 +1559,7 @@ export default function Home({
     setBusy('outline');
     setError('');
     setNotice('');
-    setRemoteJob(null);
-    setCancelling(false);
-    cancelledRemotely.current = false;
+    clearRemoteTaskDisplay();
     let submittedJobId: string | undefined;
     let completedAt = 1;
     try {
@@ -1555,13 +1588,13 @@ export default function Home({
             submittedJobId = job.id;
             completedAt = job.updated;
             setOutlineRegenerationJobId(job.id);
-            setRemoteJob({ ...job, report: null });
+            trackRemoteWait(controller, job, 'outline', recordId);
           }
         },
         {
           fetcher: fetch,
           pollMs: 2000,
-          scope: library.id,
+          scope: recordId,
           ...recordBinding,
         },
       );
@@ -1618,15 +1651,12 @@ export default function Home({
           : message,
       );
     } finally {
-      if (analysisController.current === controller) {
-        analysisController.current = null;
-        busyRef.current = false;
-        setBusy(null);
-      }
+      finishAnalysisWait(controller);
     }
   }
   async function runWrittenTestSupplement() {
     const reading = resumeReading;
+    const recordId = library.id;
     let submittedJobId: string | undefined;
     if (
       busyRef.current ||
@@ -1652,9 +1682,7 @@ export default function Home({
     setBusy('written-test');
     setError('');
     setNotice('');
-    setRemoteJob(null);
-    setCancelling(false);
-    cancelledRemotely.current = false;
+    clearRemoteTaskDisplay();
     try {
       const context = resumeContext.current;
       if (!context.queuedCodex)
@@ -1678,13 +1706,13 @@ export default function Home({
           ) {
             submittedJobId = job.id;
             setWrittenTestJobId(job.id);
-            setRemoteJob({ ...job, report: null });
+            trackRemoteWait(controller, job, 'written-test', recordId);
           }
         },
         {
           fetcher: fetch,
           pollMs: 2000,
-          scope: library.id,
+          scope: recordId,
           ...recordBinding,
         },
       );
@@ -1725,11 +1753,7 @@ export default function Home({
           : message,
       );
     } finally {
-      if (analysisController.current === controller) {
-        analysisController.current = null;
-        busyRef.current = false;
-        setBusy(null);
-      }
+      finishAnalysisWait(controller);
     }
   }
   function openLateWorkSample() {
@@ -1741,6 +1765,7 @@ export default function Home({
   async function runLateWorkSample() {
     const reading = resumeReading;
     const artifact = lateWorkSampleArtifact;
+    const recordId = library.id;
     let submittedJobId: string | undefined;
     if (
       busyRef.current ||
@@ -1760,9 +1785,7 @@ export default function Home({
     setBusy('work-sample');
     setError('');
     setNotice('');
-    setRemoteJob(null);
-    setCancelling(false);
-    cancelledRemotely.current = false;
+    clearRemoteTaskDisplay();
     try {
       const context = resumeContext.current;
       if (!context.queuedCodex)
@@ -1774,7 +1797,7 @@ export default function Home({
         ) {
           submittedJobId = job.id;
           setWorkSampleJobId(job.id);
-          setRemoteJob({ ...job, report: null });
+          trackRemoteWait(controller, job, 'work-sample', recordId);
         }
       };
       const result = await submitRemoteWorkSample(
@@ -1788,7 +1811,7 @@ export default function Home({
         {
           fetcher: fetch,
           pollMs: 2000,
-          scope: library.id,
+          scope: recordId,
           ...(await library.flushForTask()),
         },
       );
@@ -1841,11 +1864,7 @@ export default function Home({
           : message,
       );
     } finally {
-      if (analysisController.current === controller) {
-        analysisController.current = null;
-        busyRef.current = false;
-        setBusy(null);
-      }
+      finishAnalysisWait(controller);
     }
   }
   const hasContent = Boolean(
@@ -1994,13 +2013,12 @@ export default function Home({
       setError(e instanceof Error ? e.message : '请补全面试资料');
       return;
     }
+    const recordId = library.id;
+    clearRemoteTaskDisplay();
     busyRef.current = true;
     setBusy('analyze');
     const controller = new AbortController();
     analysisController.current = controller;
-    setRemoteJob(null);
-    setCancelling(false);
-    cancelledRemotely.current = false;
     try {
       let data: Report;
       if (queuedCodex) {
@@ -2009,7 +2027,7 @@ export default function Home({
           input,
           `${candidate || '未命名面试'} · ${role}`.slice(0, 100),
           controller.signal,
-          setRemoteJob,
+          (job) => trackRemoteWait(controller, job, 'analyze', recordId),
           { fetcher: fetch, pollMs: 2000, ...recordBinding },
         );
         if (!(await refreshCurrentAnalysisRecord(controller))) return;
@@ -2242,17 +2260,41 @@ export default function Home({
     setError('');
     setTab('resume');
     setView('workbench');
-    if (busyRef.current && (!queuedCodex || !remoteJob?.id)) {
+    const wait = remoteWaitRef.current;
+    const detachableKind =
+      busy === 'analyze' ||
+      busy === 'resume-read' ||
+      busy === 'written-test' ||
+      busy === 'work-sample' ||
+      busy === 'outline';
+    const activeRemoteJob =
+      remoteJob?.state === 'queued' ||
+      remoteJob?.state === 'running' ||
+      remoteJob?.state === 'paused';
+    const canDetach = !!(
+      busyRef.current &&
+      queuedCodex &&
+      detachableKind &&
+      activeRemoteJob &&
+      wait &&
+      wait.controller === analysisController.current &&
+      wait.kind === busy &&
+      wait.recordId === library.id &&
+      wait.jobId === remoteJob?.id
+    );
+    if (busyRef.current && !canDetach) {
       setError(
-        queuedCodex
-          ? '当前任务尚未确认进入服务器队列，请等待任务中心出现后再切换记录。'
-          : '本地分析正在运行，请等待完成或先取消分析，再切换面试记录。',
+        busy === 'import'
+          ? '当前资料正在导入，请等待完成后再切换面试记录。'
+          : queuedCodex
+            ? '当前任务尚未确认进入服务器队列，请等待任务中心出现后再切换记录。'
+            : '本地分析正在运行，请等待完成或先取消分析，再切换面试记录。',
       );
       return;
     }
     taskCenterNavigationRef.current = true;
     setTaskCenterOpeningId(id);
-    if (busyRef.current) releaseRecordTaskWaits();
+    if (canDetach) releaseRecordTaskWaits();
     try {
       await library.open(id);
     } catch (reason) {
