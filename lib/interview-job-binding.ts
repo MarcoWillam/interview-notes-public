@@ -159,7 +159,8 @@ export function applyInterviewJobResult(
       ),
       updatedAt: now,
     };
-    delete next.followUpOutlineJobId;
+    if (next.followUpOutlineJobId === metadata.jobId)
+      delete next.followUpOutlineJobId;
     return next;
   }
   if (kind === 'resume') {
