@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { compileFunction } from 'node:vm';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
@@ -27,6 +28,36 @@ async function loadView() {
   return import(
     'data:text/javascript;base64,' + Buffer.from(compiled).toString('base64')
   );
+}
+
+async function loadPageHandler(
+  name: string,
+  environment: Record<string, unknown>,
+) {
+  const source = await readFile(
+    new URL('../app/page.tsx', import.meta.url),
+    'utf8',
+  );
+  const file = ts.createSourceFile(
+    'page.tsx',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  let code = '';
+  const visit = (node: ts.Node) => {
+    if (ts.isFunctionDeclaration(node) && node.name?.text === name)
+      code = node.getText(file);
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  assert.ok(code, `${name} must exist`);
+  const output = ts.transpile(code, { target: ts.ScriptTarget.ES2022 });
+  return compileFunction(
+    `${output}; return ${name};`,
+    Object.keys(environment),
+  )(...Object.values(environment)) as (id: string) => Promise<void>;
 }
 
 const now = Date.UTC(2026, 8, 9, 12, 0, 0);
@@ -193,12 +224,87 @@ void test('task center opens the bound interview in the workbench outline tab', 
 
   assert.match(
     source,
-    /<TaskCenter[\s\S]*onOpenInterview=\{\(id\)[\s\S]*openInterview\(id\)/,
+    /<TaskCenter[\s\S]*onOpenInterview=\{\(id\)[\s\S]*openInterviewFromTaskCenter\(id\)/,
   );
   assert.match(
     source,
     /async function openInterview\(id: string\)[\s\S]*library\.open\(id\);[\s\S]*setTab\('resume'\);[\s\S]*setView\('workbench'\)/,
   );
+});
+
+void test('task center navigation opens a record while analysis is busy', async () => {
+  let release = () => {};
+  const wait = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const opened: string[] = [];
+  const state: Record<string, unknown> = {};
+  const busyRef = { current: true };
+  const handler = await loadPageHandler('openInterviewFromTaskCenter', {
+    taskCenterNavigationRef: { current: false },
+    setTaskCenterOpeningId: (value: unknown) => {
+      state.pending = value;
+    },
+    setError: (value: unknown) => {
+      state.error = value;
+    },
+    setTab: (value: unknown) => {
+      state.tab = value;
+    },
+    setView: (value: unknown) => {
+      state.view = value;
+    },
+    library: {
+      open: async (id: string) => {
+        opened.push(id);
+        await wait;
+      },
+    },
+    busyRef,
+  });
+
+  const opening = handler('interview-two');
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(opened, ['interview-two']);
+  assert.equal(state.pending, 'interview-two');
+  assert.equal(state.tab, 'resume');
+  assert.equal(state.view, 'workbench');
+  assert.equal(busyRef.current, true);
+  release();
+  await opening;
+  assert.equal(state.pending, null);
+});
+
+void test('task center navigation exposes open failures and releases pending state', async () => {
+  const state: Record<string, unknown> = {};
+  const navigation = { current: false };
+  const handler = await loadPageHandler('openInterviewFromTaskCenter', {
+    taskCenterNavigationRef: navigation,
+    setTaskCenterOpeningId: (value: unknown) => {
+      state.pending = value;
+    },
+    setError: (value: unknown) => {
+      state.error = value;
+    },
+    setTab: (value: unknown) => {
+      state.tab = value;
+    },
+    setView: (value: unknown) => {
+      state.view = value;
+    },
+    library: {
+      open: async () => {
+        throw new Error('记录已不存在');
+      },
+    },
+  });
+
+  await handler('missing-interview');
+  assert.equal(state.tab, 'resume');
+  assert.equal(state.view, 'workbench');
+  assert.equal(state.pending, null);
+  assert.equal(navigation.current, false);
+  assert.match(String(state.error), /记录已不存在/);
 });
 
 void test('task center labels work samples and names the offline target computer', async () => {
