@@ -15,6 +15,7 @@ export type CodexExecutionKind =
   | 'resume'
   | 'written-test'
   | 'outline'
+  | 'follow-up-outline'
   | 'work-sample';
 
 export type CodexExecutionArtifact = {

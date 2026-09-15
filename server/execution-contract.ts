@@ -6,6 +6,11 @@ import {
 import { assessmentInstructions, reportSchema } from '../lib/assessment.ts';
 import { validateInput } from '../lib/interview.ts';
 import {
+  followUpOutlineInstructions,
+  followUpOutlineOutputSchema,
+  validateFollowUpOutlineInput,
+} from '../lib/follow-up-outline.ts';
+import {
   outlineRegenerationInstructionsFor,
   outlineRegenerationOutputSchema,
   validateOutlineRegenerationInput,
@@ -129,6 +134,15 @@ function modelDefinition(kind: CodexExecutionKind, value: unknown) {
       payload: input,
     };
   }
+  if (kind === 'follow-up-outline') {
+    const input = validateFollowUpOutlineInput(value);
+    return {
+      runner: 'structured-text' as const,
+      instructions: followUpOutlineInstructions,
+      schema: followUpOutlineOutputSchema,
+      payload: input,
+    };
+  }
   const input = validateWorkSampleInput(value);
   const version = input.outlineVersion ?? 1;
   return {
@@ -149,11 +163,15 @@ export function executionContractFor(
   options: { attempt?: number; feedback?: string } = {},
 ) {
   const definition = modelDefinition(kind, input);
+  const attempt = options.attempt ?? 1;
   return validateCodexExecutionContract({
     contractVersion: 1,
     ...definition,
-    instructions: retryInstructions(definition.instructions, options.feedback),
-    attempt: options.attempt ?? 1,
+    instructions: retryInstructions(
+      definition.instructions,
+      attempt === 2 ? options.feedback : undefined,
+    ),
+    attempt,
     maxAttempts: 2,
   });
 }
