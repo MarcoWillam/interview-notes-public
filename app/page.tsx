@@ -221,6 +221,7 @@ export default function Home({
   const [followUpOutlineDraft, setFollowUpOutlineDraft] = useState('');
   const followUpController = useRef<AbortController | null>(null);
   const followUpRecordId = useRef('');
+  const recordNavigationEpoch = useRef(0);
   const [workSample, setWorkSample] = useState<WorkSampleAssessment | null>(
     null,
   );
@@ -566,10 +567,21 @@ export default function Home({
       cloud: !!workspaceAccount && !workspaceAccount.preview,
     },
   );
-  async function refreshCurrentAnalysisRecord(controller: AbortController) {
-    await library.refreshFromCloud();
+  async function refreshCurrentAnalysisRecord(
+    controller: AbortController,
+    recordId: string,
+    navigationEpoch: number,
+  ) {
+    if (
+      analysisController.current !== controller ||
+      followUpRecordId.current !== recordId ||
+      recordNavigationEpoch.current !== navigationEpoch
+    )
+      return false;
+    await library.refreshFromCloud(recordId);
     return (
-      analysisController.current === controller && !controller.signal.aborted
+      followUpRecordId.current === recordId &&
+      recordNavigationEpoch.current === navigationEpoch
     );
   }
   const libraryRef = useRef(library);
@@ -1227,6 +1239,7 @@ export default function Home({
     }
     const decision = confirmedChoice;
     const recordId = library.id;
+    const navigationEpoch = recordNavigationEpoch.current;
     setPendingResumeOutline(null);
     analysisController.current?.abort();
     const controller = new AbortController();
@@ -1284,7 +1297,14 @@ export default function Home({
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
-      if (!(await refreshCurrentAnalysisRecord(controller))) return;
+      if (
+        !(await refreshCurrentAnalysisRecord(
+          controller,
+          recordId,
+          navigationEpoch,
+        ))
+      )
+        return;
       setResumeReading(valueRead);
       setWorkSample(valueRead.workSample || null);
       setWorkSampleJobId(undefined);
@@ -1528,6 +1548,7 @@ export default function Home({
   async function runOutlineRegeneration() {
     const reading = resumeReading;
     const recordId = library.id;
+    const navigationEpoch = recordNavigationEpoch.current;
     if (
       busyRef.current ||
       followUpTaskActive ||
@@ -1600,7 +1621,14 @@ export default function Home({
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
-      if (!(await refreshCurrentAnalysisRecord(controller))) return;
+      if (
+        !(await refreshCurrentAnalysisRecord(
+          controller,
+          recordId,
+          navigationEpoch,
+        ))
+      )
+        return;
       const live = outlineLiveRef.current;
       if (!live.reading?.interviewQuestions && !live.reading?.outline)
         throw new Error('面试记录已变化，未应用过期提纲。');
@@ -1657,6 +1685,7 @@ export default function Home({
   async function runWrittenTestSupplement() {
     const reading = resumeReading;
     const recordId = library.id;
+    const navigationEpoch = recordNavigationEpoch.current;
     let submittedJobId: string | undefined;
     if (
       busyRef.current ||
@@ -1718,7 +1747,14 @@ export default function Home({
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
-      if (!(await refreshCurrentAnalysisRecord(controller))) return;
+      if (
+        !(await refreshCurrentAnalysisRecord(
+          controller,
+          recordId,
+          navigationEpoch,
+        ))
+      )
+        return;
       const result: WrittenTestSupplementResult = value;
       setResumeReading(applyWrittenTestSupplement(reading, result));
       setHasWrittenTest(true);
@@ -1766,6 +1802,7 @@ export default function Home({
     const reading = resumeReading;
     const artifact = lateWorkSampleArtifact;
     const recordId = library.id;
+    const navigationEpoch = recordNavigationEpoch.current;
     let submittedJobId: string | undefined;
     if (
       busyRef.current ||
@@ -1817,7 +1854,14 @@ export default function Home({
       );
       if (analysisController.current !== controller) return;
       controller.signal.throwIfAborted();
-      if (!(await refreshCurrentAnalysisRecord(controller))) return;
+      if (
+        !(await refreshCurrentAnalysisRecord(
+          controller,
+          recordId,
+          navigationEpoch,
+        ))
+      )
+        return;
       const next = applyLateWorkSample(
         {
           sourceTemplateId,
@@ -2014,6 +2058,7 @@ export default function Home({
       return;
     }
     const recordId = library.id;
+    const navigationEpoch = recordNavigationEpoch.current;
     clearRemoteTaskDisplay();
     busyRef.current = true;
     setBusy('analyze');
@@ -2030,7 +2075,14 @@ export default function Home({
           (job) => trackRemoteWait(controller, job, 'analyze', recordId),
           { fetcher: fetch, pollMs: 2000, ...recordBinding },
         );
-        if (!(await refreshCurrentAnalysisRecord(controller))) return;
+        if (
+          !(await refreshCurrentAnalysisRecord(
+            controller,
+            recordId,
+            navigationEpoch,
+          ))
+        )
+          return;
       } else {
         const r = await fetch('/api/analyze', {
           method: 'POST',
@@ -2048,8 +2100,10 @@ export default function Home({
             (data as Report & { error?: string }).error || '生成评估失败',
           );
       }
-      if (analysisController.current !== controller) return;
-      controller.signal.throwIfAborted();
+      if (!queuedCodex) {
+        if (analysisController.current !== controller) return;
+        controller.signal.throwIfAborted();
+      }
       setReport(data);
       setConfirmed(false);
       setTab('report');
@@ -2251,6 +2305,7 @@ export default function Home({
     onOpenService: () => setSettings(true),
   };
   async function openInterview(id: string) {
+    recordNavigationEpoch.current++;
     await library.open(id);
     setTab('resume');
     setView('workbench');
@@ -2295,8 +2350,9 @@ export default function Home({
     taskCenterNavigationRef.current = true;
     setTaskCenterOpeningId(id);
     if (canDetach) releaseRecordTaskWaits();
+    recordNavigationEpoch.current++;
     try {
-      await library.open(id);
+      await library.openLatest(id);
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -2309,6 +2365,7 @@ export default function Home({
     }
   }
   async function createInterview() {
+    recordNavigationEpoch.current++;
     await library.create();
     setView('workbench');
   }

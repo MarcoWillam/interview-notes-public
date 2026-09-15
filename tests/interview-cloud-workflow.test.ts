@@ -100,6 +100,115 @@ void test('cloud refresh cannot restore a record after the user has selected ano
   assert.deepEqual(restored, []);
 });
 
+void test('opening a task interview synchronizes before restoring the latest cloud result', async () => {
+  const ts = await import('typescript');
+  const source = await readFile(
+    new URL('../hooks/use-interview-library.ts', import.meta.url),
+    'utf8',
+  );
+  const file = ts.createSourceFile(
+    'hook.ts',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const functions = new Map<string, string>();
+  const visit = (node: import('typescript').Node) => {
+    if (ts.isFunctionDeclaration(node) && node.name)
+      functions.set(node.name.text, node.getText(file));
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  assert.ok(functions.has('openRecord'));
+  assert.ok(functions.has('openLatest'));
+
+  const local = {
+    id: 'target-record',
+    candidate: '候选人',
+    createdAt: 1,
+    updatedAt: 1,
+    report: null,
+  };
+  const cloud = {
+    ...local,
+    updatedAt: 2,
+    report: { summary: '云端刚完成的评估' },
+  };
+  let stored = local as typeof local | typeof cloud;
+  const restored: (typeof local | typeof cloud)[] = [];
+  const sequence: string[] = [];
+  const environment = {
+    setWorking: () => {},
+    flush: async () => {
+      sequence.push('flush-current');
+    },
+    options: { cloud: true },
+    synchronize: async () => {
+      sequence.push('sync-cloud');
+      stored = cloud;
+    },
+    localStore: () => ({
+      getInterview: async () => {
+        sequence.push('read-target');
+        return stored;
+      },
+    }),
+    setReady: () => {},
+    createdAt: { current: null },
+    normalizeSession: async (record: typeof stored) => record,
+    selectId: () => {},
+    visibleDraftBase: { current: new Map() },
+    callbacks: {
+      current: {
+        restore: async (record: typeof stored) => {
+          sequence.push('restore-target');
+          restored.push(record);
+        },
+      },
+    },
+    setSaved: () => {},
+  };
+  const compiled = ts.transpile(
+    `${functions.get('openRecord')}\n${functions.get('openLatest')}`,
+    { target: ts.ScriptTarget.ES2022 },
+  );
+  const openLatest = compileFunction(
+    `${compiled}; return openLatest;`,
+    Object.keys(environment),
+  )(...Object.values(environment)) as (id: string) => Promise<void>;
+
+  await openLatest(local.id);
+  assert.deepEqual(sequence, [
+    'flush-current',
+    'sync-cloud',
+    'read-target',
+    'restore-target',
+  ]);
+  assert.equal(restored[0].report?.summary, '云端刚完成的评估');
+  assert.equal('followUpOutlineJobId' in restored[0], false);
+
+  const failedRestores: unknown[] = [];
+  const failedEnvironment = {
+    ...environment,
+    synchronize: async () => {
+      throw new Error('云端同步失败');
+    },
+    callbacks: {
+      current: {
+        restore: async (record: unknown) => {
+          failedRestores.push(record);
+        },
+      },
+    },
+  };
+  const failedOpenLatest = compileFunction(
+    `${compiled}; return openLatest;`,
+    Object.keys(failedEnvironment),
+  )(...Object.values(failedEnvironment)) as (id: string) => Promise<void>;
+  await assert.rejects(failedOpenLatest(local.id), /云端同步失败/);
+  assert.deepEqual(failedRestores, []);
+});
+
 void test('cloud recovery still refreshes after a local write has failed', async () => {
   const hook = await readFile(
     new URL('../hooks/use-interview-library.ts', import.meta.url),

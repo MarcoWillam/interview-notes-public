@@ -236,6 +236,10 @@ void test('task center opens the bound interview in the workbench outline tab', 
     source,
     /async function openInterview\(id: string\)[\s\S]*library\.open\(id\);[\s\S]*setTab\('resume'\);[\s\S]*setView\('workbench'\)/,
   );
+  assert.match(
+    source,
+    /async function openInterviewFromTaskCenter\(id: string\)[\s\S]*library\.openLatest\(id\)/,
+  );
 });
 
 void test('task center navigation opens a record while analysis is busy', async () => {
@@ -246,6 +250,7 @@ void test('task center navigation opens a record while analysis is busy', async 
   const opened: string[] = [];
   const state: Record<string, unknown> = {};
   const busyRef = { current: true };
+  const recordNavigationEpoch = { current: 0 };
   const analysis = new AbortController();
   const followUp = new AbortController();
   const remoteWaitRef = {
@@ -260,6 +265,7 @@ void test('task center navigation opens a record while analysis is busy', async 
     'openInterviewFromTaskCenter',
     {
       taskCenterNavigationRef: { current: false },
+      recordNavigationEpoch,
       setTaskCenterOpeningId: (value: unknown) => {
         state.pending = value;
       },
@@ -274,7 +280,7 @@ void test('task center navigation opens a record while analysis is busy', async 
       },
       library: {
         id: 'interview-one',
-        open: async (id: string) => {
+        openLatest: async (id: string) => {
           opened.push(id);
           await wait;
         },
@@ -312,6 +318,7 @@ void test('task center navigation opens a record while analysis is busy', async 
   assert.equal(state.busy, null);
   assert.equal(state.remoteJob, null);
   assert.equal(remoteWaitRef.current, null);
+  assert.equal(recordNavigationEpoch.current, 1);
   release();
   await opening;
   assert.equal(state.pending, null);
@@ -326,6 +333,7 @@ void test('task center navigation blocks local or unidentified work', async () =
       'openInterviewFromTaskCenter',
       {
         taskCenterNavigationRef: { current: false },
+        recordNavigationEpoch: { current: 0 },
         setTaskCenterOpeningId: (value: unknown) => {
           state.pending = value;
         },
@@ -340,7 +348,7 @@ void test('task center navigation blocks local or unidentified work', async () =
         },
         library: {
           id: 'interview-one',
-          open: async () => {
+          openLatest: async () => {
             opens++;
           },
         },
@@ -376,6 +384,7 @@ void test('task center navigation does not detach an import with a stale remote 
     'openInterviewFromTaskCenter',
     {
       taskCenterNavigationRef: { current: false },
+      recordNavigationEpoch: { current: 0 },
       setTaskCenterOpeningId() {},
       setError: (value: unknown) => {
         state.error = value;
@@ -384,7 +393,7 @@ void test('task center navigation does not detach an import with a stale remote 
       setView() {},
       library: {
         id: 'interview-one',
-        open: async () => {
+        openLatest: async () => {
           opens++;
         },
       },
@@ -427,6 +436,7 @@ void test('task center navigation requires controller and job ownership', async 
       'openInterviewFromTaskCenter',
       {
         taskCenterNavigationRef: { current: false },
+        recordNavigationEpoch: { current: 0 },
         setTaskCenterOpeningId() {},
         setError: (value: unknown) => {
           state.error = value;
@@ -435,7 +445,7 @@ void test('task center navigation requires controller and job ownership', async 
         setView() {},
         library: {
           id: 'interview-one',
-          open: async () => {
+          openLatest: async () => {
             opens++;
           },
         },
@@ -554,6 +564,7 @@ void test('task center navigation exposes open failures and releases pending sta
     'openInterviewFromTaskCenter',
     {
       taskCenterNavigationRef: navigation,
+      recordNavigationEpoch: { current: 0 },
       setTaskCenterOpeningId: (value: unknown) => {
         state.pending = value;
       },
@@ -568,7 +579,7 @@ void test('task center navigation exposes open failures and releases pending sta
       },
       library: {
         id: 'interview-one',
-        open: async () => {
+        openLatest: async () => {
           throw new Error('记录已不存在');
         },
       },
@@ -792,22 +803,475 @@ void test('a cloud refresh from an old record cannot continue on the new record'
   const oldController = new AbortController();
   const newController = new AbortController();
   const analysisController = { current: oldController };
+  const followUpRecordId = { current: 'record-one' };
+  const recordNavigationEpoch = { current: 4 };
   const refresh = await loadPageHandler('refreshCurrentAnalysisRecord', {
     analysisController,
+    followUpRecordId,
+    recordNavigationEpoch,
     library: {
       refreshFromCloud: async () => {
         analysisController.current = newController;
+        followUpRecordId.current = 'record-two';
+        recordNavigationEpoch.current++;
       },
     },
   });
 
   assert.equal(
     await (
-      refresh as unknown as (controller: AbortController) => Promise<boolean>
-    )(oldController),
+      refresh as unknown as (
+        controller: AbortController,
+        recordId: string,
+        navigationEpoch: number,
+      ) => Promise<boolean>
+    )(oldController, 'record-one', 4),
     false,
   );
   assert.equal(analysisController.current, newController);
+});
+
+void test('same-record cloud restore can continue analysis success after releasing its controller', async () => {
+  const { environment, state } = lifecycleEnvironment();
+  const controller = (
+    environment.analysisController as { current: AbortController }
+  ).current;
+  const restore = await loadPageHandler('restoreInterview', environment, [
+    'releaseRecordTaskWaits',
+  ]);
+  const saved = {
+    id: 'record-one',
+    candidate: '云端候选人',
+    role: 'AI 产品经理',
+    requirements: '岗位要求',
+    dimensionText: '自驱力',
+    resumeText: '简历',
+    transcript: '面试记录',
+    reviewed: true,
+    report: { summary: '云端报告' },
+    conclusion: '',
+    confirmed: false,
+    outlineSupplements: [],
+  };
+  const recordNavigationEpoch = { current: 7 };
+  (environment.followUpRecordId as { current: string }).current = 'record-one';
+  Object.assign(environment, {
+    recordNavigationEpoch,
+    library: {
+      refreshFromCloud: async () => {
+        await (
+          restore as unknown as (
+            saved: Record<string, unknown>,
+          ) => Promise<void>
+        )(saved);
+      },
+    },
+  });
+  const refresh = await loadPageHandler(
+    'refreshCurrentAnalysisRecord',
+    environment,
+  );
+
+  assert.equal(
+    await (
+      refresh as unknown as (
+        controller: AbortController,
+        recordId: string,
+        navigationEpoch: number,
+      ) => Promise<boolean>
+    )(controller, 'record-one', 7),
+    true,
+  );
+  assert.equal(controller.signal.aborted, true);
+  assert.equal(
+    (environment.analysisController as { current: unknown }).current,
+    null,
+  );
+  assert.equal(state.candidate, '云端候选人');
+  assert.deepEqual(state.report, { summary: '云端报告' });
+  assert.equal(state.tab, 'resume');
+});
+
+void test('analysis refresh rejects an ABA record navigation', async () => {
+  const controller = new AbortController();
+  const followUpRecordId = { current: 'record-one' };
+  const recordNavigationEpoch = { current: 10 };
+  const refresh = await loadPageHandler('refreshCurrentAnalysisRecord', {
+    analysisController: { current: controller },
+    followUpRecordId,
+    recordNavigationEpoch,
+    library: {
+      refreshFromCloud: async () => {
+        followUpRecordId.current = 'record-two';
+        recordNavigationEpoch.current++;
+        followUpRecordId.current = 'record-one';
+        recordNavigationEpoch.current++;
+      },
+    },
+  });
+
+  assert.equal(
+    await (
+      refresh as unknown as (
+        controller: AbortController,
+        recordId: string,
+        navigationEpoch: number,
+      ) => Promise<boolean>
+    )(controller, 'record-one', 10),
+    false,
+  );
+});
+
+void test('assessment success still publishes its report after same-record restore cleanup', async () => {
+  const state: Record<string, unknown> = {};
+  const busyRef = { current: false };
+  const analysisController = { current: null as AbortController | null };
+  const remoteWaitRef = { current: null };
+  const cancelledRemotely = { current: false };
+  const followUpRecordId = { current: 'record-one' };
+  const recordNavigationEpoch = { current: 2 };
+  const report = {
+    summary: '最新云端评估',
+    dimensions: [],
+    followUps: [],
+  };
+  const library = {
+    id: 'record-one',
+    flushForTask: async () => ({
+      interviewId: 'record-one',
+      interviewRevision: 4,
+    }),
+    refreshFromCloud: async () => {
+      analysisController.current?.abort();
+      analysisController.current = null;
+      busyRef.current = false;
+    },
+  };
+  const analyze = await loadPageHandler(
+    'analyze',
+    {
+      busyRef,
+      outlineTaskActive: false,
+      followUpTaskActive: false,
+      setError: (value: unknown) => {
+        state.error = value;
+      },
+      validateInput() {},
+      input: {},
+      reviewed: true,
+      library,
+      recordNavigationEpoch,
+      followUpRecordId,
+      analysisController,
+      remoteWaitRef,
+      cancelledRemotely,
+      setRemoteJob() {},
+      setCancelling() {},
+      setBusy: (value: unknown) => {
+        state.busy = value;
+      },
+      queuedCodex: true,
+      candidate: '候选人',
+      role: 'AI 产品经理',
+      submitRemoteAnalysis: async () => report,
+      fetch: async () => {
+        throw new Error('unexpected local request');
+      },
+      localCodex: false,
+      setReport: (value: unknown) => {
+        state.report = value;
+      },
+      setConfirmed: (value: unknown) => {
+        state.confirmed = value;
+      },
+      setTab: (value: unknown) => {
+        state.tab = value;
+      },
+      setNotice: (value: unknown) => {
+        state.notice = value;
+      },
+    },
+    [
+      'clearRemoteTaskDisplay',
+      'trackRemoteWait',
+      'refreshCurrentAnalysisRecord',
+      'finishAnalysisWait',
+    ],
+  );
+
+  await (analyze as unknown as () => Promise<void>)();
+  assert.deepEqual(state.report, report);
+  assert.equal(state.tab, 'report');
+  assert.equal(state.confirmed, false);
+  assert.match(String(state.notice), /辅助评估已生成/);
+});
+
+void test('resume success keeps candidate conflict handling after same-record restore cleanup', async () => {
+  const state: Record<string, unknown> = {};
+  const busyRef = { current: false };
+  const analysisController = { current: null as AbortController | null };
+  const remoteWaitRef = { current: null };
+  const cancelledRemotely = { current: false };
+  const followUpRecordId = { current: 'record-one' };
+  const recordNavigationEpoch = { current: 3 };
+  const reading = { candidateName: '新姓名', workSample: null };
+  const library = {
+    id: 'record-one',
+    flushForTask: async () => ({
+      interviewId: 'record-one',
+      interviewRevision: 5,
+    }),
+    refreshFromCloud: async () => {
+      analysisController.current?.abort();
+      analysisController.current = null;
+      busyRef.current = false;
+    },
+  };
+  const runResume = await loadPageHandler(
+    'runResumeReading',
+    {
+      resumeOutlineLocked: () => false,
+      resumeReading: null,
+      setError: (value: unknown) => {
+        state.error = value;
+      },
+      library,
+      recordNavigationEpoch,
+      setPendingResumeOutline() {},
+      analysisController,
+      busyRef,
+      setBusy: (value: unknown) => {
+        state.busy = value;
+      },
+      setNotice: (value: unknown) => {
+        state.notice = value;
+      },
+      setPendingCandidateName: (value: unknown) => {
+        state.pendingCandidateName = value;
+      },
+      remoteWaitRef,
+      setRemoteJob() {},
+      setCancelling() {},
+      cancelledRemotely,
+      resumeContext: {
+        current: {
+          candidate: '原姓名',
+          role: 'AI 产品经理',
+          requirements: '岗位要求',
+          dimensionText: '自驱力',
+          focus: '',
+          scoringGuidance: '',
+          reportRequirements: '',
+          outlineVersion: 3,
+          sourceTemplateId: 'ai-product-manager',
+          queuedCodex: true,
+        },
+      },
+      validateResumeInput: (value: unknown) => value,
+      BUILTIN_TEMPLATE_IDS: { aiProductManager: 'ai-product-manager' },
+      submitRemoteResume: async () => reading,
+      fetch: async () => {
+        throw new Error('unexpected fetch');
+      },
+      followUpRecordId,
+      setResumeReading: (value: unknown) => {
+        state.resumeReading = value;
+      },
+      setWorkSample: (value: unknown) => {
+        state.workSample = value;
+      },
+      setWorkSampleJobId: (value: unknown) => {
+        state.workSampleJobId = value;
+      },
+      reconcileCandidateName: (current: string, detected: string) => ({
+        kind: 'confirm',
+        current,
+        detected,
+      }),
+      applyDetectedCandidate() {
+        throw new Error('unexpected fill');
+      },
+      setTab: (value: unknown) => {
+        state.tab = value;
+      },
+    },
+    [
+      'clearRemoteTaskDisplay',
+      'trackRemoteWait',
+      'refreshCurrentAnalysisRecord',
+      'finishAnalysisWait',
+    ],
+  );
+
+  await (
+    runResume as unknown as (
+      text: string,
+      name: string,
+      writtenTest: boolean,
+    ) => Promise<void>
+  )('候选人简历', '候选人.docx', false);
+  assert.deepEqual(state.resumeReading, reading);
+  assert.deepEqual(state.pendingCandidateName, {
+    kind: 'confirm',
+    current: '原姓名',
+    detected: '新姓名',
+  });
+  assert.equal(state.tab, 'resume');
+  assert.match(String(state.notice), /简历要点已整理/);
+});
+
+void test('outline success keeps its completion notice after same-record restore cleanup', async () => {
+  const state: Record<string, unknown> = {};
+  const reading = { outline: { version: 3 } };
+  const result = { version: 3, revision: 'outline-revision' };
+  const busyRef = { current: false };
+  const analysisController = { current: null as AbortController | null };
+  const followUpRecordId = { current: 'record-one' };
+  const recordNavigationEpoch = { current: 6 };
+  const standards = { role: 'AI 产品经理' };
+  const library = {
+    id: 'record-one',
+    flushForTask: async () => ({
+      interviewId: 'record-one',
+      interviewRevision: 8,
+    }),
+    refreshFromCloud: async () => {
+      analysisController.current?.abort();
+      analysisController.current = null;
+      busyRef.current = false;
+    },
+  };
+  const runOutline = await loadPageHandler(
+    'runOutlineRegeneration',
+    {
+      resumeReading: reading,
+      library,
+      recordNavigationEpoch,
+      busyRef,
+      followUpTaskActive: false,
+      canRegenerateOutline: () => true,
+      resumeText: '简历正文',
+      transcript: '',
+      report: null,
+      confirmed: false,
+      outlineRegeneratedAt: undefined,
+      outlineRegenerationJobId: undefined,
+      writtenTestJobId: undefined,
+      workSampleJobId: undefined,
+      followUpOutlineJobId: undefined,
+      setPendingOutlineRegeneration() {},
+      setError: (value: unknown) => {
+        state.error = value;
+      },
+      analysisController,
+      setBusy: (value: unknown) => {
+        state.busy = value;
+      },
+      setNotice: (value: unknown) => {
+        state.notice = value;
+      },
+      remoteWaitRef: { current: null },
+      setRemoteJob() {},
+      setCancelling() {},
+      cancelledRemotely: { current: false },
+      queuedCodex: true,
+      createOutlineRegenerationInput: async () => ({
+        revision: 'outline-revision',
+      }),
+      standards,
+      setOutlineRevision: (value: unknown) => {
+        state.outlineRevision = value;
+      },
+      submitRemoteOutline: async () => result,
+      candidate: '候选人',
+      resumeName: '候选人.docx',
+      fetch: async () => {
+        throw new Error('unexpected fetch');
+      },
+      followUpRecordId,
+      outlineLiveRef: {
+        current: {
+          recordId: 'record-one',
+          resumeText: '简历正文',
+          standards,
+          reading,
+          transcript: '',
+          report: null,
+          confirmed: false,
+        },
+      },
+      canApplyOutlineRegeneration: () => true,
+      validateOutlineRegenerationResult: () => result,
+      applyOutlineRegeneration: () => ({ outline: { version: 3 } }),
+      setResumeReading: (value: unknown) => {
+        state.resumeReading = value;
+      },
+      setOutlineRegeneratedAt: (value: unknown) => {
+        state.outlineRegeneratedAt = value;
+      },
+      setOutlineRegenerationJobId: (value: unknown) => {
+        state.outlineRegenerationJobId = value;
+      },
+      setTab: (value: unknown) => {
+        state.tab = value;
+      },
+    },
+    [
+      'clearRemoteTaskDisplay',
+      'trackRemoteWait',
+      'refreshCurrentAnalysisRecord',
+      'finishAnalysisWait',
+    ],
+  );
+
+  await (runOutline as unknown as () => Promise<void>)();
+  assert.deepEqual(state.resumeReading, { outline: { version: 3 } });
+  assert.equal(state.tab, 'resume');
+  assert.match(String(state.notice), /面试提纲已重新生成/);
+});
+
+void test('analysis completions bind refreshes to record identity and navigation generation', async () => {
+  const source = await readFile(
+    new URL('../app/page.tsx', import.meta.url),
+    'utf8',
+  );
+  const handlers = [
+    ['runResumeReading', 'confirmResumeOutlineGeneration'],
+    ['runOutlineRegeneration', 'runWrittenTestSupplement'],
+    ['runWrittenTestSupplement', 'openLateWorkSample'],
+    ['runLateWorkSample', 'const hasContent'],
+    ['analyze', 'cancelAnalysis'],
+  ] as const;
+  for (const [name, next] of handlers) {
+    const body = source.slice(
+      source.indexOf(`async function ${name}`),
+      source.indexOf(next === 'const hasContent' ? next : `function ${next}`),
+    );
+    assert.match(body, /const recordId = library\.id/);
+    assert.match(
+      body,
+      /const navigationEpoch = recordNavigationEpoch\.current/,
+    );
+    assert.match(
+      body,
+      /refreshCurrentAnalysisRecord\(\s*controller,\s*recordId,\s*navigationEpoch,?\s*\)/,
+    );
+  }
+  const analyze = source.slice(
+    source.indexOf('async function analyze()'),
+    source.indexOf('async function cancelAnalysis()'),
+  );
+  assert.match(analyze, /setReport\(data\)[\s\S]*setTab\('report'\)/);
+  const resume = source.slice(
+    source.indexOf('async function runResumeReading'),
+    source.indexOf('function confirmResumeOutlineGeneration'),
+  );
+  assert.match(resume, /reconcileCandidateName[\s\S]*setPendingCandidateName/);
+  const outline = source.slice(
+    source.indexOf('async function runOutlineRegeneration'),
+    source.indexOf('async function runWrittenTestSupplement'),
+  );
+  assert.match(outline, /setNotice\('面试提纲已重新生成/);
 });
 
 void test('task center labels work samples and names the offline target computer', async () => {
