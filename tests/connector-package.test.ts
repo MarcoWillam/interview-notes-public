@@ -23,6 +23,7 @@ void test('connector package keeps interview prompts and validators on the serve
     'lib/interview-outline-v3.ts',
     'lib/interview-outline-v3-prompt.ts',
     'lib/outline-v3-supplement.ts',
+    'lib/follow-up-outline.ts',
   ])
     assert.equal(
       connectorPackageFiles.includes(file),

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { builtInRoleTemplates } from '../lib/default-role-templates.ts';
 import { executionContractFor } from '../server/execution-contract.ts';
+import { followUpInputFixture } from './fixtures/follow-up-outline.ts';
 
 const standards = builtInRoleTemplates[0];
 const resumeText = '姓名：林小满。组织校园用户访谈并完成两轮验证。';
@@ -132,4 +133,46 @@ void test('server appends bounded semantic feedback only on retry', () => {
   );
   assert.equal(contract.attempt, 2);
   assert.match(contract.instructions, /上一次结果未通过服务器校验/);
+});
+
+void test('server builds a validated follow-up outline text contract', () => {
+  const source = followUpInputFixture();
+  const contract = executionContractFor('follow-up-outline', {
+    ...source,
+    requestedFocus: '  自驱力与主动发现问题  ',
+  });
+  assert.equal(contract.runner, 'structured-text');
+  assert.equal(
+    (contract.payload as { requestedFocus: string }).requestedFocus,
+    '自驱力与主动发现问题',
+  );
+  assert.equal(
+    (contract.schema as { properties: { questions: { minItems: number; maxItems: number } } })
+      .properties.questions.minItems,
+    2,
+  );
+  assert.equal(
+    (contract.schema as { properties: { questions: { minItems: number; maxItems: number } } })
+      .properties.questions.maxItems,
+    2,
+  );
+  assert.match(contract.instructions, /自然、亲和/);
+  assert.match(contract.instructions, /12–30/);
+});
+
+void test('follow-up outline retries append bounded feedback without changing payload', () => {
+  const input = followUpInputFixture();
+  const initial = executionContractFor('follow-up-outline', input, {
+    feedback: '初次执行不应附带历史校验信息。',
+  });
+  const contract = executionContractFor('follow-up-outline', input, {
+    attempt: 2,
+    feedback: `问题不符合约束。\n${'x'.repeat(2000)}`,
+  });
+  assert.doesNotMatch(initial.instructions, /上一次结果未通过服务器校验/);
+  assert.equal(contract.attempt, 2);
+  assert.deepEqual(contract.payload, executionContractFor('follow-up-outline', input).payload);
+  assert.match(contract.instructions, /上一次结果未通过服务器校验/);
+  assert.ok(contract.instructions.endsWith('请修正后重新返回完整 JSON。'));
+  assert.ok(contract.instructions.length < 3_000);
 });

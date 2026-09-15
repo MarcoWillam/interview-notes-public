@@ -9,6 +9,7 @@ import {
 import { writtenTestSupplementSchema } from '../lib/written-test-supplement.ts';
 import { outlineV2SupplementSchema } from '../lib/outline-v2-supplement.ts';
 import { outlineRegenerationOutputSchema } from '../lib/outline-regeneration.ts';
+import { followUpOutlineOutputSchema } from '../lib/follow-up-outline.ts';
 
 function assertStrictObjectSchemas(value: unknown, path = 'root') {
   if (!value || typeof value !== 'object') return;
@@ -40,8 +41,19 @@ void test('every Codex output schema satisfies strict required-property rules', 
     workSampleSchema,
     workSampleAnalysisV2Schema,
     outlineRegenerationSchemaV2: outlineRegenerationOutputSchema(2),
+    followUpOutlineOutputSchema,
   }))
     assertStrictObjectSchemas(schema, name);
+});
+
+void test('follow-up outline schema fixes the requested focus and exactly two questions', () => {
+  const questions = followUpOutlineOutputSchema.properties.questions;
+  assert.equal(questions.minItems, 2);
+  assert.equal(questions.maxItems, 2);
+  assert.equal(
+    followUpOutlineOutputSchema.properties.requestedFocus.minLength,
+    2,
+  );
 });
 
 void test('resume output schema selects exactly one outline contract', () => {
