@@ -1,10 +1,18 @@
 import {
+  validateQuestionItems,
+} from './interview-questions.ts';
+import {
   validateResumeInput,
   validateResumeReading,
   type ResumeInput,
   type ResumeReading,
 } from './resume-reading.ts';
 import type { WorkSampleReference } from './work-sample.ts';
+
+type LegacyFollowUpQuestions = NonNullable<ResumeReading['interviewQuestions']>;
+type FollowUpResumeReading = ResumeReading & {
+  workSampleQuestions?: LegacyFollowUpQuestions;
+};
 
 export type FollowUpOutlineInput = {
   role: string;
@@ -14,7 +22,7 @@ export type FollowUpOutlineInput = {
   scoringGuidance: string;
   reportRequirements: string;
   resumeText: string;
-  resumeReading: ResumeReading;
+  resumeReading: FollowUpResumeReading;
   outlineVersion: 1 | 2 | 3;
   requestedFocus: string;
   existingSupplements: FollowUpOutlineGroup[];
@@ -235,6 +243,18 @@ function strictQuestionShape(
     if (!record(value.workSampleEvidence)) throw new Error('作品依据格式不正确。');
     exactKeys(value.workSampleEvidence, ['path', 'excerpt'], '作品依据');
   }
+  if (!Array.isArray(value.probes)) throw new Error('简历阅读追问格式不正确。');
+  const outlineQuestion = fields === outlineQuestionFields;
+  value.probes.forEach((probe) => {
+    if (outlineQuestion) {
+      if (!record(probe)) throw new Error('条件追问格式不正确。');
+      exactKeys(probe, ['condition', 'question'], '条件追问');
+      boundedText(probe.condition, 500, '追问条件');
+      boundedText(probe.question, 500, '追问问题');
+    } else {
+      boundedText(probe, 1000, '追问问题');
+    }
+  });
 }
 
 function strictQuestionList(
@@ -277,6 +297,8 @@ function strictResumeReadingShape(
   );
   strictQuestionList(value.writtenTestSupplement, legacyQuestionFields);
   strictQuestionList(value.workSampleQuestions, legacyQuestionFields);
+  if (outlineVersion !== 1 && value.workSampleQuestions !== undefined)
+    throw new Error('V2/V3 简历阅读不能包含旧版作品问题。');
   if (record(value.outline)) {
     exactKeys(
       value.outline,
@@ -501,6 +523,38 @@ export function validateFollowUpOutlineInput(value: unknown): FollowUpOutlineInp
     value.resumeReading,
     resumeInput,
   );
+  const legacyWorkSampleQuestions = property(
+    value.resumeReading,
+    'workSampleQuestions',
+  );
+  const normalizedLegacyWorkSampleQuestions =
+    legacyWorkSampleQuestions === undefined
+      ? undefined
+      : validateQuestionItems(legacyWorkSampleQuestions, {
+          expectedCount: Array.isArray(legacyWorkSampleQuestions)
+            ? legacyWorkSampleQuestions.length
+            : -1,
+          allowedDimensions: new Set(
+            dimensionText
+              .split(/[、,，\n]/)
+              .map((item) => item.trim())
+              .filter(Boolean),
+          ),
+          allowedSources: new Set([
+            'resume',
+            'written-test',
+            'work-sample',
+            'role',
+          ]),
+          resumeText,
+        });
+  const normalizedResumeReading: FollowUpResumeReading =
+    normalizedLegacyWorkSampleQuestions === undefined
+      ? resumeReading
+      : {
+          ...resumeReading,
+          workSampleQuestions: normalizedLegacyWorkSampleQuestions,
+        };
   const requestedFocus = normalizeRequestedFocus(value.requestedFocus);
   if (!Array.isArray(value.existingSupplements) || value.existingSupplements.length > 50)
     throw new Error('已有补充追问分组数量不正确。');
@@ -515,7 +569,7 @@ export function validateFollowUpOutlineInput(value: unknown): FollowUpOutlineInp
     scoringGuidance,
     reportRequirements,
     resumeText,
-    resumeReading,
+    resumeReading: normalizedResumeReading,
     outlineVersion,
     requestedFocus,
     existingSupplements,
