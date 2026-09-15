@@ -508,10 +508,11 @@ export function useInterviewLibrary(
       if (interviewId === activeId.current) setReady(true);
     }
   }
-  async function open(nextId: string) {
+  async function openRecord(nextId: string, latest: boolean) {
     setWorking(true);
     try {
       await flush();
+      if (latest && options.cloud) await synchronize();
       const row = await localStore().getInterview(nextId);
       if (!row) throw new Error('记录已不存在');
       setReady(false);
@@ -534,6 +535,12 @@ export function useInterviewLibrary(
       setReady(true);
       setWorking(false);
     }
+  }
+  async function open(nextId: string) {
+    await openRecord(nextId, false);
+  }
+  async function openLatest(nextId: string) {
+    await openRecord(nextId, true);
   }
   async function create() {
     setWorking(true);
@@ -835,6 +842,7 @@ export function useInterviewLibrary(
     refreshFromCloud,
     refreshFollowUpFromCloud,
     open,
+    openLatest,
     create,
     remove,
     persist,
