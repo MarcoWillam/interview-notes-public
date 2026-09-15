@@ -33,11 +33,14 @@ import {
   migrateAndSyncInterviews,
   type InterviewWorkspace,
 } from '@/lib/interview-sync';
+import { mergeFollowUpRefresh } from '@/lib/interview-follow-up-refresh';
 import {
   interviewDraft,
-  mergeFollowUpRefresh,
-} from '@/lib/interview-follow-up-refresh';
-export type Draft = Omit<SavedInterview, 'id' | 'createdAt' | 'updatedAt'>;
+  reconcileInterviewDraft,
+  sameInterviewDraft,
+  type InterviewDraft,
+} from '@/lib/interview-draft-merge';
+export type Draft = InterviewDraft;
 type FollowUpFields = Pick<
   Draft,
   'outlineSupplements' | 'followUpOutlineJobId'
@@ -382,23 +385,90 @@ export function useInterviewLibrary(
     timer.current = null;
     const currentId = activeId.current;
     if (!ready || !currentId) throw new Error('本地存储尚未就绪');
+    let conflictId: string | undefined;
     while (activeId.current === currentId) {
       const queuedWrites = writes.current;
       await queuedWrites.catch(() => {});
       if (writes.current !== queuedWrites) continue;
 
-      const value = callbacks.current.draft;
-      const stamp = JSON.stringify(value);
+      const visibleBase = visibleDraftBase.current.get(currentId);
+      const commonBase: InterviewDraft | undefined =
+        visibleBase?.id === currentId ? interviewDraft(visibleBase) : undefined;
+      const value = structuredClone(callbacks.current.draft);
+      const stamp = value;
       const persisted = await localStore().getInterview(currentId);
       if (
         activeId.current !== currentId ||
         writes.current !== queuedWrites ||
-        JSON.stringify(callbacks.current.draft) !== stamp
+        !sameInterviewDraft(callbacks.current.draft, stamp)
       )
         continue;
-      if (persisted && JSON.stringify(interviewDraft(persisted)) === stamp)
-        return;
-      await write(currentId, value);
+      if (!persisted) {
+        if (commonBase)
+          throw new Error('当前面试记录已在其他页面删除，请刷新后重试。');
+        await write(currentId, value);
+      } else {
+        const result = reconcileInterviewDraft(
+          commonBase,
+          value,
+          interviewDraft(persisted),
+        );
+        if (result.kind === 'clean') return;
+        if (result.kind === 'conflict') {
+          conflictId ||= crypto.randomUUID();
+          const local: SavedInterview = {
+            ...(visibleBase || persisted),
+            ...value,
+            id: currentId,
+            createdAt:
+              visibleBase?.createdAt ??
+              persisted.createdAt ??
+              createdAt.current ??
+              Date.now(),
+            updatedAt: Date.now(),
+          };
+          const store = localStore();
+          const pending = (await store.listPendingSync()).find(
+            (item) => item.id === currentId,
+          );
+          if (
+            activeId.current !== currentId ||
+            writes.current !== queuedWrites ||
+            !sameInterviewDraft(callbacks.current.draft, stamp)
+          )
+            continue;
+          await store.saveInterviewConflict(local, persisted, conflictId);
+          if (pending)
+            await store.dropPendingSync(currentId, pending.mutationId);
+          if (activeId.current !== currentId) break;
+          if (
+            writes.current !== queuedWrites ||
+            !sameInterviewDraft(callbacks.current.draft, stamp)
+          )
+            continue;
+          const nextConflicts = await store.listInterviewConflicts();
+          if (activeId.current !== currentId) break;
+          setConflicts(nextConflicts);
+          setConflictCount(nextConflicts.length);
+          setSyncStatus('conflict');
+          setError(
+            '面试资料存在同时编辑的冲突，双方版本均已保留，请在记录管理中处理。',
+          );
+          return;
+        }
+        await write(currentId, result.draft);
+        if (activeId.current !== currentId) break;
+        // The page still displays `value` until navigation completes. Keep that
+        // visible snapshot as the next common base if input arrives meanwhile.
+        visibleDraftBase.current.set(currentId, {
+          ...persisted,
+          ...value,
+          id: currentId,
+          updatedAt: Date.now(),
+        });
+      }
+      if (activeId.current !== currentId) break;
+      if (sameInterviewDraft(callbacks.current.draft, stamp)) return;
     }
     throw new Error('面试记录已切换，请重试。');
   }

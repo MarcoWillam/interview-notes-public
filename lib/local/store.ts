@@ -458,9 +458,18 @@ export function createLocalStore(
           } satisfies InterviewSyncMeta);
         };
       }),
-    dropPendingSync: (id: string) =>
+    dropPendingSync: (id: string, mutationId?: string) =>
       run<void>(['syncOutbox'], 'readwrite', (tx) => {
-        tx.objectStore('syncOutbox').delete(id);
+        const outbox = tx.objectStore('syncOutbox');
+        if (!mutationId) {
+          outbox.delete(id);
+          return;
+        }
+        const request = outbox.get(id);
+        request.onsuccess = () => {
+          const current = request.result as InterviewSyncOutbox | undefined;
+          if (current?.mutationId === mutationId) outbox.delete(id);
+        };
       }),
     saveFollowUpRefresh: (
       record: SavedInterview,
@@ -509,9 +518,13 @@ export function createLocalStore(
           syncedAt: Date.now(),
         } satisfies InterviewSyncMeta);
       }),
-    saveInterviewConflict: (local: SavedInterview, remote: SavedInterview) =>
+    saveInterviewConflict: (
+      local: SavedInterview,
+      remote: SavedInterview,
+      conflictId = crypto.randomUUID(),
+    ) =>
       put('conflicts', {
-        id: crypto.randomUUID(),
+        id: conflictId,
         interviewId: local.id,
         local,
         remote,

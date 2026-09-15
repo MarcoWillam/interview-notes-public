@@ -213,8 +213,10 @@ void test('opening another record does not supersede an accepted task with an un
   const ts = await import('typescript');
   const { IDBFactory } = await import('fake-indexeddb');
   const { createLocalStore } = await import('../lib/local/store.ts');
-  const { interviewDraft } =
-    await import('../lib/interview-follow-up-refresh.ts');
+  const { interviewDraft, reconcileInterviewDraft, sameInterviewDraft } =
+    await import('../lib/interview-draft-merge.ts');
+  const { followUpGroupFixture } =
+    await import('./fixtures/follow-up-outline.ts');
   const source = await readFile(
     new URL('../hooks/use-interview-library.ts', import.meta.url),
     'utf8',
@@ -273,8 +275,19 @@ void test('opening another record does not supersede an accepted task with an un
     updatedAt: 2,
     conclusion: '云端最新结论',
   };
+  const activeTaskResult = {
+    ...active,
+    updatedAt: 2,
+    report: {
+      summary: '后台任务刚生成的报告',
+      dimensions: [],
+      followUps: [],
+    },
+    outlineSupplements: [followUpGroupFixture()],
+    followUpOutlineJobId: 'job-applied',
+  };
   const store = createLocalStore(new IDBFactory(), 'navigation-running-task');
-  await store.saveRemoteInterview(active, 5);
+  await store.saveRemoteInterview(activeTaskResult, 6);
   await store.saveRemoteInterview(target, 1);
   const activeId = { current: active.id };
   const writes = { current: Promise.resolve() };
@@ -317,14 +330,19 @@ void test('opening another record does not supersede an accepted task with an un
     callbacks,
     localStore: () => store,
     interviewDraft,
+    reconcileInterviewDraft,
+    sameInterviewDraft,
     write,
     setWorking: () => {},
     options: { cloud: true },
     synchronize: async () => {
       const pending = await store.listPendingSync();
+      const latestActive = await store.getInterview(active.id);
       taskApplied =
         !pending.some((item) => item.id === active.id) &&
-        (await store.getSyncMeta(active.id))?.revision === 5;
+        (await store.getSyncMeta(active.id))?.revision === 6 &&
+        latestActive?.report?.summary === '后台任务刚生成的报告' &&
+        latestActive?.outlineSupplements?.length === 1;
       await store.saveRemoteInterview(cloudTarget, 2);
     },
     setReady: () => {},
@@ -333,7 +351,11 @@ void test('opening another record does not supersede an accepted task with an un
     selectId: (nextId: string) => {
       activeId.current = nextId;
     },
-    visibleDraftBase: { current: new Map() },
+    visibleDraftBase: { current: new Map([[active.id, active]]) },
+    setConflicts: () => {},
+    setConflictCount: () => {},
+    setSyncStatus: () => {},
+    setError: () => {},
     setSaved: () => {},
   };
   const openLatest = compileFunction(
@@ -344,8 +366,12 @@ void test('opening another record does not supersede an accepted task with an un
   await openLatest(target.id);
   assert.equal(writeCount, 0);
   assert.equal((await store.listPendingSync()).length, 0);
-  assert.equal((await store.getSyncMeta(active.id))?.revision, 5);
+  assert.equal((await store.getSyncMeta(active.id))?.revision, 6);
   assert.equal(taskApplied, true);
+  assert.equal(
+    (await store.getInterview(active.id))?.report?.summary,
+    '后台任务刚生成的报告',
+  );
   assert.deepEqual(restored, [cloudTarget]);
 });
 
@@ -353,8 +379,10 @@ void test('navigation saves only actual draft changes and waits for queued write
   const ts = await import('typescript');
   const { IDBFactory } = await import('fake-indexeddb');
   const { createLocalStore } = await import('../lib/local/store.ts');
-  const { interviewDraft } =
-    await import('../lib/interview-follow-up-refresh.ts');
+  const { interviewDraft, reconcileInterviewDraft, sameInterviewDraft } =
+    await import('../lib/interview-draft-merge.ts');
+  const { followUpGroupFixture } =
+    await import('./fixtures/follow-up-outline.ts');
   const source = await readFile(
     new URL('../hooks/use-interview-library.ts', import.meta.url),
     'utf8',
@@ -406,6 +434,7 @@ void test('navigation saves only actual draft changes and waits for queued write
   pendingTimer.unref();
   const timer = { current: pendingTimer };
   const savedDrafts: unknown[] = [];
+  const visibleDraftBase = { current: new Map([[record.id, record]]) };
   const environment = {
     ready: true,
     timer,
@@ -414,6 +443,14 @@ void test('navigation saves only actual draft changes and waits for queued write
     callbacks,
     localStore: () => store,
     interviewDraft,
+    reconcileInterviewDraft,
+    sameInterviewDraft,
+    visibleDraftBase,
+    createdAt: { current: 1 },
+    setConflicts: () => {},
+    setConflictCount: () => {},
+    setSyncStatus: () => {},
+    setError: () => {},
     write: async (id: string, draft: ReturnType<typeof interviewDraft>) => {
       savedDrafts.push(draft);
       const saved = { ...draft, id, createdAt: 1, updatedAt: Date.now() };
@@ -471,6 +508,103 @@ void test('navigation saves only actual draft changes and waits for queued write
   writes.current = Promise.resolve();
   await flushDirty();
   assert.equal((await store.getInterview('new-record'))?.candidate, '新记录');
+
+  const backgroundId = 'background-task-result';
+  const backgroundBase = { ...record, id: backgroundId };
+  const group = followUpGroupFixture();
+  const backgroundRemote = {
+    ...backgroundBase,
+    updatedAt: 6,
+    report: {
+      summary: '后台任务生成的报告',
+      dimensions: [],
+      followUps: [],
+    },
+    outlineSupplements: [group],
+    followUpOutlineJobId: 'job-background',
+  };
+  await store.saveRemoteInterview(backgroundRemote, 6);
+  activeId.current = backgroundId;
+  callbacks.current.draft = interviewDraft(backgroundBase);
+  visibleDraftBase.current.set(backgroundId, backgroundBase);
+  writes.current = Promise.resolve();
+  const beforeCleanNavigation = savedDrafts.length;
+  await flushDirty();
+  assert.equal(savedDrafts.length, beforeCleanNavigation);
+  assert.equal(
+    (await store.getInterview(backgroundId))?.report?.summary,
+    '后台任务生成的报告',
+  );
+  assert.deepEqual(
+    (await store.getInterview(backgroundId))?.outlineSupplements,
+    [group],
+  );
+  assert.equal(
+    (await store.listPendingSync()).some((item) => item.id === backgroundId),
+    false,
+  );
+
+  const mergedId = 'background-task-with-local-note';
+  const mergedBase = { ...record, id: mergedId };
+  const mergedRemote = {
+    ...mergedBase,
+    updatedAt: 7,
+    report: {
+      summary: '需要保留的后台报告',
+      dimensions: [],
+      followUps: [],
+    },
+    followUpOutlineJobId: 'job-running-elsewhere',
+  };
+  await store.saveRemoteInterview(mergedRemote, 7);
+  activeId.current = mergedId;
+  callbacks.current.draft = {
+    ...interviewDraft(mergedBase),
+    focus: '面试官刚补充的备注',
+  };
+  visibleDraftBase.current.set(mergedId, mergedBase);
+  writes.current = Promise.resolve();
+  await flushDirty();
+  const mergedOutbox = (await store.listPendingSync()).find(
+    (item) => item.id === mergedId,
+  );
+  assert.equal(mergedOutbox?.baseRevision, 7);
+  assert.equal(mergedOutbox?.record?.focus, '面试官刚补充的备注');
+  assert.equal(mergedOutbox?.record?.report?.summary, '需要保留的后台报告');
+  assert.equal(
+    mergedOutbox?.record?.followUpOutlineJobId,
+    'job-running-elsewhere',
+  );
+
+  const conflictId = 'background-task-conflict';
+  const conflictBase = { ...record, id: conflictId, transcript: '共同版本' };
+  const conflictRemote = {
+    ...conflictBase,
+    updatedAt: 8,
+    transcript: '后台任务更新的面试记录',
+  };
+  await store.saveRemoteInterview(conflictRemote, 8);
+  activeId.current = conflictId;
+  callbacks.current.draft = {
+    ...interviewDraft(conflictBase),
+    transcript: '面试官本页更新的面试记录',
+  };
+  visibleDraftBase.current.set(conflictId, conflictBase);
+  writes.current = Promise.resolve();
+  await flushDirty();
+  const conflict = (await store.listInterviewConflicts()).find(
+    (item) => item.interviewId === conflictId,
+  );
+  assert.equal(conflict?.local.transcript, '面试官本页更新的面试记录');
+  assert.equal(conflict?.remote.transcript, '后台任务更新的面试记录');
+  assert.equal(
+    (await store.listPendingSync()).some((item) => item.id === conflictId),
+    false,
+  );
+  assert.equal(
+    (await store.getInterview(conflictId))?.transcript,
+    '后台任务更新的面试记录',
+  );
 });
 
 void test('cloud recovery still refreshes after a local write has failed', async () => {

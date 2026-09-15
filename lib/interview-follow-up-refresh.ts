@@ -1,22 +1,16 @@
 import type { CloudInterview } from './cloud-interview.ts';
+import {
+  interviewDraft,
+  type InterviewDraft,
+} from './interview-draft-merge.ts';
 
-type Draft = Omit<CloudInterview, 'id' | 'createdAt' | 'updatedAt'>;
 const taskFields = new Set(['outlineSupplements', 'followUpOutlineJobId']);
-
-export function interviewDraft(record: CloudInterview): Draft {
-  const {
-    id: _id,
-    createdAt: _createdAt,
-    updatedAt: _updatedAt,
-    ...draft
-  } = record;
-  return draft;
-}
+export { interviewDraft } from './interview-draft-merge.ts';
 
 /** Only a persisted snapshot without an outbox is a known common base. */
 export function mergeFollowUpRefresh(
   base: CloudInterview,
-  local: Draft,
+  local: InterviewDraft,
   remote: CloudInterview,
   hasPendingSync: boolean,
 ) {
@@ -31,7 +25,7 @@ export function mergeFollowUpRefresh(
   ]);
   for (const rawKey of keys) {
     if (taskFields.has(rawKey)) continue;
-    const key = rawKey as keyof Draft;
+    const key = rawKey as keyof InterviewDraft;
     const localField = Object.hasOwn(local, key) ? local[key] : baseDraft[key];
     const localValue = JSON.stringify(localField);
     const remoteValue = JSON.stringify(remoteDraft[key]);
@@ -52,7 +46,7 @@ export function mergeFollowUpRefresh(
   const upload =
     !conflict &&
     [...keys].some((rawKey) => {
-      const key = rawKey as keyof Draft;
+      const key = rawKey as keyof InterviewDraft;
       return JSON.stringify(draft[key]) !== JSON.stringify(remoteDraft[key]);
     });
   return { draft, conflict, upload };

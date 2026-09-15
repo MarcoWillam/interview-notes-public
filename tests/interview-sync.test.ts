@@ -123,6 +123,26 @@ void test('network failure retains the latest local outbox entry', async () => {
   assert.equal(await store.getSyncMeta(record.id), undefined);
 });
 
+void test('conditional outbox cleanup never removes a newer mutation', async () => {
+  const store = createLocalStore(new IDBFactory(), 'sync-conditional-drop');
+  await store.saveInterview(record);
+  await store.queueInterviewSync(record, 'periodic-edit');
+  const oldMutation = (await store.listPendingSync())[0].mutationId;
+  await store.dropPendingSync(record.id);
+  await store.queueInterviewSync(
+    { ...record, focus: '等待期间的新修改', updatedAt: 200 },
+    'periodic-edit',
+  );
+  const newer = (await store.listPendingSync())[0];
+  assert.notEqual(newer.mutationId, oldMutation);
+
+  await store.dropPendingSync(record.id, oldMutation);
+  assert.equal(
+    (await store.listPendingSync())[0].mutationId,
+    newer.mutationId,
+  );
+});
+
 void test('revision conflict preserves local content and installs the cloud record', async () => {
   const store = createLocalStore(new IDBFactory(), 'sync-conflict');
   const cloud = { ...record, candidate: '云端候选人', updatedAt: 300 };
