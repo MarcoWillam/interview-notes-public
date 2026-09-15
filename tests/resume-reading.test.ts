@@ -767,6 +767,10 @@ async function renderReading(
           const stub = 'export function InterviewOutlineV2View(){return null}';
           return `from ${quote}data:text/javascript;base64,${Buffer.from(stub).toString('base64')}${quote}`;
         }
+        if (specifier === './follow-up-outline-view') {
+          const stub = 'export function FollowUpOutlineView(){return null}';
+          return `from ${quote}data:text/javascript;base64,${Buffer.from(stub).toString('base64')}${quote}`;
+        }
         const resolved = specifier.startsWith('.')
           ? new URL(specifier + '.ts', viewUrl).href
           : import.meta.resolve(specifier);

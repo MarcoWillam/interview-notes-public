@@ -5,6 +5,8 @@ import {
   type QuestionSource,
   type ResumeReading,
 } from '../../lib/resume-reading';
+import type { FollowUpOutlineGroup } from '../../lib/follow-up-outline';
+import { FollowUpOutlineView } from './follow-up-outline-view';
 import { InterviewOutlineV2View } from './interview-outline-v2-view';
 import { WorkSampleView } from './work-sample-view';
 
@@ -103,6 +105,11 @@ export function ResumeReadingView({
   regenerationUsed = false,
   regenerationBusy = false,
   onRegenerate,
+  groups,
+  busy = false,
+  draft,
+  onGenerate,
+  onDelete,
 }: {
   value: ResumeReading;
   canSupplement?: boolean;
@@ -115,6 +122,11 @@ export function ResumeReadingView({
   regenerationUsed?: boolean;
   regenerationBusy?: boolean;
   onRegenerate?: () => void;
+  groups?: readonly FollowUpOutlineGroup[];
+  busy?: boolean;
+  draft?: string;
+  onGenerate?: (requestedFocus: string) => boolean | Promise<boolean>;
+  onDelete?: (groupId: string) => boolean | Promise<boolean>;
 }) {
   function download() {
     const url = URL.createObjectURL(
@@ -172,6 +184,15 @@ export function ResumeReadingView({
         </div>
       </div>
       {value.outline && <InterviewOutlineV2View outline={value.outline} />}
+      {value.outline && (
+        <FollowUpOutlineView
+          groups={groups}
+          busy={busy}
+          draft={draft}
+          onGenerate={onGenerate}
+          onDelete={onDelete}
+        />
+      )}
       {!value.outline && !!questions.length && (
         <section className="interview-guide">
           <h4>
