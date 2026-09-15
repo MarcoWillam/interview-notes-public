@@ -60,20 +60,20 @@ function FollowUpQuestionCard({
         )}
         <p className="question-detail-label">重点观察</p>
         <ul>
-          {question.listenFor.map((point) => (
-            <li key={point}>{point}</li>
+          {question.listenFor.map((point, index) => (
+            <li key={`${point}-${index}`}>{point}</li>
           ))}
         </ul>
         <p className="question-detail-label">风险信号</p>
         <ul>
-          {question.riskSignals.map((signal) => (
-            <li key={signal}>{signal}</li>
+          {question.riskSignals.map((signal, index) => (
+            <li key={`${signal}-${index}`}>{signal}</li>
           ))}
         </ul>
         <p className="question-detail-label">条件追问</p>
         <ul>
-          {question.probes.map((probe) => (
-            <li key={`${probe.condition}-${probe.question}`}>
+          {question.probes.map((probe, index) => (
+            <li key={`${probe.condition}-${probe.question}-${index}`}>
               当{probe.condition}时：{probe.question}
             </li>
           ))}
@@ -114,6 +114,7 @@ export function FollowUpOutlineView({
   }
 
   async function generate() {
+    let refocusAfterSubmit = false;
     let normalized: string;
     try {
       normalized = normalizeRequestedFocus(requestedFocus);
@@ -131,7 +132,7 @@ export function FollowUpOutlineView({
       const accepted = await onGenerate(normalized);
       if (!accepted) {
         setError('补充追问暂未生成，请检查后重试。');
-        textareaRef.current?.focus();
+        refocusAfterSubmit = true;
         return;
       }
       setRequestedFocus('');
@@ -140,9 +141,11 @@ export function FollowUpOutlineView({
       setError(
         reason instanceof Error ? reason.message : '补充追问生成失败，请重试。',
       );
-      textareaRef.current?.focus();
+      refocusAfterSubmit = true;
     } finally {
       setSubmitting(false);
+      if (refocusAfterSubmit)
+        requestAnimationFrame(() => textareaRef.current?.focus());
     }
   }
 
@@ -178,6 +181,7 @@ export function FollowUpOutlineView({
           className="secondary-button"
           disabled={disabled || !onGenerate}
           onClick={() => {
+            setRequestedFocus(draft);
             setError('');
             setOpen(true);
           }}
@@ -302,7 +306,7 @@ export function FollowUpOutlineView({
       >
         <AlertDialogContent className="follow-up-outline-delete-dialog">
           <AlertDialogTitle>删除这组补充追问？</AlertDialogTitle>
-          <AlertDialogDescription>
+          <AlertDialogDescription className="follow-up-outline-delete-description">
             将删除“{deleting?.requestedFocus}”生成的固定 2
             道问题，不会修改原面试提纲。
           </AlertDialogDescription>

@@ -2588,6 +2588,11 @@ fieldset label:last-of-type {
   width: min(calc(100vw - 32px), 520px) !important;
   max-width: 520px !important;
 }
+.follow-up-outline-dialog,
+.follow-up-outline-delete-dialog {
+  max-height: min(calc(100dvh - 2rem), 640px);
+  overflow-y: auto;
+}
 .follow-up-outline-field {
   display: grid;
   gap: 7px;
@@ -2598,7 +2603,7 @@ fieldset label:last-of-type {
 .follow-up-outline-field textarea {
   width: 100%;
   min-width: 0;
-  resize: vertical;
+  resize: none;
   border: 1px solid #bdcad9;
   border-radius: 8px;
   padding: 10px 12px;
@@ -2626,6 +2631,10 @@ fieldset label:last-of-type {
   color: #a33f37;
   font-size: 12px;
   line-height: 1.5;
+}
+.follow-up-outline-delete-description {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 @media (max-width: 760px) {
   .follow-up-outline-heading {

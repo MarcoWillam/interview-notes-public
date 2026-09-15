@@ -103,3 +103,54 @@ void test('follow-up surface styles fit groups and stacked dialog actions on nar
     /follow-up-outline-dialog[\s\S]*\[data-slot='dialog-footer'\]/,
   );
 });
+
+void test('follow-up dialogs keep their actions reachable in a short viewport', async () => {
+  const css = await readFile(
+    new URL('../app/globals.css', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    css,
+    /\.follow-up-outline-dialog,[\s\S]*\.follow-up-outline-delete-dialog[\s\S]*max-height:\s*min\(calc\(100dvh - 2rem\),/,
+  );
+  assert.match(css, /\.follow-up-outline-dialog,[\s\S]*overflow-y:\s*auto/);
+  assert.match(css, /\.follow-up-outline-field textarea[\s\S]*resize:\s*none/);
+  assert.match(
+    css,
+    /\.follow-up-outline-delete-description[\s\S]*overflow-wrap:\s*anywhere/,
+  );
+});
+
+void test('follow-up detail lists accept duplicate text and refocus after async generation settles', async () => {
+  const source = await readFile(
+    new URL(
+      '../components/interview/follow-up-outline-view.tsx',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  assert.match(source, /listenFor\.map\(\(point, index\)/);
+  assert.match(source, /riskSignals\.map\(\(signal, index\)/);
+  assert.match(source, /probes\.map\(\(probe, index\)/);
+  assert.match(source, /key=\{`\$\{point\}-\$\{index\}`\}/);
+  assert.match(source, /key=\{`\$\{signal\}-\$\{index\}`\}/);
+  assert.match(
+    source,
+    /key=\{`\$\{probe\.condition\}-\$\{probe\.question\}-\$\{index\}`\}/,
+  );
+  assert.match(
+    source,
+    /setSubmitting\(false\);[\s\S]*requestAnimationFrame\(\(\) => textareaRef\.current\?\.focus\(\)\)/,
+  );
+});
+
+void test('opening a closed follow-up dialog refreshes its record-aware draft', async () => {
+  const source = await readFile(
+    new URL(
+      '../components/interview/follow-up-outline-view.tsx',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  assert.match(source, /setRequestedFocus\(draft\);[\s\S]*setOpen\(true\);/);
+});
