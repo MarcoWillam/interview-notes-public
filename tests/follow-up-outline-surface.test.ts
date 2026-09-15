@@ -192,7 +192,7 @@ void test('workbench persists, restores and clears record-scoped follow-up state
   assert.match(page, /onDelete=\{deleteFollowUpOutline\}/);
 });
 
-void test('workbench builds bound follow-up requests and refreshes without double append', async () => {
+void test('workbench builds bound follow-up requests and hands completion to background recovery', async () => {
   const page = await readFile(
     new URL('../app/page.tsx', import.meta.url),
     'utf8',
@@ -222,13 +222,13 @@ void test('workbench builds bound follow-up requests and refreshes without doubl
   assert.match(handler, /if \(!recordBinding\)/);
   assert.match(handler, /scope: recordId/);
   assert.match(handler, /\.\.\.recordBinding/);
-  assert.match(handler, /await submitRemoteFollowUpOutline\(/);
-  assert.match(handler, /refreshFromCloud\(recordId\)/);
+  assert.match(handler, /submitRemoteFollowUpOutline\(/);
+  assert.doesNotMatch(handler, /refreshFromCloud\(recordId\)/);
   assert.doesNotMatch(
     handler,
     /applyFollowUpOutlineResult|setOutlineSupplements/,
   );
-  assert.match(handler, /return true/);
+  assert.match(handler, /resolve\(true\)/);
   assert.match(handler, /return false/);
 });
 
@@ -284,12 +284,10 @@ void test('group deletion waits for accepted save and preserves the main reading
 async function workbenchHandler(
   name: string,
   environment: Record<string, unknown>,
+  path = '../app/page.tsx',
 ) {
   const ts = await import('typescript');
-  const source = await readFile(
-    new URL('../app/page.tsx', import.meta.url),
-    'utf8',
-  );
+  const source = await readFile(new URL(path, import.meta.url), 'utf8');
   const file = ts.createSourceFile(
     'page.tsx',
     source,
@@ -379,7 +377,7 @@ async function followUpEnvironment() {
   return { environment, state, submissions, saves, refreshes, group, library };
 }
 
-void test('generation uses the bound current payload and only the server appends its completed group', async () => {
+void test('generation accepts the bound payload while saved-task recovery owns the result', async () => {
   const { environment, state, submissions, saves, refreshes, group } =
     await followUpEnvironment();
   const generate = await workbenchHandler('runFollowUpOutline', environment);
@@ -397,11 +395,11 @@ void test('generation uses the bound current payload and only the server appends
     interviewRevision: 7,
   });
   assert.deepEqual(saves, [{ followUpOutlineJobId: group.jobId }]);
-  assert.deepEqual(refreshes, ['record-one']);
-  assert.deepEqual(state.outlineSupplements, [group]);
-  assert.equal(state.followUpOutlineDraft, '');
-  assert.equal(state.followUpOutlineJobId, undefined);
-  assert.equal(state.tab, 'resume');
+  assert.deepEqual(refreshes, []);
+  assert.equal(state.outlineSupplements, undefined);
+  assert.equal(state.followUpOutlineDraft, '自驱力');
+  assert.equal(state.followUpOutlineJobId, group.jobId);
+  assert.equal(state.busy, null);
 });
 
 void test('generation rejects preview, missing binding, missing outline and concurrent work without submitting', async () => {
@@ -428,10 +426,10 @@ void test('transient submission polling failure retains its saved task and focus
     throw new Error('任务已提交，但暂时无法获取进度。');
   };
   const generate = await workbenchHandler('runFollowUpOutline', environment);
-  assert.equal(await generate('自驱力'), false);
+  assert.equal(await generate('自驱力'), true);
   assert.equal(state.followUpOutlineDraft, '自驱力');
   assert.equal(state.followUpOutlineJobId, group.jobId);
-  assert.match(String(state.error), /无需重复提交/);
+  assert.equal(state.busy, null);
 });
 
 void test('switching records while binding is saved prevents stale submission', async () => {
@@ -467,8 +465,10 @@ void test('deletion changes only the selected group after accepted save, and lea
 async function startRecovery(
   job: unknown,
   requestFailure?: { status?: number },
+  existing?: Awaited<ReturnType<typeof followUpEnvironment>>,
 ) {
-  const { environment, state, refreshes } = await followUpEnvironment();
+  const { environment, state, refreshes } =
+    existing || (await followUpEnvironment());
   const ts = await import('typescript');
   const source = await readFile(
     new URL('../app/page.tsx', import.meta.url),
@@ -558,4 +558,150 @@ void test('transient recovery failures poll the same task and cleanup prevents l
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.deepEqual(state, previous);
   assert.equal(requests(), 2);
+});
+
+void test('deferred completion closes the real dialog on acceptance and releases page navigation', async () => {
+  for (const jobState of ['queued', 'running']) {
+    const setup = await followUpEnvironment();
+    const { environment, state, group } = setup;
+    let failRemote: (error: Error) => void = () => {};
+    const completion = new Promise((_resolve, reject) => {
+      failRemote = reject;
+    });
+    environment.submitRemoteFollowUpOutline = async (
+      _input: unknown,
+      _signal: AbortSignal,
+      progress: (job: unknown) => void,
+    ) => {
+      progress({ id: group.jobId, state: jobState, report: null });
+      return completion;
+    };
+    const onGenerate = await workbenchHandler(
+      'runFollowUpOutline',
+      environment,
+    );
+    const dialog = { open: true, submitting: false, error: '' };
+    const generate = await workbenchHandler(
+      'generate',
+      {
+        requestedFocus: '自驱力',
+        onGenerate,
+        disabled: false,
+        normalizeRequestedFocus,
+        textareaRef: { current: { focus: () => {} } },
+        setSubmitting: (value: boolean) => {
+          dialog.submitting = value;
+        },
+        setError: (value: string) => {
+          dialog.error = value;
+        },
+        setRequestedFocus: () => {},
+        setOpen: (value: boolean) => {
+          dialog.open = value;
+        },
+        requestAnimationFrame: (callback: () => void) => {
+          callback();
+        },
+      },
+      '../components/interview/follow-up-outline-view.tsx',
+    );
+    const clicking = generate('');
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const acceptedState = { ...dialog };
+    const busyAtAcceptance = state.busy;
+    const navigationBlocked = (environment.busyRef as { current: boolean })
+      .current;
+    // Settle the deferred worker after checking acceptance; its rejection must be handled.
+    failRemote(new Error('后台轮询暂时失败'));
+    await clicking;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(
+      acceptedState,
+      { open: false, submitting: false, error: '' },
+      jobState,
+    );
+    assert.equal(busyAtAcceptance, null, jobState);
+    assert.equal(navigationBlocked, false, jobState);
+    assert.equal(state.followUpOutlineJobId, group.jobId, jobState);
+    assert.equal(dialog.open, false, jobState);
+    const action = await workbenchHandler('localAction', environment);
+    let navigated = false;
+    await (
+      action as unknown as (callback: () => Promise<void>) => Promise<void>
+    )(async () => {
+      navigated = true;
+    });
+    assert.equal(navigated, true);
+    const recovery = await startRecovery(
+      jobState === 'queued'
+        ? { state: 'failed', error: '生成失败' }
+        : { state: 'completed', resultDisposition: 'applied' },
+      undefined,
+      setup,
+    );
+    assert.equal(state.followUpOutlineJobId, undefined);
+    assert.equal(dialog.open, false);
+    assert.equal(dialog.submitting, false);
+    assert.equal(state.busy, null);
+    if (jobState === 'queued') {
+      assert.equal(state.followUpOutlineDraft, '自驱力');
+      assert.match(String(state.error), /重试/);
+    } else {
+      assert.equal(state.followUpOutlineDraft, '');
+      assert.deepEqual(state.outlineSupplements, [group]);
+    }
+    recovery.cleanup();
+  }
+});
+
+void test('pre-acceptance submission errors retain the dialog and focus without an active task', async () => {
+  const { environment, state } = await followUpEnvironment();
+  environment.submitRemoteFollowUpOutline = async () => {
+    throw new Error('提交失败');
+  };
+  const generate = await workbenchHandler('runFollowUpOutline', environment);
+  assert.equal(await generate('自驱力'), false);
+  assert.equal(state.followUpOutlineDraft, '自驱力');
+  assert.equal(state.followUpOutlineJobId, undefined);
+  assert.equal(state.busy, null);
+  assert.match(String(state.error), /提交失败/);
+});
+
+void test('the page shows follow-up progress outside its dialog without blocking task navigation', async () => {
+  const page = await readFile(
+    new URL('../app/page.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(page, /follow-up-outline-progress/);
+  assert.match(page, /busy === 'follow-up-outline' \|\| followUpTaskActive/);
+  const banner = page.slice(
+    page.indexOf('data-testid="follow-up-outline-progress"'),
+    page.indexOf('<div className="workspace-grid">'),
+  );
+  assert.match(banner, /补充追问/);
+  assert.match(banner, /任务中心/);
+  const taskMenu = page.slice(
+    page.indexOf('<TaskCenter'),
+    page.indexOf('<TaskCenter') + 100,
+  );
+  assert.doesNotMatch(taskMenu, /disabled/);
+});
+
+void test('an already-completed submission is accepted without saving an obsolete source snapshot', async () => {
+  const { environment, saves, state, group } = await followUpEnvironment();
+  environment.submitRemoteFollowUpOutline = async (
+    _input: unknown,
+    _signal: AbortSignal,
+    progress: (job: unknown) => void,
+  ) => {
+    progress({
+      id: group.jobId,
+      state: 'completed',
+      resultDisposition: 'applied',
+    });
+  };
+  const generate = await workbenchHandler('runFollowUpOutline', environment);
+  assert.equal(await generate('自驱力'), true);
+  assert.equal(state.followUpOutlineJobId, group.jobId);
+  assert.deepEqual(saves, []);
 });
