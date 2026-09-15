@@ -5,6 +5,7 @@ const comparedSections: Array<[keyof SavedInterview, string]> = [
   ['role', '岗位与标准'],
   ['resumeText', '简历正文'],
   ['resumeReading', '简历阅读与提纲'],
+  ['outlineSupplements', '简历阅读与提纲'],
   ['transcript', '面试记录'],
   ['workSample', '作品观察'],
   ['report', '结论评估'],
@@ -19,7 +20,13 @@ export function changedInterviewSections(
   left: SavedInterview,
   right: SavedInterview,
 ) {
-  return comparedSections
-    .filter(([key]) => valueSignature(left[key]) !== valueSignature(right[key]))
-    .map(([, label]) => label);
+  return [
+    ...new Set(
+      comparedSections
+        .filter(
+          ([key]) => valueSignature(left[key]) !== valueSignature(right[key]),
+        )
+        .map(([, label]) => label),
+    ),
+  ];
 }

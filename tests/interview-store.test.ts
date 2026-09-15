@@ -1,3 +1,7 @@
+import {
+  followUpInputFixture,
+  followUpResultFixture,
+} from './fixtures/follow-up-outline.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { QueueStore } from '../server/queue/store.ts';
@@ -221,6 +225,41 @@ void test('workspace and pending results remain private to the account', () => {
     assert.equal(records.pendingResults(bob, baseRecord.id).length, 0);
     records.discardPendingResult(alice, baseRecord.id, 'job-12345678');
     assert.equal(records.pendingResults(alice, baseRecord.id)[0].state, 'discarded');
+  } finally {
+    queue.close();
+  }
+});
+
+void test('follow-up results persist once per job even across direct application retries', () => {
+  const { queue, records, alice } = setup();
+  try {
+    const input = followUpInputFixture();
+    const record = {
+      ...baseRecord,
+      resumeText: input.resumeText,
+      resumeReading: input.resumeReading,
+    };
+    records.put(alice, record.id, 0, 'mutation-follow-up-created', record);
+    const first = records.applyJobResult(
+      alice,
+      record.id,
+      'follow-up-job-12345678',
+      'follow-up-outline',
+      followUpResultFixture(),
+    );
+    const second = records.applyJobResult(
+      alice,
+      record.id,
+      'follow-up-job-12345678',
+      'follow-up-outline',
+      followUpResultFixture(),
+    );
+    assert.equal(first.record.outlineSupplements?.length, 1);
+    assert.equal(second.revision, first.revision);
+    assert.deepEqual(
+      second.record.outlineSupplements,
+      first.record.outlineSupplements,
+    );
   } finally {
     queue.close();
   }

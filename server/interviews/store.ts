@@ -541,7 +541,7 @@ export class InterviewStore {
       interview,
       current.revision,
       `job-${jobId}`,
-      applyInterviewJobResult(current.record, kind, result, this.now()),
+      applyInterviewJobResult(current.record, kind, result, this.now(), { jobId }),
       resultVersionReason(kind),
     );
   }
@@ -588,7 +588,7 @@ export class InterviewStore {
       .get(user, interview, jobId) as Row | undefined;
     if (!row) throw new InterviewStoreError('待确认结果不存在。', 404);
     const kind = String(row.kind) as CodexExecutionKind;
-    if (!['resume', 'written-test', 'work-sample', 'outline', 'interview'].includes(kind))
+    if (!['resume', 'written-test', 'work-sample', 'outline', 'follow-up-outline', 'interview'].includes(kind))
       throw new InterviewStoreError('待确认结果类型无效。');
     const current = this.get(user, interview);
     if (current.revision !== baseRevision)
@@ -605,6 +605,7 @@ export class InterviewStore {
         kind,
         JSON.parse(String(row.result)),
         this.now(),
+        { jobId },
       ),
       resultVersionReason(kind),
     );

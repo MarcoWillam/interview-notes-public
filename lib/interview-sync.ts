@@ -101,6 +101,11 @@ export function cloudVersionReason(
   next: CloudInterview,
 ): CloudVersionReason {
   if (!previous) return 'periodic-edit';
+  if (
+    (previous.outlineSupplements?.length || 0) >
+    (next.outlineSupplements?.length || 0)
+  )
+    return 'follow-up-outline-deleted';
   if (!previous.confirmed && next.confirmed) return 'manually-confirmed';
   if (!previous.report && next.report) return 'assessment-generated';
   if (

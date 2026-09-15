@@ -15,6 +15,8 @@ const reasonLabels: Record<CloudVersionReason, string> = {
   'resume-read': '完成简历阅读',
   'outline-generated': '生成面试提纲',
   'outline-regenerated': '重新生成提纲',
+  'follow-up-outline-generated': '生成补充追问',
+  'follow-up-outline-deleted': '删除补充追问',
   'transcript-imported': '导入面试记录',
   'work-sample-analyzed': '完成作品分析',
   'written-test-supplemented': '补充笔试问题',

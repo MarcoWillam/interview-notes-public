@@ -1,9 +1,17 @@
+import {
+  applyFollowUpOutlineResult,
+  validateFollowUpOutlineInput,
+  type FollowUpOutlineResult,
+} from './follow-up-outline.ts';
 import type { CloudInterview, CloudVersionReason } from './cloud-interview.ts';
 import type { CodexExecutionKind as JobKind } from './codex-execution-contract.ts';
 import type { ResumeReading } from './resume-reading.ts';
 import type { Report } from './interview.ts';
 import { applyWrittenTestSupplement } from './interview-template-state.ts';
-import { applyOutlineRegeneration, type OutlineRegenerationResult } from './outline-regeneration.ts';
+import {
+  applyOutlineRegeneration,
+  type OutlineRegenerationResult,
+} from './outline-regeneration.ts';
 import { applyLateWorkSample } from './work-sample-workflow.ts';
 import type { WrittenTestSupplementResult } from './written-test-supplement.ts';
 import type { WorkSampleAnalysisResult } from './work-sample.ts';
@@ -19,6 +27,16 @@ const standards = (record: CloudInterview) => ({
 
 export function interviewJobSource(record: CloudInterview, kind: JobKind) {
   const base = standards(record);
+  if (kind === 'follow-up-outline')
+    return {
+      ...Object.fromEntries(
+        Object.entries(base).map(([key, value]) => [key, value.trim()]),
+      ),
+      resumeText: record.resumeText.trim(),
+      resumeReading: record.resumeReading || null,
+      outlineVersion: record.outlineVersion || 1,
+      existingSupplements: record.outlineSupplements || [],
+    };
   if (kind === 'resume')
     return {
       ...base,
@@ -52,6 +70,15 @@ export function assertInterviewJobInputMatches(
   kind: JobKind,
   input: Record<string, unknown>,
 ) {
+  if (kind === 'follow-up-outline') {
+    const expected = validateFollowUpOutlineInput({
+      ...interviewJobSource(record, kind),
+      requestedFocus: input.requestedFocus,
+    });
+    if (!equal(input, expected))
+      throw new Error('补充追问资料与云端面试记录不一致。');
+    return;
+  }
   const expectedStandards = standards(record);
   const comparableStandards =
     kind === 'interview'
@@ -102,6 +129,7 @@ export function assertInterviewJobInputMatches(
 }
 
 export function resultVersionReason(kind: JobKind): CloudVersionReason {
+  if (kind === 'follow-up-outline') return 'follow-up-outline-generated';
   return kind === 'resume'
     ? 'outline-generated'
     : kind === 'written-test'
@@ -118,7 +146,22 @@ export function applyInterviewJobResult(
   kind: JobKind,
   result: unknown,
   now: number,
+  metadata?: { jobId: string },
 ): CloudInterview {
+  if (kind === 'follow-up-outline') {
+    if (!metadata?.jobId) throw new Error('补充追问结果缺少任务编号。');
+    const next = {
+      ...record,
+      outlineSupplements: applyFollowUpOutlineResult(
+        record.outlineSupplements || [],
+        result as FollowUpOutlineResult,
+        { id: metadata.jobId, jobId: metadata.jobId, createdAt: now },
+      ),
+      updatedAt: now,
+    };
+    delete next.followUpOutlineJobId;
+    return next;
+  }
   if (kind === 'resume') {
     const reading = result as ResumeReading;
     return {
