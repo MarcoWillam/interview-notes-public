@@ -1,4 +1,10 @@
-import type { ResumeReading } from './resume-reading.ts';
+import {
+  validateResumeInput,
+  validateResumeReading,
+  type ResumeInput,
+  type ResumeReading,
+} from './resume-reading.ts';
+import type { WorkSampleReference } from './work-sample.ts';
 
 export type FollowUpOutlineInput = {
   role: string;
@@ -160,9 +166,11 @@ function validateQuestion(value: unknown, resumeText?: string) {
   const probes = value.probes.map((item) => {
     if (!record(item)) throw new Error('条件追问格式不正确。');
     exactKeys(item, ['condition', 'question'], '条件追问');
+    const probeQuestion = boundedText(item.question, 80, '追问问题');
+    if (characterLength(probeQuestion) < 2) throw new Error('追问问题过短。');
     return {
       condition: boundedText(item.condition, 120, '追问条件'),
-      question: boundedText(item.question, 80, '追问问题'),
+      question: probeQuestion,
     };
   });
   return {
@@ -189,16 +197,182 @@ function normalizedQuestionText(value: string) {
     .toLocaleLowerCase();
 }
 
+const legacyQuestionFields = [
+  'question',
+  'questionSource',
+  'dimensions',
+  'reason',
+  'resumeEvidence',
+  'workSampleEvidence',
+  'listenFor',
+  'riskSignals',
+  'probes',
+] as const;
+
+const outlineQuestionFields = [
+  'id',
+  'question',
+  'required',
+  'estimatedMinutes',
+  'primaryDimension',
+  'secondaryDimensions',
+  'source',
+  'goal',
+  'resumeEvidence',
+  'workSampleEvidence',
+  'listenFor',
+  'riskSignals',
+  'probes',
+] as const;
+
+function strictQuestionShape(
+  value: unknown,
+  fields: readonly string[] = legacyQuestionFields,
+) {
+  if (!record(value)) throw new Error('简历阅读问题格式不正确。');
+  exactKeys(value, fields, '简历阅读问题');
+  if (value.workSampleEvidence !== undefined && value.workSampleEvidence !== null) {
+    if (!record(value.workSampleEvidence)) throw new Error('作品依据格式不正确。');
+    exactKeys(value.workSampleEvidence, ['path', 'excerpt'], '作品依据');
+  }
+}
+
+function strictQuestionList(
+  value: unknown,
+  fields: readonly string[] = legacyQuestionFields,
+) {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) throw new Error('简历阅读问题列表格式不正确。');
+  value.forEach((item) => strictQuestionShape(item, fields));
+}
+
+function strictResumeReadingShape(
+  value: Record<string, unknown>,
+  outlineVersion: 1 | 2 | 3,
+) {
+  const optionalText = (key: string, maximum: number) => {
+    const item = value[key];
+    if (item !== undefined && item !== null) boundedText(item, maximum, `简历阅读${key}`);
+  };
+  optionalText('candidateName', 80);
+  optionalText('candidateNameEvidence', 30000);
+  boundedText(value.summary, 4000, '简历阅读摘要');
+  if (!Array.isArray(value.sections)) throw new Error('简历分类格式不正确。');
+  value.sections.forEach((section) => {
+    if (!record(section)) throw new Error('简历分类格式不正确。');
+    exactKeys(section, ['name', 'items'], '简历分类');
+    if (!Array.isArray(section.items)) throw new Error('简历要点格式不正确。');
+    section.items.forEach((item) => {
+      if (!record(item)) throw new Error('简历要点格式不正确。');
+      exactKeys(item, ['text', 'evidence'], '简历要点');
+      boundedText(item.text, 1000, '简历要点');
+      boundedText(item.evidence, 2000, '简历依据');
+    });
+  });
+  if (!Array.isArray(value.followUps)) throw new Error('简历追问格式不正确。');
+  value.followUps.forEach((item) => boundedText(item, 1000, '简历追问'));
+  strictQuestionList(
+    value.interviewQuestions,
+    outlineVersion === 1 ? legacyQuestionFields : outlineQuestionFields,
+  );
+  strictQuestionList(value.writtenTestSupplement, legacyQuestionFields);
+  strictQuestionList(value.workSampleQuestions, legacyQuestionFields);
+  if (record(value.outline)) {
+    exactKeys(
+      value.outline,
+      ['version', 'estimatedMinutes', 'requiredQuestions', 'reserveQuestions', 'archivedReserveQuestions', 'coverage'],
+      '结构化面试提纲',
+    );
+    strictQuestionList(value.outline.requiredQuestions, outlineQuestionFields);
+    strictQuestionList(value.outline.reserveQuestions, outlineQuestionFields);
+    strictQuestionList(
+      value.outline.archivedReserveQuestions,
+      outlineQuestionFields,
+    );
+    if (Array.isArray(value.outline.coverage)) {
+      value.outline.coverage.forEach((item) => {
+        if (!record(item)) throw new Error('提纲覆盖格式不正确。');
+        exactKeys(item, ['dimension', 'primaryQuestionIds', 'secondaryQuestionIds', 'status'], '提纲覆盖');
+      });
+    }
+  }
+  if (record(value.workSample)) {
+    exactKeys(
+      value.workSample,
+      ['rubricVersion', 'artifact', 'coverage', 'summary', 'dimensions', 'strengths', 'risks', 'questions'],
+      '作品评估',
+    );
+    strictQuestionList(value.workSample.questions, legacyQuestionFields);
+  }
+}
+
+function inferredResumeInput(value: Record<string, unknown>, reading: Record<string, unknown>): ResumeInput {
+  const questionSources: unknown[] = [];
+  const collectSources = (items: unknown) => {
+    if (Array.isArray(items))
+      items.forEach((item) => {
+        if (record(item)) questionSources.push(item.questionSource ?? item.source);
+      });
+  };
+  collectSources(reading.interviewQuestions);
+  collectSources(reading.writtenTestSupplement);
+  collectSources(reading.workSampleQuestions);
+  if (record(reading.outline)) {
+    collectSources(reading.outline.requiredQuestions);
+    collectSources(reading.outline.reserveQuestions);
+    collectSources(reading.outline.archivedReserveQuestions);
+  }
+  const hasWrittenTest =
+    questionSources.includes('written-test') ||
+    record(reading.workSample) ||
+    Array.isArray(reading.writtenTestSupplement);
+  const artifact = record(reading.workSample) && record(reading.workSample.artifact)
+    ? reading.workSample.artifact
+    : undefined;
+  const workSample =
+    artifact &&
+    typeof artifact.id === 'string' &&
+    typeof artifact.name === 'string' &&
+    typeof artifact.sha256 === 'string' &&
+    typeof artifact.bytes === 'number' &&
+    typeof artifact.modifiedAt === 'number'
+      ? ({
+          id: artifact.id,
+          name: artifact.name,
+          sha256: artifact.sha256,
+          bytes: artifact.bytes,
+          modifiedAt: artifact.modifiedAt,
+          deviceId: 'follow-up-device',
+        } satisfies WorkSampleReference)
+      : undefined;
+  return validateResumeInput({
+    role: value.role,
+    requirements: value.requirements,
+    dimensionText: value.dimensionText,
+    focus: value.focus,
+    scoringGuidance: value.scoringGuidance,
+    reportRequirements: value.reportRequirements,
+    resumeText: value.resumeText,
+    hasWrittenTest,
+    outlineVersion: value.outlineVersion,
+    ...(workSample ? { workSample } : {}),
+  });
+}
+
 function questionText(value: unknown): string | undefined {
   if (!record(value) || typeof value.question !== 'string') return undefined;
   return value.question;
 }
 
+function property(value: object | undefined, key: string): unknown {
+  return value === undefined
+    ? undefined
+    : Object.getOwnPropertyDescriptor(value, key)?.value;
+}
+
 function collectExistingQuestionTexts(input: FollowUpOutlineInput) {
   const result: string[] = [];
-  const reading = input.resumeReading as ResumeReading & {
-    workSampleQuestions?: unknown;
-  };
+  const reading = input.resumeReading;
   const addQuestions = (value: unknown) => {
     if (!Array.isArray(value)) return;
     for (const item of value) {
@@ -209,19 +383,13 @@ function collectExistingQuestionTexts(input: FollowUpOutlineInput) {
   if (input.outlineVersion === 1) {
     addQuestions(reading.interviewQuestions);
     addQuestions(reading.writtenTestSupplement);
-    addQuestions(reading.workSampleQuestions);
+    addQuestions(property(reading, 'workSampleQuestions'));
     addQuestions(reading.workSample && reading.workSample.questions);
   } else {
-    const outline = reading.outline as
-      | (ResumeReading['outline'] & {
-          requiredQuestions?: unknown;
-          reserveQuestions?: unknown;
-          archivedReserveQuestions?: unknown;
-        })
-      | undefined;
-    addQuestions(outline?.requiredQuestions);
-    addQuestions(outline?.reserveQuestions);
-    addQuestions(outline?.archivedReserveQuestions);
+    const outline = reading.outline;
+    addQuestions(property(outline, 'requiredQuestions'));
+    addQuestions(property(outline, 'reserveQuestions'));
+    addQuestions(property(outline, 'archivedReserveQuestions'));
   }
   for (const group of input.existingSupplements)
     for (const question of group.questions) result.push(question.question);
@@ -230,9 +398,7 @@ function collectExistingQuestionTexts(input: FollowUpOutlineInput) {
 
 function collectExistingQuestionIds(input: FollowUpOutlineInput) {
   const result: string[] = [];
-  const reading = input.resumeReading as ResumeReading & {
-    workSampleQuestions?: unknown;
-  };
+  const reading = input.resumeReading;
   const addQuestions = (value: unknown) => {
     if (!Array.isArray(value)) return;
     for (const item of value) {
@@ -242,13 +408,13 @@ function collectExistingQuestionIds(input: FollowUpOutlineInput) {
   if (input.outlineVersion === 1) {
     addQuestions(reading.interviewQuestions);
     addQuestions(reading.writtenTestSupplement);
-    addQuestions(reading.workSampleQuestions);
+    addQuestions(property(reading, 'workSampleQuestions'));
     addQuestions(reading.workSample && reading.workSample.questions);
   } else {
-    const outline = reading.outline as Record<string, unknown> | undefined;
-    addQuestions(outline?.requiredQuestions);
-    addQuestions(outline?.reserveQuestions);
-    addQuestions(outline?.archivedReserveQuestions);
+    const outline = reading.outline;
+    addQuestions(property(outline, 'requiredQuestions'));
+    addQuestions(property(outline, 'reserveQuestions'));
+    addQuestions(property(outline, 'archivedReserveQuestions'));
   }
   for (const group of input.existingSupplements)
     for (const question of group.questions) result.push(question.id);
@@ -259,9 +425,12 @@ function validateResultShape(value: unknown, resumeText?: string, expectedFocus?
   if (!record(value)) throw new Error('补充追问结果格式不正确。');
   exactKeys(value, ['version', 'requestedFocus', 'questions'], '补充追问结果');
   if (value.version !== 1) throw new Error('补充追问结果版本不正确。');
-  const requestedFocus = normalizeRequestedFocus(value.requestedFocus);
-  if (expectedFocus !== undefined && requestedFocus !== expectedFocus)
+  if (
+    expectedFocus !== undefined &&
+    (typeof value.requestedFocus !== 'string' || value.requestedFocus !== expectedFocus)
+  )
     throw new Error('补充追问关注点与当前请求不一致。');
+  const requestedFocus = normalizeRequestedFocus(value.requestedFocus);
   if (!Array.isArray(value.questions) || value.questions.length !== 2)
     throw new Error('补充追问必须包含恰好两道问题。');
   const questions = value.questions.map((question) =>
@@ -314,6 +483,24 @@ export function validateFollowUpOutlineInput(value: unknown): FollowUpOutlineInp
   const outlineVersion = value.outlineVersion;
   if (outlineVersion !== 1 && outlineVersion !== 2 && outlineVersion !== 3)
     throw new Error('面试提纲版本不正确。');
+  strictResumeReadingShape(value.resumeReading, outlineVersion);
+  const resumeInput = inferredResumeInput(
+    {
+      role,
+      requirements,
+      dimensionText,
+      focus,
+      scoringGuidance,
+      reportRequirements,
+      resumeText,
+      outlineVersion,
+    },
+    value.resumeReading,
+  );
+  const resumeReading = validateResumeReading(
+    value.resumeReading,
+    resumeInput,
+  );
   const requestedFocus = normalizeRequestedFocus(value.requestedFocus);
   if (!Array.isArray(value.existingSupplements) || value.existingSupplements.length > 50)
     throw new Error('已有补充追问分组数量不正确。');
@@ -328,7 +515,7 @@ export function validateFollowUpOutlineInput(value: unknown): FollowUpOutlineInp
     scoringGuidance,
     reportRequirements,
     resumeText,
-    resumeReading: value.resumeReading as ResumeReading,
+    resumeReading,
     outlineVersion,
     requestedFocus,
     existingSupplements,
