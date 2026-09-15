@@ -69,6 +69,59 @@ void test('补充追问拒绝过短关注点、长问题、重复题和伪造简
   );
 });
 
+void test('补充追问输入深度校验简历阅读及其嵌套对象', () => {
+  const fixture = followUpInputFixture();
+  assert.throws(() =>
+    validateFollowUpOutlineInput({ ...fixture, resumeReading: {} }),
+  );
+  assert.throws(() =>
+    validateFollowUpOutlineInput({
+      ...fixture,
+      resumeReading: {
+        ...fixture.resumeReading,
+        interviewQuestions: fixture.resumeReading.interviewQuestions?.map(
+          (question) => ({ ...question, unexpected: 'field' }),
+        ),
+      },
+    }),
+  );
+  assert.throws(() =>
+    validateFollowUpOutlineInput({
+      ...fixture,
+      resumeReading: {
+        ...fixture.resumeReading,
+        summary: 'x'.repeat(4001),
+      },
+    }),
+  );
+});
+
+void test('补充追问结果必须逐字匹配已规范化的关注点', () => {
+  const input = validateFollowUpOutlineInput(followUpInputFixture());
+  assert.throws(() =>
+    validateFollowUpOutlineResult(
+      { ...followUpResultFixture(), requestedFocus: ' 自驱力 ' },
+      input,
+    ),
+  );
+});
+
+void test('条件追问问题至少包含两个字符', () => {
+  const input = validateFollowUpOutlineInput(followUpInputFixture());
+  assert.throws(() =>
+    validateFollowUpOutlineResult(
+      {
+        ...followUpResultFixture(),
+        questions: followUpResultFixture().questions.map((question) => ({
+          ...question,
+          probes: [{ ...question.probes[0], question: '?' }],
+        })),
+      },
+      input,
+    ),
+  );
+});
+
 void test('应用结果按 jobId 去重且不改写原提纲', () => {
   const first = applyFollowUpOutlineResult([], followUpResultFixture(), {
     id: 'group-12345678',
