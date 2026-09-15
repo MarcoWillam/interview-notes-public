@@ -923,6 +923,9 @@ export class QueueStore {
     const connectorProtocol = Number(
       release?.protocol || storedProtocol?.protocol || 1,
     );
+    const supportsFollowUpOutline =
+      connectorProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
+      (kinds.includes('follow-up-outline') || kinds.includes('outline'));
     this.db
       .prepare('UPDATE devices SET seen=?,ready=? WHERE id=?')
       .run(this.now(), ready ? 1 : 0, device.id);
@@ -948,7 +951,7 @@ export class QueueStore {
         kinds.includes('outline') && connectorSupportsOutline(release?.protocol)
           ? 1
           : 0,
-        kinds.includes('follow-up-outline') ? 1 : 0,
+        supportsFollowUpOutline ? 1 : 0,
         device.id,
       ) as Row | undefined;
     if (!row) return null;
