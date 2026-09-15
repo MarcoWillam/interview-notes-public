@@ -1343,8 +1343,6 @@ export default function Home({
     setError('');
     setNotice('');
     setRemoteJob(null);
-    let lastJob: RemoteJob<FollowUpOutlineResult> | undefined;
-    let jobSave: Promise<void> = Promise.resolve();
     const current = () =>
       followUpController.current === controller &&
       followUpRecordId.current === recordId &&
@@ -1369,79 +1367,67 @@ export default function Home({
       if (!current()) return false;
       if (!recordBinding)
         throw new Error('面试记录尚未绑定云端，请同步成功后重试。');
-      await submitRemoteFollowUpOutline(
-        followUpInput,
-        controller.signal,
-        (job) => {
-          if (!current()) return;
-          const firstProgress = !lastJob;
-          lastJob = job;
-          setFollowUpOutlineJobId(job.id);
-          setRemoteJob({ ...job, report: null });
-          if (
-            firstProgress &&
-            (job.state === 'queued' || job.state === 'running')
-          ) {
-            // This task metadata is excluded from the server's source binding.
-            jobSave = library.flush({
-              followUpOutlineJobId: job.id,
-            });
-            void jobSave.catch(() => {
-              if (current())
+      return await new Promise<boolean>((resolve) => {
+        let accepted = false;
+        controller.signal.addEventListener('abort', () => resolve(accepted), {
+          once: true,
+        });
+        // Only submission belongs to the dialog. The saved-job effect owns polling.
+        void Promise.resolve()
+          .then(() =>
+            submitRemoteFollowUpOutline(
+              followUpInput,
+              controller.signal,
+              (job) => {
+                if (!current() || accepted) return;
+                accepted = true;
+                setFollowUpOutlineJobId(job.id);
+                setRemoteJob({ ...job, report: null });
+                // Persist active task metadata; terminal responses are refreshed by
+                // recovery so this old snapshot cannot overwrite completed groups.
+                if (
+                  job.state === 'queued' ||
+                  job.state === 'running' ||
+                  job.state === 'paused'
+                ) {
+                  void library
+                    .flush({ followUpOutlineJobId: job.id })
+                    .catch(() => {
+                      if (followUpRecordId.current === recordId)
+                        setError(
+                          '任务已提交，但任务标识保存失败，请在任务中心查看进度。',
+                        );
+                    });
+                }
+                resolve(true);
+                // Stop this helper's wait, not the server job. Recovery starts once
+                // the submission busy state is released, including terminal POSTs.
+                controller.abort();
+              },
+              {
+                fetcher: fetch,
+                pollMs: 2000,
+                scope: recordId,
+                ...recordBinding,
+              },
+            ),
+          )
+          .then(
+            () => resolve(accepted),
+            (reason: unknown) => {
+              if (!accepted && current())
                 setError(
-                  '任务已提交，但任务标识保存失败，请在任务中心查看进度。',
+                  `${reason instanceof Error ? reason.message : '补充追问提交失败。'} 请检查后重试。`,
                 );
-            });
-          }
-        },
-        { fetcher: fetch, pollMs: 2000, scope: recordId, ...recordBinding },
-      );
-      if (!current()) return false;
-      await jobSave;
-      if (!current()) return false;
-      if (lastJob?.resultDisposition !== 'applied')
-        throw new Error('补充追问结果尚未应用，请在记录管理中确认结果。');
-      // The server appends the group. Never append the returned report locally.
-      await libraryRef.current.refreshFromCloud(recordId);
-      if (followUpRecordId.current !== recordId) return false;
-      setFollowUpOutlineJobId(undefined);
-      setFollowUpOutlineDraft('');
-      setRemoteJob(null);
-      setNotice('已补充 2 道追问，原面试提纲保持不变。');
-      setTab('resume');
-      return true;
+              resolve(accepted);
+            },
+          );
+      });
     } catch (reason) {
-      if (!current()) return false;
-      if (lastJob?.resultDisposition === 'pending') {
-        try {
-          await jobSave;
-          await libraryRef.current.refreshFromCloud(recordId);
-          if (followUpRecordId.current !== recordId) return false;
-          setFollowUpOutlineJobId(undefined);
-          setFollowUpOutlineDraft(requestedFocus);
-          setRemoteJob(null);
-          setError('补充追问已完成，但资料发生变化。请在记录管理中确认结果。');
-        } catch {
-          if (followUpRecordId.current === recordId)
-            setError(
-              '暂时无法刷新补充追问结果，系统会继续重试，无需重复提交。',
-            );
-        }
-        return false;
-      }
-      if (
-        lastJob?.state === 'failed' ||
-        lastJob?.state === 'cancelled' ||
-        (reason as { status?: number }).status === 404
-      ) {
-        setFollowUpOutlineJobId(undefined);
-        setRemoteJob(null);
-      }
-      setError(
-        lastJob && lastJob.state !== 'failed' && lastJob.state !== 'cancelled'
-          ? '任务已提交，暂时无法获取结果，系统会继续重试，无需重复提交。'
-          : `${reason instanceof Error ? reason.message : '补充追问失败。'} 请检查后重试。`,
-      );
+      if (current())
+        setError(
+          `${reason instanceof Error ? reason.message : '补充追问提交失败。'} 请检查后重试。`,
+        );
       return false;
     } finally {
       if (followUpController.current === controller) {
@@ -2528,6 +2514,21 @@ export default function Home({
                 <button aria-label="关闭提示" onClick={() => setNotice('')}>
                   <X size={16} />
                 </button>
+              </output>
+            )}
+            {(busy === 'follow-up-outline' || followUpTaskActive) && (
+              <output
+                className="message"
+                data-testid="follow-up-outline-progress"
+              >
+                <LoaderCircle className="spin" size={18} />
+                <span>
+                  {busy === 'follow-up-outline'
+                    ? '正在提交补充追问任务…'
+                    : remoteJob?.state === 'running'
+                      ? 'Codex 正在生成补充追问。可以继续使用工作台或关闭网页，稍后从任务中心查看结果。'
+                      : '补充追问任务已提交，等待电脑处理。可以继续使用工作台，稍后从任务中心查看结果。'}
+                </span>
               </output>
             )}
             {(busy === 'analyze' ||
