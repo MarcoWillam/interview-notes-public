@@ -1,5 +1,11 @@
 'use client';
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from 'react';
 import {
   localStore,
   type SavedInterview,
@@ -36,6 +42,11 @@ export function useInterviewLibrary(
 ) {
   const access = useLocalAccess();
   const [id, setId] = useState('');
+  const activeId = useRef('');
+  function selectId(nextId: string) {
+    activeId.current = nextId;
+    setId(nextId);
+  }
   const [ready, setReady] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
@@ -48,13 +59,10 @@ export function useInterviewLibrary(
   const [conflicts, setConflicts] = useState<InterviewConflict[]>([]);
   const [sessions, setSessions] = useState<SavedInterview[]>([]);
   const [groups, setGroups] = useState<InterviewGroup[]>([]);
-  const [workspacePreferences, setWorkspacePreferences] = useState<
-    | Pick<
-        InterviewWorkspace,
-        'sortMode' | 'manualOrder' | 'collapsedGroupIds'
-      >
-    | null
-  >(null);
+  const [workspacePreferences, setWorkspacePreferences] = useState<Pick<
+    InterviewWorkspace,
+    'sortMode' | 'manualOrder' | 'collapsedGroupIds'
+  > | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [audio, setAudio] = useState<AudioRecord[]>([]);
   const [preferences, setPreferences] = useState<Preference[]>([]);
@@ -130,7 +138,10 @@ export function useInterviewLibrary(
             collapsedGroupIds: remoteWorkspace.collapsedGroupIds,
           });
         } else {
-          workspaceRef.current = { ...workspaceRef.current, groups: localGroups };
+          workspaceRef.current = {
+            ...workspaceRef.current,
+            groups: localGroups,
+          };
           setGroups(localGroups);
         }
         setWorkspaceReady(true);
@@ -221,13 +232,13 @@ export function useInterviewLibrary(
           createdAt.current = latest.createdAt ?? latest.updatedAt;
           await callbacks.current.restore(await normalizeSession(latest));
           if (disposed) return;
-          setId(latest.id);
+          selectId(latest.id);
         } else {
           const seed = await localStore().getNewInterviewSeed();
           if (disposed) return;
           createdAt.current = Date.now();
           callbacks.current.clear(seed);
-          setId(crypto.randomUUID());
+          selectId(crypto.randomUUID());
         }
         await refresh();
         if (!disposed) setReady(true);
@@ -301,17 +312,17 @@ export function useInterviewLibrary(
       document.removeEventListener('visibilitychange', visible);
     };
   }, [options.cloud, synchronize]);
-  async function flush() {
+  async function flush(overrides?: Partial<Draft>) {
     if (timer.current) clearTimeout(timer.current);
-    if (!ready || !id) throw new Error('本地存储尚未就绪');
-    await write(id, callbacks.current.draft);
+    if (!ready || !id || activeId.current !== id)
+      throw new Error('本地存储尚未就绪');
+    const value = { ...callbacks.current.draft, ...overrides };
+    await write(id, value);
+    if (overrides && activeId.current === id)
+      callbacks.current.draft = { ...callbacks.current.draft, ...overrides };
   }
   async function flushForTask(overrides?: Partial<Draft>) {
-    if (overrides) {
-      if (timer.current) clearTimeout(timer.current);
-      if (!ready || !id) throw new Error('本地存储尚未就绪');
-      await write(id, { ...callbacks.current.draft, ...overrides });
-    } else await flush();
+    await flush(overrides);
     if (!options.cloud) return undefined;
     await synchronize();
     const meta = await localStore().getSyncMeta(id);
@@ -320,16 +331,27 @@ export function useInterviewLibrary(
   }
   async function refreshFromCloud(interviewId = id) {
     if (!options.cloud) return;
-    const value = await transport.current.get(interviewId);
-    await localStore().saveRemoteInterview(value.record, value.revision);
-    if (interviewId === id) {
-      setReady(false);
-      createdAt.current = value.record.createdAt ?? value.record.updatedAt;
-      await callbacks.current.restore(await normalizeSession(value.record));
-      setReady(true);
+    if (interviewId === activeId.current) {
+      if (timer.current) clearTimeout(timer.current);
     }
-    await refresh();
-    setSyncStatus('synced');
+    try {
+      // Finish accepted local changes before replacing their cloud snapshot.
+      await writes.current.catch(() => {});
+      await syncs.current;
+      const value = await transport.current.get(interviewId);
+      await localStore().saveRemoteInterview(value.record, value.revision);
+      const normalized = await normalizeSession(value.record);
+      if (interviewId === activeId.current) {
+        setReady(false);
+        if (timer.current) clearTimeout(timer.current);
+        createdAt.current = value.record.createdAt ?? value.record.updatedAt;
+        await callbacks.current.restore(normalized);
+      }
+      await refresh();
+      setSyncStatus('synced');
+    } finally {
+      if (interviewId === activeId.current) setReady(true);
+    }
   }
   async function open(nextId: string) {
     setWorking(true);
@@ -340,8 +362,8 @@ export function useInterviewLibrary(
       setReady(false);
       createdAt.current = row.createdAt ?? row.updatedAt;
       const restored = await normalizeSession(row);
+      selectId(nextId);
       await callbacks.current.restore(restored);
-      setId(nextId);
       setSaved(
         nextId +
           JSON.stringify({
@@ -365,7 +387,7 @@ export function useInterviewLibrary(
       setReady(false);
       createdAt.current = Date.now();
       callbacks.current.clear(seed);
-      setId(crypto.randomUUID());
+      selectId(crypto.randomUUID());
       setSaved('');
       setReady(true);
       await refresh();
@@ -396,7 +418,7 @@ export function useInterviewLibrary(
         setReady(false);
         createdAt.current = Date.now();
         callbacks.current.clear(seed!);
-        setId(crypto.randomUUID());
+        selectId(crypto.randomUUID());
         setSaved('');
         setReady(true);
       }
@@ -435,7 +457,10 @@ export function useInterviewLibrary(
         order: nextOrder,
       });
       setGroups([...current, saved]);
-      workspaceRef.current = { ...workspaceRef.current, groups: [...current, saved] };
+      workspaceRef.current = {
+        ...workspaceRef.current,
+        groups: [...current, saved],
+      };
       workspaceDirty.current = true;
       if (options.cloud) void synchronize().catch(() => {});
       return saved;
@@ -501,7 +526,8 @@ export function useInterviewLibrary(
       await localStore().moveInterviewToGroup(interviewId, groupId);
       if (options.cloud) {
         const moved = await localStore().getInterview(interviewId);
-        if (moved) await localStore().queueInterviewSync(moved, 'periodic-edit');
+        if (moved)
+          await localStore().queueInterviewSync(moved, 'periodic-edit');
         setSyncStatus('pending');
         void synchronize().catch(() => {});
       }
@@ -515,7 +541,10 @@ export function useInterviewLibrary(
     }
   }
   function updateWorkspacePreferences(
-    value: Pick<InterviewWorkspace, 'sortMode' | 'manualOrder' | 'collapsedGroupIds'>,
+    value: Pick<
+      InterviewWorkspace,
+      'sortMode' | 'manualOrder' | 'collapsedGroupIds'
+    >,
   ) {
     setWorkspacePreferences(value);
     workspaceRef.current = { ...workspaceRef.current, ...value };

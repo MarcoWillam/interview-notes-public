@@ -372,3 +372,31 @@ void test('resume source, verification and reading survive local history reopeni
     record,
   );
 });
+
+void test('follow-up groups and active task survive reopening without changing the main reading or report', async () => {
+  const { followUpGroupFixture, followUpInputFixture } =
+    await import('./fixtures/follow-up-outline.ts');
+  const factory = new IDBFactory();
+  const store = createLocalStore(factory, 'follow-up-records');
+  const group = followUpGroupFixture();
+  const record: SavedInterview = {
+    ...session,
+    resumeReading: followUpInputFixture().resumeReading,
+    outlineSupplements: [group],
+    followUpOutlineJobId: 'follow-up-active-task',
+  };
+  await store.saveInterviewDraft(record);
+  const reopened = createLocalStore(factory, 'follow-up-records');
+  assert.deepEqual(await reopened.getInterview(record.id), record);
+  const deleted = { ...record, outlineSupplements: [] };
+  await reopened.saveInterviewDraft(deleted);
+  assert.deepEqual(await store.getInterview(record.id), deleted);
+  assert.deepEqual(
+    (await store.getInterview(record.id))?.resumeReading,
+    record.resumeReading,
+  );
+  assert.deepEqual(
+    (await store.getInterview(record.id))?.report,
+    record.report,
+  );
+});

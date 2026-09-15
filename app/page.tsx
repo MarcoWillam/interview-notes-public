@@ -16,6 +16,7 @@ import {
   submitRemoteWrittenTest,
   submitRemoteWorkSample,
   submitRemoteOutline,
+  submitRemoteFollowUpOutline,
   listRemoteArtifacts,
   type RemoteArtifact,
 } from '@/lib/remote-analysis';
@@ -130,6 +131,13 @@ import {
   createOutlineRegenerationInput,
 } from '@/lib/outline-regeneration-workflow';
 
+import {
+  normalizeRequestedFocus,
+  validateFollowUpOutlineInput,
+  type FollowUpOutlineGroup,
+  type FollowUpOutlineResult,
+} from '@/lib/follow-up-outline';
+
 const defaultDimensions = defaultStandards.dimensionText;
 const MANUAL_TRANSCRIPT_SOURCE = '手动粘贴 / 输入';
 export type WorkspaceAccount = {
@@ -185,6 +193,15 @@ export default function Home({
   const [resumeReading, setResumeReading] = useState<ResumeReading | null>(
     null,
   );
+  const [outlineSupplements, setOutlineSupplements] = useState<
+    FollowUpOutlineGroup[]
+  >([]);
+  const [followUpOutlineJobId, setFollowUpOutlineJobId] = useState<
+    string | undefined
+  >();
+  const [followUpOutlineDraft, setFollowUpOutlineDraft] = useState('');
+  const followUpController = useRef<AbortController | null>(null);
+  const followUpRecordId = useRef('');
   const [workSample, setWorkSample] = useState<WorkSampleAssessment | null>(
     null,
   );
@@ -251,6 +268,7 @@ export default function Home({
     | 'written-test'
     | 'work-sample'
     | 'outline'
+    | 'follow-up-outline'
     | 'prepare'
     | null
   >(null);
@@ -260,6 +278,8 @@ export default function Home({
     () => () => {
       analysisController.current?.abort();
       analysisController.current = null;
+      followUpController.current?.abort();
+      followUpController.current = null;
     },
     [],
   );
@@ -308,10 +328,21 @@ export default function Home({
     confirmed,
     regeneratedAt: outlineRegeneratedAt,
     activeJobId: outlineRegenerationJobId,
-    preparationJobIds: [writtenTestJobId, workSampleJobId],
+    preparationJobIds: [
+      writtenTestJobId,
+      workSampleJobId,
+      followUpOutlineJobId,
+    ],
     busy: !!busy,
   });
   const outlineTaskActive = !!outlineRegenerationJobId;
+  const followUpTaskActive = !!followUpOutlineJobId;
+  const followUpBusy =
+    !!busy ||
+    followUpTaskActive ||
+    outlineTaskActive ||
+    !!writtenTestJobId ||
+    !!workSampleJobId;
   // Imports and queue responses may finish after the render that started them.
   const resumeContext = useRef({
     candidate,
@@ -417,8 +448,20 @@ export default function Home({
       outlineRegeneratedAt,
       outlineRegenerationJobId,
       outlineRevision,
+      outlineSupplements,
+      followUpOutlineJobId,
     },
     async (saved) => {
+      const sameFollowUpRecord = followUpRecordId.current === saved.id;
+      followUpRecordId.current = saved.id;
+      if (followUpController.current) {
+        followUpController.current.abort();
+        followUpController.current = null;
+        busyRef.current = false;
+        setBusy(null);
+      }
+      setRemoteJob(null);
+      setError('');
       analysisController.current?.abort();
       analysisController.current = null;
       setPendingCandidateName(null);
@@ -443,6 +486,9 @@ export default function Home({
       setResumeText(saved.resumeText || '');
       setResumeName(saved.resumeName || '');
       setResumeReading(saved.resumeReading || null);
+      setOutlineSupplements(saved.outlineSupplements || []);
+      setFollowUpOutlineJobId(saved.followUpOutlineJobId);
+      if (!sameFollowUpRecord) setFollowUpOutlineDraft('');
       setWorkSample(
         saved.workSample || saved.resumeReading?.workSample || null,
       );
@@ -469,6 +515,7 @@ export default function Home({
   const libraryRef = useRef(library);
   useEffect(() => {
     libraryRef.current = library;
+    followUpRecordId.current = library.id;
   }, [library]);
   const outlineLiveRef = useRef({
     recordId: library.id,
@@ -538,7 +585,9 @@ export default function Home({
           if (job.resultDisposition === 'pending') {
             setWorkSampleJobId(undefined);
             await libraryRef.current.refreshFromCloud();
-            setError('作品分析已完成，但资料发生变化。请在记录管理中确认结果。');
+            setError(
+              '作品分析已完成，但资料发生变化。请在记录管理中确认结果。',
+            );
             return;
           }
           if (job.resultDisposition === 'applied') {
@@ -683,7 +732,9 @@ export default function Home({
           if (job.resultDisposition === 'pending') {
             setWrittenTestJobId(undefined);
             await libraryRef.current.refreshFromCloud();
-            setError('笔试复盘题已完成，但资料发生变化。请在记录管理中确认结果。');
+            setError(
+              '笔试复盘题已完成，但资料发生变化。请在记录管理中确认结果。',
+            );
             return;
           }
           if (job.resultDisposition === 'applied') {
@@ -870,6 +921,92 @@ export default function Home({
     report,
     confirmed,
   ]);
+  // Recover only the saved follow-up task; a polling error must never submit a new job.
+  useEffect(() => {
+    if (
+      !library.ready ||
+      !library.cloud ||
+      !followUpOutlineJobId ||
+      busyRef.current
+    )
+      return;
+    const recordId = library.id;
+    const draft = followUpOutlineDraft;
+    const controller = new AbortController();
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const current = () => !disposed && followUpRecordId.current === recordId;
+    const recover = async () => {
+      if (!current()) return;
+      try {
+        const job = await remoteRequest<RemoteJob<FollowUpOutlineResult>>(
+          '/api/jobs/' + encodeURIComponent(followUpOutlineJobId),
+          { signal: controller.signal },
+        );
+        if (!current()) return;
+        if (job.state === 'completed') {
+          if (job.resultDisposition === 'applied') {
+            await libraryRef.current.refreshFromCloud(recordId);
+            if (followUpRecordId.current !== recordId) return;
+            setFollowUpOutlineJobId(undefined);
+            setFollowUpOutlineDraft('');
+            setRemoteJob(null);
+            setNotice('已恢复完成的 2 道补充追问。');
+            setTab('resume');
+            return;
+          }
+          if (job.resultDisposition === 'pending') {
+            await libraryRef.current.refreshFromCloud(recordId);
+            if (followUpRecordId.current !== recordId) return;
+            setFollowUpOutlineJobId(undefined);
+            setFollowUpOutlineDraft(draft);
+            setRemoteJob(null);
+            setError(
+              '补充追问已完成，但资料发生变化。请在记录管理中确认结果。',
+            );
+            return;
+          }
+          setFollowUpOutlineJobId(undefined);
+          setRemoteJob(null);
+          setError('补充追问尚未应用，请在记录管理中检查任务结果后重试。');
+          return;
+        }
+        if (job.state === 'failed' || job.state === 'cancelled') {
+          setFollowUpOutlineJobId(undefined);
+          setRemoteJob(null);
+          setError(
+            `${job.error || '补充追问任务未完成。'} 关注点已保留，可以重试。`,
+          );
+          return;
+        }
+        setRemoteJob({ ...job, report: null });
+        timer = setTimeout(() => void recover(), 3000);
+      } catch (reason) {
+        if (!current()) return;
+        if ((reason as { status?: number }).status === 404) {
+          setFollowUpOutlineJobId(undefined);
+          setRemoteJob(null);
+          setError('补充追问任务已过期，关注点已保留，可以重试。');
+          return;
+        }
+        setError('暂时无法获取补充追问进度，系统会继续重试，无需重复提交。');
+        timer = setTimeout(() => void recover(), 5000);
+      }
+    };
+    void recover();
+    return () => {
+      disposed = true;
+      controller.abort();
+      if (timer) clearTimeout(timer);
+    };
+  }, [
+    library.ready,
+    library.cloud,
+    library.id,
+    followUpOutlineJobId,
+    followUpOutlineDraft,
+    busy,
+  ]);
   async function localAction(action: () => Promise<void>) {
     if (busyRef.current) return;
     busyRef.current = true;
@@ -895,7 +1032,7 @@ export default function Home({
     setNotice('面试记录已导入，请校对文字与说话人归属后再生成评估。');
   }
   async function transcriptFile(file: File) {
-    if (busyRef.current || outlineTaskActive) {
+    if (busyRef.current || outlineTaskActive || followUpTaskActive) {
       if (outlineTaskActive)
         setError('提纲正在重新生成，请等待完成或先在任务中心停止任务。');
       return;
@@ -922,6 +1059,14 @@ export default function Home({
     setResumeText(text);
     setResumeName(name);
     setResumeReading(null);
+    setOutlineSupplements([]);
+    setFollowUpOutlineJobId(undefined);
+    setFollowUpOutlineDraft('');
+    followUpController.current?.abort();
+    followUpController.current = null;
+    busyRef.current = false;
+    setBusy(null);
+    setRemoteJob(null);
     setWorkSample(null);
     setWorkSampleJobId(undefined);
     setWrittenTestJobId(undefined);
@@ -1176,11 +1321,175 @@ export default function Home({
       selectedArtifact,
     );
   }
+  async function runFollowUpOutline(requestedFocus: string): Promise<boolean> {
+    if (busyRef.current || followUpBusy) {
+      setError('当前记录还有任务进行中，请等待完成或先在任务中心处理。');
+      return false;
+    }
+    setFollowUpOutlineDraft(requestedFocus);
+    if (!resumeReading?.outline && !resumeReading?.interviewQuestions?.length) {
+      setError('请先生成面试提纲，再补充追问。');
+      return false;
+    }
+    if (!queuedCodex || !library.cloud) {
+      setError('补充追问需要登录云端队列版工作台；本地预览不能提交此任务。');
+      return false;
+    }
+    const recordId = library.id;
+    const controller = new AbortController();
+    followUpController.current = controller;
+    busyRef.current = true;
+    setBusy('follow-up-outline');
+    setError('');
+    setNotice('');
+    setRemoteJob(null);
+    let lastJob: RemoteJob<FollowUpOutlineResult> | undefined;
+    let jobSave: Promise<void> = Promise.resolve();
+    const current = () =>
+      followUpController.current === controller &&
+      followUpRecordId.current === recordId &&
+      !controller.signal.aborted;
+    try {
+      const normalizedFocus = normalizeRequestedFocus(requestedFocus);
+      setFollowUpOutlineDraft(normalizedFocus);
+      const followUpInput = validateFollowUpOutlineInput({
+        role,
+        requirements,
+        dimensionText,
+        focus,
+        scoringGuidance,
+        reportRequirements,
+        resumeText,
+        resumeReading,
+        outlineVersion,
+        requestedFocus: normalizedFocus,
+        existingSupplements: outlineSupplements,
+      });
+      const recordBinding = await library.flushForTask();
+      if (!current()) return false;
+      if (!recordBinding)
+        throw new Error('面试记录尚未绑定云端，请同步成功后重试。');
+      await submitRemoteFollowUpOutline(
+        followUpInput,
+        controller.signal,
+        (job) => {
+          if (!current()) return;
+          const firstProgress = !lastJob;
+          lastJob = job;
+          setFollowUpOutlineJobId(job.id);
+          setRemoteJob({ ...job, report: null });
+          if (
+            firstProgress &&
+            (job.state === 'queued' || job.state === 'running')
+          ) {
+            // This task metadata is excluded from the server's source binding.
+            jobSave = library.flush({
+              followUpOutlineJobId: job.id,
+            });
+            void jobSave.catch(() => {
+              if (current())
+                setError(
+                  '任务已提交，但任务标识保存失败，请在任务中心查看进度。',
+                );
+            });
+          }
+        },
+        { fetcher: fetch, pollMs: 2000, scope: recordId, ...recordBinding },
+      );
+      if (!current()) return false;
+      await jobSave;
+      if (!current()) return false;
+      if (lastJob?.resultDisposition !== 'applied')
+        throw new Error('补充追问结果尚未应用，请在记录管理中确认结果。');
+      // The server appends the group. Never append the returned report locally.
+      await libraryRef.current.refreshFromCloud(recordId);
+      if (followUpRecordId.current !== recordId) return false;
+      setFollowUpOutlineJobId(undefined);
+      setFollowUpOutlineDraft('');
+      setRemoteJob(null);
+      setNotice('已补充 2 道追问，原面试提纲保持不变。');
+      setTab('resume');
+      return true;
+    } catch (reason) {
+      if (!current()) return false;
+      if (lastJob?.resultDisposition === 'pending') {
+        try {
+          await jobSave;
+          await libraryRef.current.refreshFromCloud(recordId);
+          if (followUpRecordId.current !== recordId) return false;
+          setFollowUpOutlineJobId(undefined);
+          setFollowUpOutlineDraft(requestedFocus);
+          setRemoteJob(null);
+          setError('补充追问已完成，但资料发生变化。请在记录管理中确认结果。');
+        } catch {
+          if (followUpRecordId.current === recordId)
+            setError(
+              '暂时无法刷新补充追问结果，系统会继续重试，无需重复提交。',
+            );
+        }
+        return false;
+      }
+      if (
+        lastJob?.state === 'failed' ||
+        lastJob?.state === 'cancelled' ||
+        (reason as { status?: number }).status === 404
+      ) {
+        setFollowUpOutlineJobId(undefined);
+        setRemoteJob(null);
+      }
+      setError(
+        lastJob && lastJob.state !== 'failed' && lastJob.state !== 'cancelled'
+          ? '任务已提交，暂时无法获取结果，系统会继续重试，无需重复提交。'
+          : `${reason instanceof Error ? reason.message : '补充追问失败。'} 请检查后重试。`,
+      );
+      return false;
+    } finally {
+      if (followUpController.current === controller) {
+        followUpController.current = null;
+        busyRef.current = false;
+        setBusy(null);
+      }
+    }
+  }
+  async function deleteFollowUpOutline(groupId: string): Promise<boolean> {
+    if (busyRef.current || followUpBusy) {
+      setError('当前记录还有任务进行中，请等待完成后再删除补充追问。');
+      return false;
+    }
+    const recordId = library.id;
+    const next = outlineSupplements.filter((group) => group.id !== groupId);
+    if (next.length === outlineSupplements.length) {
+      setError('这组补充追问已不存在，请刷新记录。');
+      return false;
+    }
+    busyRef.current = true;
+    setBusy('prepare');
+    try {
+      await library.flush({ outlineSupplements: next });
+      if (followUpRecordId.current !== recordId) return false;
+      setOutlineSupplements(next);
+      setError('');
+      setNotice('已删除这组补充追问。');
+      return true;
+    } catch (reason) {
+      if (followUpRecordId.current === recordId)
+        setError(
+          reason instanceof Error ? reason.message : '删除保存失败，请重试。',
+        );
+      return false;
+    } finally {
+      if (followUpRecordId.current === recordId) {
+        busyRef.current = false;
+        setBusy(null);
+      }
+    }
+  }
   async function runOutlineRegeneration() {
     const reading = resumeReading;
     const recordId = library.id;
     if (
       busyRef.current ||
+      followUpTaskActive ||
       (!reading?.interviewQuestions && !reading?.outline) ||
       !canRegenerateOutline({
         resumeText,
@@ -1190,7 +1499,11 @@ export default function Home({
         confirmed,
         regeneratedAt: outlineRegeneratedAt,
         activeJobId: outlineRegenerationJobId,
-        preparationJobIds: [writtenTestJobId, workSampleJobId],
+        preparationJobIds: [
+          writtenTestJobId,
+          workSampleJobId,
+          followUpOutlineJobId,
+        ],
       })
     ) {
       setPendingOutlineRegeneration(false);
@@ -1311,6 +1624,7 @@ export default function Home({
     let submittedJobId: string | undefined;
     if (
       busyRef.current ||
+      followUpTaskActive ||
       (!reading?.interviewQuestions && !reading?.outline) ||
       !canGenerateWrittenTestSupplement({
         sourceTemplateId,
@@ -1413,7 +1727,7 @@ export default function Home({
     }
   }
   function openLateWorkSample() {
-    if (!workSampleEligible || busyRef.current) return;
+    if (!workSampleEligible || busyRef.current || followUpTaskActive) return;
     setLateWorkSampleArtifact(null);
     setLateWorkSampleOpen(true);
     void refreshWorkSampleArtifacts();
@@ -1424,6 +1738,7 @@ export default function Home({
     let submittedJobId: string | undefined;
     if (
       busyRef.current ||
+      followUpTaskActive ||
       (!reading?.interviewQuestions && !reading?.outline) ||
       !workSampleEligible ||
       !artifact?.available
@@ -1659,7 +1974,7 @@ export default function Home({
     setReviewed(false);
   }
   async function analyze() {
-    if (busyRef.current || outlineTaskActive) {
+    if (busyRef.current || outlineTaskActive || followUpTaskActive) {
       if (outlineTaskActive)
         setError('提纲正在重新生成，请等待完成或先在任务中心停止任务。');
       return;
@@ -1789,6 +2104,7 @@ export default function Home({
     setOutlineVersion(1);
   }
   function reset(seed: NewInterviewSeed) {
+    followUpRecordId.current = '';
     analysisController.current?.abort();
     analysisController.current = null;
     setStandards(seed.standards);
@@ -1803,6 +2119,14 @@ export default function Home({
     setResumeText('');
     setResumeName('');
     setResumeReading(null);
+    setOutlineSupplements([]);
+    setFollowUpOutlineJobId(undefined);
+    setFollowUpOutlineDraft('');
+    followUpController.current?.abort();
+    followUpController.current = null;
+    busyRef.current = false;
+    setBusy(null);
+    setRemoteJob(null);
     setWorkSample(null);
     setWorkSampleJobId(undefined);
     setWrittenTestJobId(undefined);
@@ -2120,7 +2444,9 @@ export default function Home({
           onDeleteGroup={library.deleteGroup}
           onMoveToGroup={library.moveToGroup}
           workspacePreferences={
-            library.cloud ? library.workspacePreferences || undefined : undefined
+            library.cloud
+              ? library.workspacePreferences || undefined
+              : undefined
           }
           onWorkspacePreferencesChange={
             library.cloud && library.workspaceReady
@@ -2385,13 +2711,24 @@ export default function Home({
                         </details>
                         {resumeReading && (
                           <ResumeReadingView
+                            key={library.id}
                             value={resumeReading}
-                            canSupplement={writtenTestSupplementEligible}
+                            groups={outlineSupplements}
+                            busy={followUpBusy}
+                            draft={followUpOutlineDraft}
+                            onGenerate={runFollowUpOutline}
+                            onDelete={deleteFollowUpOutline}
+                            canSupplement={
+                              writtenTestSupplementEligible &&
+                              !followUpTaskActive
+                            }
                             supplementBusy={busy === 'written-test'}
                             onSupplement={() =>
                               setPendingWrittenTestSupplement(true)
                             }
-                            canSubmitWork={workSampleEligible}
+                            canSubmitWork={
+                              workSampleEligible && !followUpTaskActive
+                            }
                             workBusy={busy === 'work-sample'}
                             onSubmitWork={openLateWorkSample}
                             canRegenerate={outlineRegenerationEligible}
