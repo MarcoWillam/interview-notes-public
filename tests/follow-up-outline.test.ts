@@ -258,6 +258,29 @@ void test('V1 legacy workSampleQuestions 会被保留并参与重复题校验', 
   );
 });
 
+void test('简历阅读作品评估的嵌套对象拒绝未知字段', () => {
+  const fixture = followUpInputFixture();
+  const { interviewQuestions: _ignored, ...reading } = fixture.resumeReading;
+  for (const workSample of [
+    { artifact: { unexpected: 'field' } },
+    { artifact: {}, coverage: { unexpected: 'field' } },
+    { artifact: {}, coverage: {}, dimensions: [{ unexpected: 'field' }] },
+    {
+      artifact: {},
+      coverage: {},
+      dimensions: [{ evidence: [{ unexpected: 'field' }] }],
+    },
+  ])
+    assert.throws(
+      () =>
+        validateFollowUpOutlineInput({
+          ...fixture,
+          resumeReading: { ...reading, workSample },
+        }),
+      /未知字段/,
+    );
+});
+
 void test('应用结果按 jobId 去重且不改写原提纲', () => {
   const first = applyFollowUpOutlineResult([], followUpResultFixture(), {
     id: 'group-12345678',

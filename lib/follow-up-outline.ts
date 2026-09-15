@@ -266,6 +266,50 @@ function strictQuestionList(
   value.forEach((item) => strictQuestionShape(item, fields));
 }
 
+function strictWorkSampleShape(value: Record<string, unknown>) {
+  exactKeys(
+    value,
+    [
+      'rubricVersion',
+      'artifact',
+      'coverage',
+      'summary',
+      'dimensions',
+      'strengths',
+      'risks',
+      'questions',
+    ],
+    '作品评估',
+  );
+  if (record(value.artifact)) {
+    exactKeys(
+      value.artifact,
+      ['id', 'name', 'sha256', 'bytes', 'modifiedAt'],
+      '作品信息',
+    );
+  }
+  if (record(value.coverage)) {
+    exactKeys(
+      value.coverage,
+      ['analyzed', 'excluded', 'unsupported', 'truncated'],
+      '作品读取范围',
+    );
+  }
+  if (Array.isArray(value.dimensions)) {
+    value.dimensions.forEach((dimension) => {
+      if (!record(dimension)) throw new Error('作品评估维度格式不正确。');
+      exactKeys(dimension, ['name', 'score', 'assessment', 'evidence'], '作品评估维度');
+      if (Array.isArray(dimension.evidence)) {
+        dimension.evidence.forEach((evidence) => {
+          if (!record(evidence)) throw new Error('作品证据格式不正确。');
+          exactKeys(evidence, ['path', 'excerpt'], '作品证据');
+        });
+      }
+    });
+  }
+  strictQuestionList(value.questions, legacyQuestionFields);
+}
+
 function strictResumeReadingShape(
   value: Record<string, unknown>,
   outlineVersion: 1 | 2 | 3,
@@ -319,12 +363,7 @@ function strictResumeReadingShape(
     }
   }
   if (record(value.workSample)) {
-    exactKeys(
-      value.workSample,
-      ['rubricVersion', 'artifact', 'coverage', 'summary', 'dimensions', 'strengths', 'risks', 'questions'],
-      '作品评估',
-    );
-    strictQuestionList(value.workSample.questions, legacyQuestionFields);
+    strictWorkSampleShape(value.workSample);
   }
 }
 
