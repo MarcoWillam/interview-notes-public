@@ -601,8 +601,10 @@ export function validateFollowUpOutlineInput(value: unknown): FollowUpOutlineInp
           workSampleQuestions: normalizedLegacyWorkSampleQuestions,
         };
   const requestedFocus = normalizeRequestedFocus(value.requestedFocus);
-  if (!Array.isArray(value.existingSupplements) || value.existingSupplements.length > 50)
+  if (!Array.isArray(value.existingSupplements))
     throw new Error('已有补充追问分组数量不正确。');
+  if (value.existingSupplements.length >= 50)
+    throw new Error('补充追问已达到 50 组上限，请删除部分分组后再生成。');
   const existingSupplements = validateFollowUpOutlineGroups(
     value.existingSupplements,
     resumeText,
