@@ -235,6 +235,44 @@ void test('follow-up outline tasks require a bound matching interview and protoc
   }
 });
 
+void test('protocol five outline connector claims server-driven follow-up without a connector update', () => {
+  const { s, a } = setup();
+  try {
+    const record = saveFollowUpRecord(s, a, 'record-follow-up-compatible-123');
+    const job = s.submit(
+      a,
+      'follow-up-compatible-123',
+      '补充追问 · 自驱力',
+      followUpInputFixture(),
+      'follow-up-outline',
+      record.record.id,
+      { interviewId: record.record.id, interviewRevision: record.revision },
+    );
+    const existingProtocolFive = s.redeem(
+      s.pairing(a).code,
+      '现有协议五电脑',
+      {
+        version: CONNECTOR_VERSION,
+        protocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
+      },
+    );
+    const claimed = s.claim(
+      existingProtocolFive.token,
+      true,
+      ['interview', 'resume', 'written-test', 'outline'],
+      {
+        version: CONNECTOR_VERSION,
+        protocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
+      },
+    )! as { id: string; kind: string; execution: { runner: string } };
+    assert.equal(claimed.id, job.id);
+    assert.equal(claimed.kind, 'follow-up-outline');
+    assert.equal(claimed.execution.runner, 'structured-text');
+  } finally {
+    s.close();
+  }
+});
+
 void test('follow-up outline repairs one invalid protocol five result under its lease', () => {
   const { s, a } = setup();
   try {
