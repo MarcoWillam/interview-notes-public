@@ -608,7 +608,7 @@ export class QueueStore {
                 validatedInput.outlineVersion === 2
               ? OUTLINE_V2_CONNECTOR_PROTOCOL
               : 1;
-    if (boundRecord && kind !== 'follow-up-outline')
+    if (boundRecord)
       assertInterviewJobInputMatches(
         boundRecord.record,
         kind,

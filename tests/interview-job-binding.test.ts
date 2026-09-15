@@ -1,3 +1,10 @@
+import {
+  followUpInputFixture,
+  followUpResultFixture,
+  followUpGroupFixture,
+} from './fixtures/follow-up-outline.ts';
+import { interviewJobSource, assertInterviewJobInputMatches } from '../lib/interview-job-binding.ts';
+import { validateFollowUpOutlineInput } from '../lib/follow-up-outline.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { QueueStore } from '../server/queue/store.ts';
@@ -289,3 +296,211 @@ void test('unrelated conclusion edits still allow the bound result to apply', ()
     store.close();
   }
 });
+
+function followUpRecord(): CloudInterview {
+  const {
+    requestedFocus: _focus,
+    existingSupplements: _groups,
+    ...source
+  } = followUpInputFixture();
+  return {
+    ...cloudRecord('record-follow-up-binding'),
+    ...structuredClone(source),
+    confirmed: true,
+    report: { summary: '原有评估' } as unknown as CloudInterview['report'],
+  };
+}
+
+void test('follow-up binding checks normalized standards, reading, version and supplements', () => {
+  const { store, user } = setup();
+  try {
+    const record = followUpRecord();
+    store.interviews.put(user, record.id, 0, 'mutation-follow-up-create', {
+      ...record,
+      role: ` ${record.role} `,
+    });
+    const submit = (
+      value: ReturnType<typeof followUpInputFixture>,
+      client: string,
+    ) =>
+      store.submit(
+        user,
+        client,
+        '补充追问',
+        value,
+        'follow-up-outline',
+        record.id,
+        { interviewId: record.id, interviewRevision: 1 },
+      );
+    for (const [index, patch] of [
+      { role: '其他岗位' },
+      { requirements: '另一套岗位要求' },
+      { resumeText: record.resumeText + '另有经历。' },
+      { resumeReading: { ...record.resumeReading!, summary: '其他阅读摘要' } },
+      { existingSupplements: [followUpGroupFixture()] },
+    ].entries()) {
+      assert.throws(
+        () =>
+          submit(
+            { ...followUpInputFixture(), ...patch },
+            `client-follow-up-bad-${index}`,
+          ),
+        /云端面试记录不一致/,
+      );
+    }
+    assert.throws(() => assertInterviewJobInputMatches(record, 'follow-up-outline', {
+      ...validateFollowUpOutlineInput(followUpInputFixture()),
+      outlineVersion: 2,
+    }), /云端面试记录不一致/);
+    assert.doesNotThrow(() =>
+      submit(followUpInputFixture(), 'client-follow-up-match'),
+    );
+  } finally {
+    store.close();
+  }
+});
+
+void test('follow-up source ignores unrelated edits and job status but detects preparation changes', () => {
+  const record = followUpRecord();
+  const source = interviewJobSource(record, 'follow-up-outline');
+  assert.deepEqual(
+    interviewJobSource(
+      {
+        ...record,
+        conclusion: '备注',
+        transcript: '新转写',
+        followUpOutlineJobId: 'running-job-12345',
+        role: ` ${record.role} `,
+      },
+      'follow-up-outline',
+    ),
+    source,
+  );
+  for (const patch of [
+    { role: '另一岗位' },
+    { requirements: '新要求' },
+    { dimensionText: '新维度' },
+    { focus: '新重点' },
+    { scoringGuidance: '新评分说明' },
+    { reportRequirements: '新报告要求' },
+    { outlineVersion: 2 as const },
+    { resumeText: '新简历' },
+    { resumeReading: { ...record.resumeReading!, summary: '新摘要' } },
+    { outlineSupplements: [followUpGroupFixture()] },
+  ])
+    assert.notDeepEqual(
+      interviewJobSource({ ...record, ...patch }, 'follow-up-outline'),
+      source,
+    );
+});
+
+for (const change of ['none', 'unrelated', 'relevant', 'deleted'] as const) {
+  void test(`follow-up result handles ${change} edits and preserves main outline/report`, () => {
+    const { store, user } = setup();
+    try {
+      const record = followUpRecord();
+      const release = { version: '0.1.18', protocol: 5 };
+      const device = store.redeem(
+        store.pairing(user).code,
+        '协议五电脑',
+        release,
+      );
+      store.interviews.put(
+        user,
+        record.id,
+        0,
+        'mutation-follow-up-created',
+        record,
+      );
+      store.submit(
+        user,
+        'client-follow-up-apply',
+        '补充追问',
+        followUpInputFixture(),
+        'follow-up-outline',
+        record.id,
+        { interviewId: record.id, interviewRevision: 1 },
+      );
+      const claimed = store.claim(
+        device.token,
+        true,
+        ['follow-up-outline'],
+        release,
+      )!;
+      if (change === 'deleted')
+        store.interviews.remove(
+          user,
+          record.id,
+          1,
+          'mutation-follow-up-delete',
+        );
+      else if (change !== 'none')
+        store.interviews.put(user, record.id, 1, 'mutation-follow-up-edit', {
+          ...record,
+          ...(change === 'relevant'
+            ? { role: '其他岗位' }
+            : { conclusion: '备注', transcript: '新转写' }),
+          followUpOutlineJobId: claimed.id,
+        });
+      assert.equal(
+        store.finish(
+          device.token,
+          claimed.id,
+          claimed.lease,
+          followUpResultFixture(),
+          false,
+          undefined,
+          1,
+        ).accepted,
+        true,
+      );
+      let saved = store.interviews.get(user, record.id, true);
+      if (change === 'deleted' || change === 'relevant') {
+        assert.equal(saved.record.outlineSupplements, undefined);
+        assert.equal(store.get(user, claimed.id).resultDisposition, 'pending');
+        if (change === 'deleted') {
+          assert.notEqual(saved.deletedAt, null);
+          return;
+        }
+        saved = store.interviews.applyPendingResult(
+          user,
+          record.id,
+          claimed.id,
+          saved.revision,
+          'mutation-follow-up-confirm',
+        );
+        assert.equal(
+          store.interviews.pendingResults(user, record.id)[0].state,
+          'applied',
+        );
+      } else {
+        assert.equal(store.get(user, claimed.id).resultDisposition, 'applied');
+        store.finish(
+          device.token,
+          claimed.id,
+          claimed.lease,
+          followUpResultFixture(),
+          false,
+          undefined,
+          1,
+        );
+        assert.equal(
+          store.interviews.get(user, record.id).revision,
+          saved.revision,
+        );
+      }
+      assert.equal(saved.record.outlineSupplements?.length, 1);
+      assert.equal(saved.record.outlineSupplements?.[0].jobId, claimed.id);
+      assert.equal(saved.record.followUpOutlineJobId, undefined);
+      assert.deepEqual(saved.record.resumeReading, record.resumeReading);
+      assert.deepEqual(saved.record.report, record.report);
+      assert.equal(saved.record.confirmed, true);
+      assert.equal(
+        store.interviews.versions(user, record.id)[0].reason,
+        'follow-up-outline-generated',
+      );
+    } finally {
+      store.close();
+    }
+  });
+}

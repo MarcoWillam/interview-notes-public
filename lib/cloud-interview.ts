@@ -1,3 +1,7 @@
+import {
+  validateFollowUpOutlineGroups,
+  type FollowUpOutlineGroup,
+} from './follow-up-outline.ts';
 import type { Report } from './interview.ts';
 import type { ResumeReading } from './resume-reading.ts';
 import type { WorkSampleAssessment } from './work-sample.ts';
@@ -9,6 +13,8 @@ export type CloudVersionReason =
   | 'resume-read'
   | 'outline-generated'
   | 'outline-regenerated'
+  | 'follow-up-outline-generated'
+  | 'follow-up-outline-deleted'
   | 'transcript-imported'
   | 'work-sample-analyzed'
   | 'written-test-supplemented'
@@ -51,6 +57,8 @@ export type CloudInterview = {
   outlineRegeneratedAt?: number;
   outlineRegenerationJobId?: string;
   outlineRevision?: string;
+  outlineSupplements?: FollowUpOutlineGroup[];
+  followUpOutlineJobId?: string;
 };
 
 export type CloudInterviewSummary = {
@@ -98,12 +106,16 @@ const allowedKeys = new Set<keyof CloudInterview>([
   'outlineRegeneratedAt',
   'outlineRegenerationJobId',
   'outlineRevision',
+  'outlineSupplements',
+  'followUpOutlineJobId',
 ]);
 
 const reasons = new Set<CloudVersionReason>([
   'resume-read',
   'outline-generated',
   'outline-regenerated',
+  'follow-up-outline-generated',
+  'follow-up-outline-deleted',
   'transcript-imported',
   'work-sample-analyzed',
   'written-test-supplemented',
@@ -190,6 +202,7 @@ export function validateCloudInterview(value: unknown): CloudInterview {
   optionalString(record.workSampleJobId, 100, '作品任务');
   optionalString(record.writtenTestJobId, 100, '笔试任务');
   optionalString(record.outlineRegenerationJobId, 100, '提纲任务');
+  optionalString(record.followUpOutlineJobId, 100, '补充追问任务');
   optionalString(record.outlineRevision, 200, '提纲修订');
   if (record.groupId !== undefined && record.groupId !== null)
     string(record.groupId, 100, '分组');
@@ -217,6 +230,8 @@ export function validateCloudInterview(value: unknown): CloudInterview {
     timestamp(record.outlineRegeneratedAt);
   for (const key of ['resumeReading', 'report', 'workSample'])
     if (record[key] !== undefined) plainJson(record[key]);
+  if (record.outlineSupplements !== undefined)
+    validateFollowUpOutlineGroups(record.outlineSupplements);
   plainJson(value);
   const serialized = JSON.stringify(value);
   if (new TextEncoder().encode(serialized).length > MAX_CLOUD_INTERVIEW_BYTES)

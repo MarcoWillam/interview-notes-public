@@ -1,3 +1,4 @@
+import { followUpGroupFixture } from './fixtures/follow-up-outline.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -68,4 +69,38 @@ void test('cloud interview enforces the serialized two MiB ceiling', () => {
 void test('cloud version reasons use a closed business vocabulary', () => {
   assert.equal(validateCloudVersionReason('outline-generated'), 'outline-generated');
   assert.throws(() => validateCloudVersionReason('arbitrary-event'), /版本原因/);
+});
+
+void test('cloud records accept legacy and follow-up fields with strict group validation', () => {
+  assert.equal(validateCloudInterview(record).outlineSupplements, undefined);
+  const next = {
+    ...record,
+    outlineSupplements: [followUpGroupFixture()],
+    followUpOutlineJobId: 'follow-up-running-job',
+  };
+  assert.deepEqual(validateCloudInterview(next), next);
+  assert.throws(
+    () =>
+      validateCloudInterview({
+        ...next,
+        followUpOutlineJobId: 'x'.repeat(101),
+      }),
+    /补充/,
+  );
+  for (const invalid of [
+    null,
+    [{}],
+    [{ ...followUpGroupFixture(), questions: [] }],
+    [{ ...followUpGroupFixture(), unknown: true }],
+  ]) {
+    assert.throws(
+      () => validateCloudInterview({ ...record, outlineSupplements: invalid }),
+      /补充/,
+    );
+  }
+  for (const reason of [
+    'follow-up-outline-generated',
+    'follow-up-outline-deleted',
+  ])
+    assert.equal(validateCloudVersionReason(reason), reason);
 });

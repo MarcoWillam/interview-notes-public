@@ -1,3 +1,5 @@
+import { followUpGroupFixture } from './fixtures/follow-up-outline.ts';
+import { changedInterviewSections } from '../lib/interview-history.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { IDBFactory } from 'fake-indexeddb';
@@ -181,5 +183,27 @@ void test('business milestones choose durable version reasons', () => {
   assert.equal(
     cloudVersionReason(record, { ...record, candidate: '普通编辑' }),
     'periodic-edit',
+  );
+});
+
+void test('follow-up group deletion has a history reason and belongs to outline changes', () => {
+  const previous = { ...record, outlineSupplements: [followUpGroupFixture()] };
+  assert.equal(
+    cloudVersionReason(previous, record),
+    'follow-up-outline-deleted',
+  );
+  assert.equal(
+    cloudVersionReason(record, { ...record, outlineSupplements: [] }),
+    'periodic-edit',
+  );
+  assert.deepEqual(changedInterviewSections(record, previous), [
+    '简历阅读与提纲',
+  ]);
+  assert.deepEqual(
+    changedInterviewSections(record, {
+      ...previous,
+      resumeReading: { summary: 'changed' } as SavedInterview['resumeReading'],
+    }),
+    ['简历阅读与提纲'],
   );
 });
