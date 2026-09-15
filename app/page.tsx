@@ -249,6 +249,10 @@ export default function Home({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [taskCenterOpeningId, setTaskCenterOpeningId] = useState<string | null>(
+    null,
+  );
+  const taskCenterNavigationRef = useRef(false);
   const [preparationOpen, setPreparationOpen] = useState(false);
   const [standardsOpen, setStandardsOpen] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -2225,6 +2229,26 @@ export default function Home({
     setTab('resume');
     setView('workbench');
   }
+  async function openInterviewFromTaskCenter(id: string) {
+    if (taskCenterNavigationRef.current) return;
+    taskCenterNavigationRef.current = true;
+    setTaskCenterOpeningId(id);
+    setError('');
+    setTab('resume');
+    setView('workbench');
+    try {
+      await library.open(id);
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? `打开面试记录失败：${reason.message}`
+          : '打开面试记录失败，请稍后重试。',
+      );
+    } finally {
+      taskCenterNavigationRef.current = false;
+      setTaskCenterOpeningId(null);
+    }
+  }
   async function createInterview() {
     await library.create();
     setView('workbench');
@@ -2298,7 +2322,7 @@ export default function Home({
                     onOpen={() => setToolsOpen(false)}
                     onOpenInterview={(id) => {
                       setToolsOpen(false);
-                      void localAction(() => openInterview(id));
+                      void openInterviewFromTaskCenter(id);
                     }}
                   />
                 </>
@@ -2515,6 +2539,12 @@ export default function Home({
                   </button>
                 )}
               </div>
+            )}
+            {taskCenterOpeningId && (
+              <output className="message" data-testid="task-center-opening">
+                <LoaderCircle className="spin" size={18} />
+                <span>正在打开面试记录…</span>
+              </output>
             )}
             {notice && (
               <output className="message">
