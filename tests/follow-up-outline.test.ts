@@ -9,6 +9,9 @@ import {
   followUpInputFixture,
   followUpResultFixture,
 } from './fixtures/follow-up-outline.ts';
+import { builtInRoleTemplates } from '../lib/default-role-templates.ts';
+import { calculateOutlineCoverage } from '../lib/interview-outline-v2.ts';
+import { calculateOutlineCoverageV3 } from '../lib/interview-outline-v3.ts';
 
 void test('补充追问规范化关注点并固定返回两题', () => {
   const input = validateFollowUpOutlineInput({
@@ -116,6 +119,139 @@ void test('条件追问问题至少包含两个字符', () => {
           ...question,
           probes: [{ ...question.probes[0], question: '?' }],
         })),
+      },
+      input,
+    ),
+  );
+});
+
+void test('V2 和 V3 提纲的条件追问对象也拒绝未知字段', () => {
+  const template = builtInRoleTemplates[0];
+  const dimensions = template.dimensionText.split('、');
+  const questions = dimensions.map((dimension, index) => ({
+    id: `outline-question-${index + 1}`,
+    question: `请说明第${index + 1}次判断的依据？`,
+    required: index < 5,
+    estimatedMinutes: 6,
+    primaryDimension: dimension,
+    secondaryDimensions: [],
+    source: 'role' as const,
+    goal: '核实具体行动。',
+    resumeEvidence: null,
+    workSampleEvidence: null,
+    listenFor: ['具体行动'],
+    riskSignals: ['只说结论'],
+    probes: [{ condition: '回答笼统', question: '你先做了哪一步？' }],
+  }));
+  const { interviewQuestions: _ignored, ...reading } = followUpInputFixture().resumeReading;
+  const input = {
+    ...followUpInputFixture(),
+    role: template.role,
+    requirements: template.requirements,
+    dimensionText: template.dimensionText,
+    focus: template.focus,
+    scoringGuidance: template.scoringGuidance,
+    reportRequirements: template.reportRequirements,
+    outlineVersion: 2 as const,
+    resumeReading: {
+      ...reading,
+      outline: {
+        version: 2 as const,
+        estimatedMinutes: 30,
+        requiredQuestions: questions.slice(0, 5),
+        reserveQuestions: questions.slice(5),
+        archivedReserveQuestions: [],
+        coverage: calculateOutlineCoverage(questions, dimensions),
+      },
+    },
+  };
+  const outline = input.resumeReading.outline;
+  outline.requiredQuestions[0].probes = [
+    Object.assign({}, outline.requiredQuestions[0].probes[0], {
+      unexpected: 'field',
+    }),
+  ];
+  assert.throws(() => validateFollowUpOutlineInput(input));
+
+  const v3Question = (
+    id: string,
+    sourceIndex: number,
+    dimension: string,
+    required: boolean,
+    secondaryDimensions: string[] = [],
+  ) => ({
+    ...questions[sourceIndex],
+    id,
+    question: `你会如何推进第${id}项校园项目？`,
+    required,
+    estimatedMinutes: 5,
+    primaryDimension: dimension,
+    secondaryDimensions,
+  });
+  const v3RequiredQuestions = [
+    v3Question('v3-required-1', 0, dimensions[4], true),
+    v3Question('v3-required-2', 1, dimensions[5], true),
+    v3Question('v3-required-3', 2, dimensions[6], true),
+    v3Question('v3-required-4', 3, dimensions[7], true),
+    v3Question('v3-required-5', 4, dimensions[0], true, [dimensions[1]]),
+    v3Question('v3-required-6', 5, dimensions[2], true, [dimensions[3]]),
+  ];
+  const v3ReserveQuestions = [
+    v3Question('v3-reserve-1', 6, dimensions[0], false),
+    v3Question('v3-reserve-2', 7, dimensions[3], false),
+  ];
+  const v3Input = {
+    ...input,
+    outlineVersion: 3 as const,
+    resumeReading: {
+      ...reading,
+      outline: {
+        version: 3 as const,
+        estimatedMinutes: 30,
+        requiredQuestions: v3RequiredQuestions,
+        reserveQuestions: v3ReserveQuestions,
+        archivedReserveQuestions: [],
+        coverage: calculateOutlineCoverageV3(
+          [...v3RequiredQuestions, ...v3ReserveQuestions],
+          dimensions,
+        ),
+      },
+    },
+  };
+  v3Input.resumeReading.outline.requiredQuestions[0].probes = [
+    Object.assign({}, v3Input.resumeReading.outline.requiredQuestions[0].probes[0], {
+      unexpected: 'field',
+    }),
+  ];
+  assert.throws(() => validateFollowUpOutlineInput(v3Input));
+});
+
+void test('V1 legacy workSampleQuestions 会被保留并参与重复题校验', () => {
+  const legacyQuestion = {
+    question: '请复盘作品中最关键的一次取舍？',
+    questionSource: 'role' as const,
+    dimensions: ['自驱力'],
+    reason: '核实作品中的个人判断。',
+    resumeEvidence: null,
+    listenFor: ['个人判断'],
+    probes: ['当时你先做了哪一步？'],
+  };
+  const input = validateFollowUpOutlineInput({
+    ...followUpInputFixture(),
+    resumeReading: {
+      ...followUpInputFixture().resumeReading,
+      workSampleQuestions: [legacyQuestion],
+    },
+  });
+  assert.equal(input.resumeReading.workSampleQuestions?.length, 1);
+  assert.throws(() =>
+    validateFollowUpOutlineResult(
+      {
+        ...followUpResultFixture(),
+        questions: [
+          { ...followUpResultFixture().questions[0], question: legacyQuestion.question },
+          followUpResultFixture().questions[1],
+        ],
       },
       input,
     ),
