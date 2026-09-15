@@ -123,24 +123,71 @@ void test('network failure retains the latest local outbox entry', async () => {
   assert.equal(await store.getSyncMeta(record.id), undefined);
 });
 
-void test('conditional outbox cleanup never removes a newer mutation', async () => {
-  const store = createLocalStore(new IDBFactory(), 'sync-conditional-drop');
+void test('atomic conflict save preserves a coalesced outbox with the same mutation id', async () => {
+  const store = createLocalStore(new IDBFactory(), 'sync-conflict-coalesced');
   await store.saveInterview(record);
+  await store.setSyncMeta(record.id, 5);
   await store.queueInterviewSync(record, 'periodic-edit');
-  const oldMutation = (await store.listPendingSync())[0].mutationId;
-  await store.dropPendingSync(record.id);
+  const captured = (await store.listPendingSync())[0];
+  await new Promise((resolve) => setTimeout(resolve, 2));
   await store.queueInterviewSync(
     { ...record, focus: '等待期间的新修改', updatedAt: 200 },
     'periodic-edit',
   );
-  const newer = (await store.listPendingSync())[0];
-  assert.notEqual(newer.mutationId, oldMutation);
+  const coalesced = (await store.listPendingSync())[0];
+  assert.equal(coalesced.mutationId, captured.mutationId);
+  assert.ok(coalesced.queuedAt > captured.queuedAt);
 
-  await store.dropPendingSync(record.id, oldMutation);
-  assert.equal(
-    (await store.listPendingSync())[0].mutationId,
-    newer.mutationId,
+  await store.saveInterviewConflictAndDropPending(
+    { ...record, transcript: '本页冲突' },
+    { ...record, transcript: '云端冲突' },
+    'conflict-coalesced',
+    captured,
   );
+  assert.equal((await store.listInterviewConflicts())[0].id, 'conflict-coalesced');
+  assert.equal(
+    (await store.listPendingSync())[0].record?.focus,
+    '等待期间的新修改',
+  );
+});
+
+void test('atomic conflict save deletes only an exactly matching captured outbox', async () => {
+  const store = createLocalStore(new IDBFactory(), 'sync-conflict-exact');
+  await store.saveInterview(record);
+  await store.setSyncMeta(record.id, 5);
+  await store.queueInterviewSync(record, 'periodic-edit');
+  const captured = (await store.listPendingSync())[0];
+
+  await store.saveInterviewConflictAndDropPending(
+    { ...record, transcript: '本页冲突' },
+    { ...record, transcript: '云端冲突' },
+    'conflict-exact',
+    captured,
+  );
+  assert.equal((await store.listPendingSync()).length, 0);
+  assert.equal((await store.listInterviewConflicts())[0].id, 'conflict-exact');
+});
+
+void test('a write queued after atomic conflict cleanup remains pending', async () => {
+  const store = createLocalStore(new IDBFactory(), 'sync-conflict-later-write');
+  await store.saveInterview(record);
+  await store.setSyncMeta(record.id, 5);
+  await store.queueInterviewSync(record, 'periodic-edit');
+  const captured = (await store.listPendingSync())[0];
+  await store.saveInterviewConflictAndDropPending(
+    { ...record, transcript: '本页冲突' },
+    { ...record, transcript: '云端冲突' },
+    'conflict-before-later-write',
+    captured,
+  );
+
+  await store.queueInterviewSync(
+    { ...record, focus: '事务完成后的新修改', updatedAt: 300 },
+    'periodic-edit',
+  );
+  const pending = await store.listPendingSync();
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].record?.focus, '事务完成后的新修改');
 });
 
 void test('revision conflict preserves local content and installs the cloud record', async () => {
