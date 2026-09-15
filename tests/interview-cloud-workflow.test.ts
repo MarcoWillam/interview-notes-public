@@ -156,18 +156,28 @@ async function followUpRefreshHarness() {
   const callbacks = {
     current: {
       draft,
-      onFollowUpRefresh: (fields: object) => {
-        applied.push(fields);
+      restore: async (record: {
+        outlineSupplements?: unknown;
+        followUpOutlineJobId?: unknown;
+      }) => {
+        applied.push({
+          outlineSupplements: record.outlineSupplements,
+          followUpOutlineJobId: record.followUpOutlineJobId,
+        });
       },
     },
   };
   const environment = {
+    ...(await import('../lib/interview-follow-up-refresh.ts')),
+    setConflicts: () => {},
+    setConflictCount: () => {},
     id: record.id,
     options: { cloud: true },
     activeId: { current: record.id },
     callbacks,
     writes: { current: Promise.resolve() },
     syncs: { current: Promise.resolve() },
+    visibleDraftBase: { current: new Map([[record.id, record]]) },
     followUpFields: { current: new Map() },
     transport: { current: { get: async () => remote } },
     localStore: () => store,
@@ -239,18 +249,19 @@ void test('follow-up completion merges server groups with edits still waiting fo
 void test('follow-up refresh reads the latest input after the cloud request finishes', async () => {
   const { environment, methods, store, remote, record, group } =
     await followUpRefreshHarness();
-  let finish: (value: typeof remote) => void = () => {};
-  environment.transport.current.get = () =>
-    new Promise((resolve) => {
-      finish = resolve;
-    });
+  const response = Promise.withResolvers<typeof remote>();
+  const started = Promise.withResolvers<void>();
+  environment.transport.current.get = () => {
+    started.resolve();
+    return response.promise;
+  };
   const refreshing = methods.refreshFollowUpFromCloud();
-  await new Promise<void>((resolve) => setImmediate(resolve));
+  await started.promise;
   environment.callbacks.current.draft = {
     ...environment.callbacks.current.draft,
     transcript: '请求期间继续输入',
   };
-  finish(remote);
+  response.resolve(remote);
   await refreshing;
   assert.equal(
     (await store.getInterview(record.id))?.transcript,
@@ -264,19 +275,20 @@ void test('follow-up refresh reads the latest input after the cloud request fini
 void test('autosave queued during refresh keeps later edits without reintroducing stale groups', async () => {
   const { environment, methods, store, remote, record, group } =
     await followUpRefreshHarness();
-  let finish: (value: typeof remote) => void = () => {};
-  environment.transport.current.get = () =>
-    new Promise((resolve) => {
-      finish = resolve;
-    });
+  const response = Promise.withResolvers<typeof remote>();
+  const started = Promise.withResolvers<void>();
+  environment.transport.current.get = () => {
+    started.resolve();
+    return response.promise;
+  };
   const refreshing = methods.refreshFollowUpFromCloud();
-  await new Promise<void>((resolve) => setImmediate(resolve));
+  await started.promise;
   environment.callbacks.current.draft = {
     ...environment.callbacks.current.draft,
     transcript: '刷新期间自动保存的编辑',
   };
   const saving = methods.write(record.id, environment.callbacks.current.draft);
-  finish(remote);
+  response.resolve(remote);
   await Promise.all([refreshing, saving]);
   const saved = await store.getInterview(record.id);
   assert.equal(saved?.transcript, '刷新期间自动保存的编辑');
@@ -290,19 +302,20 @@ void test('autosave queued during refresh keeps later edits without reintroducin
 void test('switching records during follow-up refresh never applies the next record draft to the previous record', async () => {
   const { environment, methods, store, remote, record, group, applied } =
     await followUpRefreshHarness();
-  let finish: (value: typeof remote) => void = () => {};
-  environment.transport.current.get = () =>
-    new Promise((resolve) => {
-      finish = resolve;
-    });
+  const response = Promise.withResolvers<typeof remote>();
+  const started = Promise.withResolvers<void>();
+  environment.transport.current.get = () => {
+    started.resolve();
+    return response.promise;
+  };
   const refreshing = methods.refreshFollowUpFromCloud();
-  await new Promise<void>((resolve) => setImmediate(resolve));
+  await started.promise;
   environment.activeId.current = 'record-two';
   environment.callbacks.current.draft = {
     ...environment.callbacks.current.draft,
     transcript: '另一候选人的输入',
   };
-  finish(remote);
+  response.resolve(remote);
   await refreshing;
   assert.deepEqual(applied, []);
   assert.equal(
@@ -321,13 +334,13 @@ void test('switching records during follow-up refresh never applies the next rec
 void test('input made during IndexedDB reconciliation remains in React and in the next autosave', async () => {
   const { environment, methods, store, record, group, applied } =
     await followUpRefreshHarness();
-  const rebase = store.rebaseInterviewDraft;
+  const rebase = store.saveFollowUpRefresh;
   let finish: () => void = () => {};
   const barrier = new Promise<void>((resolve) => {
     finish = resolve;
   });
   let entered = false;
-  store.rebaseInterviewDraft = async (...args) => {
+  store.saveFollowUpRefresh = async (...args) => {
     entered = true;
     await barrier;
     await rebase(...args);
@@ -366,8 +379,10 @@ void test('follow-up reconcile waits for existing sync and reserves uploads unti
   });
   let finishRequest: (value: typeof remote) => void = () => {};
   let requests = 0;
+  const started = Promise.withResolvers<void>();
   environment.transport.current.get = () => {
     requests++;
+    started.resolve();
     return new Promise((resolve) => {
       finishRequest = resolve;
     });
@@ -380,7 +395,7 @@ void test('follow-up reconcile waits for existing sync and reserves uploads unti
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(requests, 0);
   finishPreviousSync();
-  await new Promise<void>((resolve) => setImmediate(resolve));
+  await started.promise;
   assert.equal(requests, 1);
   assert.equal(uploadAllowed, false);
   finishRequest(remote);
@@ -389,7 +404,7 @@ void test('follow-up reconcile waits for existing sync and reserves uploads unti
   assert.equal((await store.getSyncMeta(record.id))?.revision, 6);
 });
 
-void test('only follow-up recovery uses the partial refresh API and it never restores the whole page', async () => {
+void test('only follow-up recovery uses the merge API and it publishes the compared fresh draft', async () => {
   const [page, hook] = await Promise.all([
     readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'),
     readFile(
@@ -407,5 +422,252 @@ void test('only follow-up recovery uses the partial refresh API and it never res
     hook.indexOf('async function refreshFollowUpFromCloud'),
     hook.indexOf('async function refreshFromCloud'),
   );
-  assert.doesNotMatch(refresh, /\.restore\(|clearTimeout|setReady/);
+  assert.doesNotMatch(
+    refresh,
+    /restore\(value\.record\)|clearTimeout|setReady/,
+  );
+  assert.match(refresh, /restore\(merged\)/);
+});
+
+void test('follow-up refresh adopts remote-only transcript edits instead of treating the unchanged page as authoritative', async () => {
+  const { environment, methods, remote, store, record, group } =
+    await followUpRefreshHarness();
+  remote.record.transcript = '另一页面已经修改的转写';
+  await methods.refreshFollowUpFromCloud();
+  assert.equal(
+    (await store.getInterview(record.id))?.transcript,
+    remote.record.transcript,
+  );
+  assert.equal(
+    environment.callbacks.current.draft.transcript,
+    remote.record.transcript,
+  );
+  assert.deepEqual((await store.getInterview(record.id))?.outlineSupplements, [
+    group,
+  ]);
+  assert.equal((await store.listPendingSync()).length, 0);
+});
+
+void test('follow-up refresh merges local-only conclusion edits with remote-only transcript edits and new groups', async () => {
+  const { environment, methods, remote, store, record, group } =
+    await followUpRefreshHarness();
+  environment.callbacks.current.draft = {
+    ...environment.callbacks.current.draft,
+    conclusion: '本页刚写的备注',
+  };
+  remote.record.transcript = '另一页更正的转写';
+  await methods.refreshFollowUpFromCloud();
+  const saved = await store.getInterview(record.id);
+  assert.equal(saved?.conclusion, '本页刚写的备注');
+  assert.equal(saved?.transcript, '另一页更正的转写');
+  assert.deepEqual(saved?.outlineSupplements, [group]);
+  assert.equal((await store.listInterviewConflicts()).length, 0);
+  const pending = (await store.listPendingSync())[0];
+  assert.equal(pending.record?.transcript, '另一页更正的转写');
+  assert.equal(pending.record?.conclusion, '本页刚写的备注');
+});
+
+void test('divergent edits to the same field become a recoverable conflict and are not uploaded with a reset CAS', async () => {
+  const { environment, methods, remote, store, record, group } =
+    await followUpRefreshHarness();
+  environment.callbacks.current.draft = {
+    ...environment.callbacks.current.draft,
+    transcript: '本页版本',
+  };
+  remote.record.transcript = '另一页面版本';
+  await methods.refreshFollowUpFromCloud();
+  const conflicts = await store.listInterviewConflicts();
+  assert.equal(conflicts.length, 1);
+  assert.equal(conflicts[0].local.transcript, '本页版本');
+  assert.equal(conflicts[0].remote.transcript, '另一页面版本');
+  assert.deepEqual(conflicts[0].local.outlineSupplements, [group]);
+  assert.equal((await store.listPendingSync()).length, 0);
+  assert.equal(
+    (await store.getInterview(record.id))?.transcript,
+    '另一页面版本',
+  );
+});
+
+void test('an existing outbox with an unknown common base is preserved as a conflict rather than silently rebased', async () => {
+  const { environment, methods, remote, store, record } =
+    await followUpRefreshHarness();
+  const unsynced = { ...record, transcript: '此前已保存但未同步的本地版本' };
+  await store.saveInterviewDraft(unsynced);
+  await store.queueInterviewSync(unsynced);
+  assert.equal((await store.listPendingSync())[0].baseRevision, 5);
+  environment.callbacks.current.draft = {
+    ...environment.callbacks.current.draft,
+    transcript: unsynced.transcript,
+  };
+  remote.record.transcript = '云端的另一个版本';
+  await methods.refreshFollowUpFromCloud();
+  const conflicts = await store.listInterviewConflicts();
+  assert.equal(conflicts.length, 1);
+  assert.equal(conflicts[0].local.transcript, unsynced.transcript);
+  assert.equal(conflicts[0].remote.transcript, remote.record.transcript);
+  assert.equal(
+    (await store.listPendingSync()).length,
+    0,
+    'conflicted local data must not receive the new remote CAS revision',
+  );
+});
+
+void test('queued autosave cannot put a conflicted local field back after recovery adopts the remote side', async () => {
+  const { environment, methods, remote, store, record } =
+    await followUpRefreshHarness();
+  const response = Promise.withResolvers<typeof remote>();
+  const started = Promise.withResolvers<void>();
+  environment.transport.current.get = () => {
+    started.resolve();
+    return response.promise;
+  };
+  const refreshing = methods.refreshFollowUpFromCloud();
+  await started.promise;
+  environment.callbacks.current.draft = {
+    ...environment.callbacks.current.draft,
+    transcript: '等待自动保存的本页内容',
+  };
+  const saving = methods.write(record.id, environment.callbacks.current.draft);
+  remote.record.transcript = '另一页同时修改的内容';
+  response.resolve(remote);
+  await Promise.all([refreshing, saving]);
+  assert.equal(
+    (await store.getInterview(record.id))?.transcript,
+    remote.record.transcript,
+  );
+  assert.equal((await store.listPendingSync()).length, 0);
+  const conflict = (await store.listInterviewConflicts())[0];
+  assert.equal(conflict.local.transcript, '等待自动保存的本页内容');
+  assert.equal(conflict.remote.transcript, '另一页同时修改的内容');
+});
+
+void test('a safe merged upload still receives the normal conflict handling when the server changes after GET', async () => {
+  const { environment, methods, remote, store, record } =
+    await followUpRefreshHarness();
+  environment.callbacks.current.draft = {
+    ...environment.callbacks.current.draft,
+    conclusion: '本页备注',
+  };
+  await methods.refreshFollowUpFromCloud();
+  const { syncInterviewOutbox, InterviewSyncConflict } =
+    await import('../lib/interview-sync.ts');
+  const { interviewSummary } = await import('../lib/cloud-interview.ts');
+  const newer = { ...remote.record, conclusion: 'GET 后另一页修改的备注' };
+  let uploadedRevision = 0;
+  await syncInterviewOutbox(store, {
+    list: async () => [],
+    get: async () => ({ record: newer, revision: 7, deletedAt: null }),
+    put: async (_id, baseRevision) => {
+      uploadedRevision = baseRevision;
+      throw new InterviewSyncConflict(interviewSummary(newer, 7));
+    },
+    remove: async () => {
+      throw new Error('unexpected delete');
+    },
+  });
+  assert.equal(uploadedRevision, 6);
+  const conflicts = await store.listInterviewConflicts();
+  assert.equal(conflicts.length, 1);
+  assert.equal(conflicts[0].local.conclusion, '本页备注');
+  assert.equal(conflicts[0].remote.conclusion, 'GET 后另一页修改的备注');
+  assert.equal((await store.listPendingSync()).length, 0);
+  assert.equal((await store.getSyncMeta(record.id))?.revision, 7);
+});
+
+void test('fields absent from the editable draft are not mistaken for intentional local deletion', async () => {
+  const { methods, remote, store, record } = await followUpRefreshHarness();
+  await store.saveRemoteInterview({ ...record, groupId: 'old-group' }, 5);
+  Object.assign(remote.record, { groupId: 'remote-group' });
+  await methods.refreshFollowUpFromCloud();
+  assert.equal((await store.getInterview(record.id))?.groupId, 'remote-group');
+  assert.equal((await store.listInterviewConflicts()).length, 0);
+});
+
+void test('the existing conflict UI action can recover the complete local interview as a duplicate', async () => {
+  const { environment, methods, remote, store, record, group } =
+    await followUpRefreshHarness();
+  environment.callbacks.current.draft = {
+    ...environment.callbacks.current.draft,
+    transcript: '需要完整恢复的本页转写',
+    conclusion: '尚未同步的面试官备注',
+    reviewed: true,
+  };
+  remote.record.transcript = '云端保留的转写';
+  await methods.refreshFollowUpFromCloud();
+  const conflicts = await store.listInterviewConflicts();
+  assert.equal(conflicts.length, 1);
+  const ts = await import('typescript');
+  const source = await readFile(
+    new URL('../hooks/use-interview-library.ts', import.meta.url),
+    'utf8',
+  );
+  const code = source.slice(
+    source.indexOf('async function resolveConflict('),
+    source.indexOf('async function loadPendingResults('),
+  );
+  const resolve = compileFunction(
+    `${ts.transpile(code, { target: ts.ScriptTarget.ES2022 })}; return resolveConflict;`,
+    ['conflicts', 'localStore', 'synchronize'],
+  )(
+    conflicts,
+    () => store,
+    async () => {},
+  ) as (id: string, action: 'duplicate-local') => Promise<void>;
+  await resolve(conflicts[0].id, 'duplicate-local');
+  const duplicate = (await store.listInterviews()).find(
+    (item) => item.id !== record.id,
+  );
+  assert.equal(duplicate?.transcript, '需要完整恢复的本页转写');
+  assert.equal(duplicate?.conclusion, '尚未同步的面试官备注');
+  assert.equal(duplicate?.reviewed, true);
+  assert.deepEqual(duplicate?.resumeReading, record.resumeReading);
+  assert.deepEqual(duplicate?.outlineSupplements, [group]);
+  assert.equal(
+    (await store.getInterview(record.id))?.transcript,
+    remote.record.transcript,
+  );
+  assert.equal((await store.listInterviewConflicts()).length, 0);
+});
+
+void test('queued autosave preserves a remote optional-field deletion instead of retaining the old property', async () => {
+  const { environment, methods, remote, store, record } =
+    await followUpRefreshHarness();
+  const response = Promise.withResolvers<typeof remote>();
+  const started = Promise.withResolvers<void>();
+  environment.transport.current.get = () => {
+    started.resolve();
+    return response.promise;
+  };
+  const refreshing = methods.refreshFollowUpFromCloud();
+  await started.promise;
+  environment.callbacks.current.draft = {
+    ...environment.callbacks.current.draft,
+    conclusion: '新增备注',
+  };
+  const saving = methods.write(record.id, environment.callbacks.current.draft);
+  delete (remote.record as { scoringGuidance?: string }).scoringGuidance;
+  response.resolve(remote);
+  await Promise.all([refreshing, saving]);
+  assert.equal(
+    (await store.getInterview(record.id))?.scoringGuidance,
+    undefined,
+  );
+  assert.equal((await store.getInterview(record.id))?.conclusion, '新增备注');
+});
+
+void test('background cache pulls do not turn an unchanged visible draft into a supposed local edit', async () => {
+  const { environment, methods, remote, store, record } =
+    await followUpRefreshHarness();
+  remote.record.transcript = '后台同步已拉取的另一页面版本';
+  await store.saveRemoteInterview(remote.record, 6);
+  await methods.refreshFollowUpFromCloud();
+  assert.equal(
+    environment.callbacks.current.draft.transcript,
+    remote.record.transcript,
+  );
+  assert.equal(
+    (await store.getInterview(record.id))?.transcript,
+    remote.record.transcript,
+  );
+  assert.equal((await store.listPendingSync()).length, 0);
 });
