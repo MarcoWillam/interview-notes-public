@@ -19,6 +19,7 @@ import type { OutlineV2SupplementResult } from '../../lib/outline-v2-supplement'
 import type { OutlineV3SupplementResult } from '../../lib/outline-v3-supplement';
 import { groupAssessmentDimensions } from '../../lib/assessment-groups';
 import type { OutlineRegenerationResult } from '../../lib/outline-regeneration';
+import type { FollowUpOutlineResult } from '../../lib/follow-up-outline';
 import { exportInterviewOutlineV2 } from '../../lib/interview-outline-v2';
 import { exportInterviewOutlineV3 } from '../../lib/interview-outline-v3';
 import {
@@ -52,6 +53,7 @@ type Job = RemoteJob<
   | WorkSampleAnalysisV2
   | WorkSampleAnalysisV3
   | OutlineRegenerationResult
+  | FollowUpOutlineResult
 >;
 
 function downloadReport(job: Job) {
@@ -158,7 +160,13 @@ function downloadOutline(value: OutlineRegenerationResult) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function TaskCenter({ onOpen }: { onOpen?: () => void } = {}) {
+export function TaskCenter({
+  onOpen,
+  onOpenInterview,
+}: {
+  onOpen?: () => void;
+  onOpenInterview?: (id: string) => void;
+} = {}) {
   const [open, setOpen] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [detail, setDetail] = useState<Job | null>(null);
@@ -274,6 +282,13 @@ export function TaskCenter({ onOpen }: { onOpen?: () => void } = {}) {
     }
   }
 
+  function openInterview(job: Job) {
+    if (!job.interviewId) return;
+    setDetail(null);
+    setOpen(false);
+    onOpenInterview?.(job.interviewId);
+  }
+
   return (
     <>
       <button
@@ -326,7 +341,11 @@ export function TaskCenter({ onOpen }: { onOpen?: () => void } = {}) {
             </p>
           )}
           {detail ? (
-            <TaskResult job={detail} back={() => setDetail(null)} />
+            <TaskResult
+              job={detail}
+              back={() => setDetail(null)}
+              openInterview={() => openInterview(detail)}
+            />
           ) : (
             <>
               <div className="task-center-toolbar">
@@ -357,13 +376,26 @@ export function TaskCenter({ onOpen }: { onOpen?: () => void } = {}) {
   );
 }
 
-function TaskResult({ job, back }: { job: Job; back: () => void }) {
+function TaskResult({
+  job,
+  back,
+  openInterview,
+}: {
+  job: Job;
+  back: () => void;
+  openInterview: () => void;
+}) {
   return (
     <div className="remote-result task-center-result">
       <button className="text-button" onClick={back}>
         ← 返回任务列表
       </button>
       <span className="badge">AI 辅助结果 · 待人工核实</span>
+      {job.interviewId && (
+        <button className="text-button" onClick={openInterview}>
+          打开面试记录
+        </button>
+      )}
       {job.report && 'sections' in job.report && (
         <ResumeReadingView value={job.report} />
       )}
@@ -377,7 +409,13 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
         job.kind === 'written-test' &&
         'questions' in job.report &&
         'version' in job.report && (
-          <OutlineV2SupplementTaskResult value={job.report} />
+          <OutlineV2SupplementTaskResult
+            value={
+              job.report as
+                | OutlineV2SupplementResult
+                | OutlineV3SupplementResult
+            }
+          />
         )}
       {job.report &&
         job.kind === 'work-sample' &&
@@ -399,6 +437,14 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
         job.kind === 'outline' &&
         ('interviewQuestions' in job.report || 'outline' in job.report) && (
           <OutlineTaskResult value={job.report as OutlineRegenerationResult} />
+        )}
+      {job.report &&
+        job.kind === 'follow-up-outline' &&
+        'requestedFocus' in job.report &&
+        'questions' in job.report && (
+          <FollowUpOutlineTaskResult
+            value={job.report as FollowUpOutlineResult}
+          />
         )}
       {job.report &&
         job.kind !== 'work-sample' &&
@@ -471,6 +517,23 @@ function TaskResult({ job, back }: { job: Job; back: () => void }) {
           </>
         )}
     </div>
+  );
+}
+
+function FollowUpOutlineTaskResult({
+  value,
+}: {
+  value: FollowUpOutlineResult;
+}) {
+  return (
+    <section>
+      <h4>关注点：{value.requestedFocus}</h4>
+      <ol>
+        {value.questions.map((question) => (
+          <li key={question.id}>{question.question}</li>
+        ))}
+      </ol>
+    </section>
   );
 }
 

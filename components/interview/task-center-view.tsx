@@ -1,6 +1,12 @@
 export type TaskCenterJob = {
   id: string;
-  kind?: 'interview' | 'resume' | 'written-test' | 'work-sample' | 'outline';
+  kind?:
+    | 'interview'
+    | 'resume'
+    | 'written-test'
+    | 'work-sample'
+    | 'outline'
+    | 'follow-up-outline';
   label: string;
   state: 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
   created: number;
@@ -128,7 +134,9 @@ export function TaskCenterView({
                             ? '笔试作品评估'
                             : job.kind === 'outline'
                               ? '重新生成提纲'
-                              : '结论评估'}
+                              : job.kind === 'follow-up-outline'
+                                ? '补充追问'
+                                : '结论评估'}
                     </span>
                   </div>
                   <span className={`task-state ${job.state}`}>
@@ -140,7 +148,8 @@ export function TaskCenterView({
                   {(job.kind === 'resume' ||
                     job.kind === 'written-test' ||
                     job.kind === 'work-sample' ||
-                    job.kind === 'outline') &&
+                    job.kind === 'outline' ||
+                    job.kind === 'follow-up-outline') &&
                     job.state === 'queued' && <em>准备优先</em>}
                 </div>
                 {job.error && <p className="task-error">{job.error}</p>}

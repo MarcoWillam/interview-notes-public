@@ -2222,6 +2222,7 @@ export default function Home({
   };
   async function openInterview(id: string) {
     await library.open(id);
+    setTab('resume');
     setView('workbench');
   }
   async function createInterview() {
@@ -2293,7 +2294,13 @@ export default function Home({
                     <Monitor size={16} />
                     <span className="workspace-action-copy">电脑连接</span>
                   </button>
-                  <TaskCenter onOpen={() => setToolsOpen(false)} />
+                  <TaskCenter
+                    onOpen={() => setToolsOpen(false)}
+                    onOpenInterview={(id) => {
+                      setToolsOpen(false);
+                      void localAction(() => openInterview(id));
+                    }}
+                  />
                 </>
               )}
               <button

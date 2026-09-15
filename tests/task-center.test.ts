@@ -138,6 +138,69 @@ void test('task center labels written-test supplement work explicitly', async ()
   assert.ok(html.includes('准备优先'));
 });
 
+void test('task center labels follow-up outline work as preparation priority', async () => {
+  const { TaskCenterView } = await loadView();
+  const html = renderToStaticMarkup(
+    createElement(TaskCenterView, {
+      jobs: [
+        {
+          id: 'follow-up-outline',
+          kind: 'follow-up-outline',
+          label: '张三 · 自驱力',
+          state: 'queued',
+          created: now,
+          updated: now,
+          queuedAt: now,
+          position: 1,
+          interviewId: 'interview-one',
+        },
+      ],
+      now,
+      pendingId: null,
+      onAction() {},
+      onResult() {},
+    }),
+  );
+
+  assert.ok(html.includes('补充追问'));
+  assert.ok(html.includes('准备优先'));
+});
+
+void test('task center previews follow-up questions and opens only a bound interview', async () => {
+  const source = await readFile(
+    new URL('../components/interview/task-center.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(source, /FollowUpOutlineResult/);
+  assert.match(source, /job\.kind === 'follow-up-outline'/);
+  assert.match(source, /value\.requestedFocus/);
+  assert.match(source, /value\.questions\.map/);
+  assert.match(source, /打开面试记录/);
+  assert.match(source, /job\.interviewId &&/);
+  assert.match(
+    source,
+    /setDetail\(null\);[\s\S]*setOpen\(false\);[\s\S]*onOpenInterview\?\.\(job\.interviewId\)/,
+  );
+  assert.doesNotMatch(source, /applyFollowUpOutlineResult/);
+});
+
+void test('task center opens the bound interview in the workbench outline tab', async () => {
+  const source = await readFile(
+    new URL('../app/page.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(
+    source,
+    /<TaskCenter[\s\S]*onOpenInterview=\{\(id\)[\s\S]*openInterview\(id\)/,
+  );
+  assert.match(
+    source,
+    /async function openInterview\(id: string\)[\s\S]*library\.open\(id\);[\s\S]*setTab\('resume'\);[\s\S]*setView\('workbench'\)/,
+  );
+});
+
 void test('task center labels work samples and names the offline target computer', async () => {
   const { TaskCenterView } = await loadView();
   const html = renderToStaticMarkup(
