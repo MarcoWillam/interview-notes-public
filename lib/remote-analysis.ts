@@ -36,6 +36,11 @@ import {
   type OutlineRegenerationInput,
   type OutlineRegenerationResult,
 } from './outline-regeneration.ts';
+import {
+  validateFollowUpOutlineResult,
+  type FollowUpOutlineInput,
+  type FollowUpOutlineResult,
+} from './follow-up-outline.ts';
 let account: string | null = null;
 export function configureRemoteAccount(value: string) {
   account = value;
@@ -51,7 +56,13 @@ export class RemoteError extends Error {
   }
 }
 export type RemoteJob<T = Report> = {
-  kind?: 'interview' | 'resume' | 'written-test' | 'work-sample' | 'outline';
+  kind?:
+    | 'interview'
+    | 'resume'
+    | 'written-test'
+    | 'work-sample'
+    | 'outline'
+    | 'follow-up-outline';
   id: string;
   label: string;
   state: 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
@@ -127,8 +138,15 @@ async function submitRemoteTask<T>(
     | ResumeInput
     | WrittenTestSupplementInput
     | WorkSampleInput
-    | OutlineRegenerationInput,
-  kind: 'interview' | 'resume' | 'written-test' | 'work-sample' | 'outline',
+    | OutlineRegenerationInput
+    | FollowUpOutlineInput,
+  kind:
+    | 'interview'
+    | 'resume'
+    | 'written-test'
+    | 'work-sample'
+    | 'outline'
+    | 'follow-up-outline',
   validateResult: (value: unknown) => T,
   label: string,
   signal: AbortSignal,
@@ -411,6 +429,23 @@ export function submitRemoteOutline(
     'outline',
     (value) => validateOutlineRegenerationResult(value, normalized),
     label,
+    signal,
+    onProgress,
+    dependencies,
+  );
+}
+
+export function submitRemoteFollowUpOutline(
+  input: FollowUpOutlineInput,
+  signal: AbortSignal,
+  onProgress: (job: RemoteJob<FollowUpOutlineResult>) => void,
+  dependencies: RemoteTaskDependencies = { fetcher: fetch, pollMs: 2000 },
+): Promise<FollowUpOutlineResult> {
+  return submitRemoteTask(
+    input,
+    'follow-up-outline',
+    (value) => validateFollowUpOutlineResult(value, input),
+    `补充追问 · ${input.requestedFocus.slice(0, 40)}`,
     signal,
     onProgress,
     dependencies,
