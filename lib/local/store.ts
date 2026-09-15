@@ -13,6 +13,7 @@ import {
 } from '../default-role-templates.ts';
 import type { CloudInterview } from '../cloud-interview.ts';
 import type { CloudVersionReason } from '../cloud-interview.ts';
+import { stableJsonFingerprint } from '../interview-draft-merge.ts';
 export type SavedInterview = CloudInterview & {
   /** Older local records may predate creation-time tracking. */
   createdAt?: number;
@@ -69,6 +70,22 @@ export type Preference = {
 const builtInTemplateOrder = new Map<string, number>(
   builtInRoleTemplates.map(({ id }, index) => [id, index]),
 );
+
+function sameSyncOutboxSnapshot(
+  current: InterviewSyncOutbox | undefined,
+  captured: InterviewSyncOutbox,
+) {
+  return (
+    current?.id === captured.id &&
+    current.operation === captured.operation &&
+    current.mutationId === captured.mutationId &&
+    current.baseRevision === captured.baseRevision &&
+    current.reason === captured.reason &&
+    current.queuedAt === captured.queuedAt &&
+    stableJsonFingerprint(current.record) ===
+      stableJsonFingerprint(captured.record)
+  );
+}
 function sortPreferences(templates: Preference[]) {
   return templates.sort((a, b) => {
     const left = builtInTemplateOrder.get(a.id);
@@ -458,18 +475,9 @@ export function createLocalStore(
           } satisfies InterviewSyncMeta);
         };
       }),
-    dropPendingSync: (id: string, mutationId?: string) =>
+    dropPendingSync: (id: string) =>
       run<void>(['syncOutbox'], 'readwrite', (tx) => {
-        const outbox = tx.objectStore('syncOutbox');
-        if (!mutationId) {
-          outbox.delete(id);
-          return;
-        }
-        const request = outbox.get(id);
-        request.onsuccess = () => {
-          const current = request.result as InterviewSyncOutbox | undefined;
-          if (current?.mutationId === mutationId) outbox.delete(id);
-        };
+        tx.objectStore('syncOutbox').delete(id);
       }),
     saveFollowUpRefresh: (
       record: SavedInterview,
@@ -530,6 +538,29 @@ export function createLocalStore(
         remote,
         createdAt: Date.now(),
       } satisfies InterviewConflict),
+    saveInterviewConflictAndDropPending: (
+      local: SavedInterview,
+      remote: SavedInterview,
+      conflictId: string,
+      capturedPending?: InterviewSyncOutbox,
+    ) =>
+      run<void>(['conflicts', 'syncOutbox'], 'readwrite', (tx) => {
+        tx.objectStore('conflicts').put({
+          id: conflictId,
+          interviewId: local.id,
+          local,
+          remote,
+          createdAt: Date.now(),
+        } satisfies InterviewConflict);
+        if (!capturedPending) return;
+        const outbox = tx.objectStore('syncOutbox');
+        const request = outbox.get(local.id);
+        request.onsuccess = () => {
+          const current = request.result as InterviewSyncOutbox | undefined;
+          if (sameSyncOutboxSnapshot(current, capturedPending))
+            outbox.delete(local.id);
+        };
+      }),
     listInterviewConflicts: () => all<InterviewConflict>('conflicts'),
     deleteInterviewConflict: (id: string) =>
       run<void>(['conflicts'], 'readwrite', (tx) => {

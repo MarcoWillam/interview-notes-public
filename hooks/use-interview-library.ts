@@ -40,7 +40,7 @@ import {
   sameInterviewDraft,
   type InterviewDraft,
 } from '@/lib/interview-draft-merge';
-export type Draft = InterviewDraft;
+export type Draft = Omit<SavedInterview, 'id' | 'createdAt' | 'updatedAt'>;
 type FollowUpFields = Pick<
   Draft,
   'outlineSupplements' | 'followUpOutlineJobId'
@@ -437,9 +437,12 @@ export function useInterviewLibrary(
             !sameInterviewDraft(callbacks.current.draft, stamp)
           )
             continue;
-          await store.saveInterviewConflict(local, persisted, conflictId);
-          if (pending)
-            await store.dropPendingSync(currentId, pending.mutationId);
+          await store.saveInterviewConflictAndDropPending(
+            local,
+            persisted,
+            conflictId,
+            pending,
+          );
           if (activeId.current !== currentId) break;
           if (
             writes.current !== queuedWrites ||

@@ -26,10 +26,12 @@ function canonicalJson(value: unknown): unknown {
   );
 }
 
+export function stableJsonFingerprint(value: unknown) {
+  return JSON.stringify(canonicalJson(value));
+}
+
 function sameJson(left: unknown, right: unknown) {
-  return (
-    JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right))
-  );
+  return stableJsonFingerprint(left) === stableJsonFingerprint(right);
 }
 
 export function sameInterviewDraft(
