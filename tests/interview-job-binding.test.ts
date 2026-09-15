@@ -504,3 +504,51 @@ for (const change of ['none', 'unrelated', 'relevant', 'deleted'] as const) {
     }
   });
 }
+
+for (const count of [49, 50]) {
+  void test(`follow-up generation at ${count} existing groups respects persisted capacity`, () => {
+    const { store, user } = setup();
+    try {
+      const outlineSupplements = Array.from({ length: count }, (_, index) => {
+        const group = followUpGroupFixture();
+        return {
+          ...group,
+          id: `capacity-group-${index}`,
+          jobId: `capacity-job-${index}`,
+          questions: group.questions.map((question, questionIndex) => ({
+            ...question,
+            id: `capacity-question-${index}-${questionIndex}`,
+            question: `第${index + 1}次项目里你怎样推进第${questionIndex + 1}项工作？`,
+          })) as typeof group.questions,
+        };
+      });
+      const record = { ...followUpRecord(), outlineSupplements };
+      const release = { version: '0.1.18', protocol: 5 };
+      const device = store.redeem(store.pairing(user).code, '容量测试电脑', release);
+      store.interviews.put(user, record.id, 0, 'mutation-capacity-create', record);
+      assert.equal(store.interviews.get(user, record.id).record.outlineSupplements?.length, count);
+      const submit = () => store.submit(
+        user, 'client-follow-up-capacity', '补充追问',
+        { ...followUpInputFixture(), existingSupplements: outlineSupplements },
+        'follow-up-outline', record.id,
+        { interviewId: record.id, interviewRevision: 1 },
+      );
+      if (count === 50) {
+        assert.throws(submit, /补充追问.*50.*上限/);
+        assert.equal(store.db.prepare('SELECT count(*) AS count FROM jobs WHERE user=?').get(user)?.count, 0);
+        assert.equal(store.claim(device.token, true, ['follow-up-outline'], release), null);
+        return;
+      }
+      const submitted = submit();
+      const claimed = store.claim(device.token, true, ['follow-up-outline'], release)!;
+      assert.equal(claimed.id, submitted.id);
+      assert.equal(store.finish(device.token, claimed.id, claimed.lease, followUpResultFixture(), false, undefined, 1).accepted, true);
+      const saved = store.interviews.get(user, record.id);
+      assert.equal(saved.record.outlineSupplements?.length, 50);
+      assert.equal(saved.record.outlineSupplements?.at(-1)?.jobId, claimed.id);
+      assert.equal(store.get(user, claimed.id).resultDisposition, 'applied');
+    } finally {
+      store.close();
+    }
+  });
+}
