@@ -27,6 +27,10 @@ import {
   validateOutlineRegenerationResult,
 } from '../../lib/outline-regeneration.ts';
 import {
+  validateFollowUpOutlineInput,
+  validateFollowUpOutlineResult,
+} from '../../lib/follow-up-outline.ts';
+import {
   CONNECTOR_VERSION,
   OUTLINE_CONNECTOR_PROTOCOL,
   OUTLINE_V2_CONNECTOR_PROTOCOL,
@@ -57,7 +61,7 @@ const hash = (value: string) =>
   createHash('sha256').update(value).digest('hex');
 type Row = Record<string, string | number | null>;
 const PREPARATION_PRIORITY =
-  "CASE WHEN kind IN ('resume','written-test','work-sample','outline') THEN 0 ELSE 1 END";
+  "CASE WHEN kind IN ('resume','written-test','work-sample','outline','follow-up-outline') THEN 0 ELSE 1 END";
 function validateStoredWorkSampleResult(result: unknown, storedInput: unknown) {
   const input = validateWorkSampleInput(storedInput);
   return validateWorkSampleAnalysisResult(result, input, {
@@ -533,12 +537,15 @@ export class QueueStore {
       throw new QueueError('任务范围无效。');
     if (kind === 'outline' && !scope)
       throw new QueueError('重新生成提纲需要绑定面试记录。');
+    if (kind === 'follow-up-outline' && (!scope || !binding))
+      throw new QueueError('补充追问需要绑定面试记录。');
     if (
       scope &&
       kind !== 'resume' &&
       kind !== 'written-test' &&
       kind !== 'work-sample' &&
-      kind !== 'outline'
+      kind !== 'outline' &&
+      kind !== 'follow-up-outline'
     )
       throw new QueueError('该任务类型不支持任务范围。');
     let interviewId: string | null = null,
@@ -573,6 +580,8 @@ export class QueueStore {
               ? validateWorkSampleInput(value)
               : kind === 'outline'
                 ? validateOutlineRegenerationInput(value)
+                : kind === 'follow-up-outline'
+                  ? validateFollowUpOutlineInput(value)
                 : kind === 'interview'
                   ? validateInput(value)
                   : (() => {
@@ -587,14 +596,16 @@ export class QueueStore {
       ),
       safeLabel = label.slice(0, 100) || '未命名面试',
       requiredProtocol =
-        'outlineVersion' in validatedInput &&
-        validatedInput.outlineVersion === 3
-          ? OUTLINE_V3_CONNECTOR_PROTOCOL
+        kind === 'follow-up-outline'
+          ? SERVER_DRIVEN_EXECUTION_PROTOCOL
           : 'outlineVersion' in validatedInput &&
-              validatedInput.outlineVersion === 2
-            ? OUTLINE_V2_CONNECTOR_PROTOCOL
-            : 1;
-    if (boundRecord)
+              validatedInput.outlineVersion === 3
+            ? OUTLINE_V3_CONNECTOR_PROTOCOL
+            : 'outlineVersion' in validatedInput &&
+                validatedInput.outlineVersion === 2
+              ? OUTLINE_V2_CONNECTOR_PROTOCOL
+              : 1;
+    if (boundRecord && kind !== 'follow-up-outline')
       assertInterviewJobInputMatches(
         boundRecord.record,
         kind,
@@ -636,7 +647,7 @@ export class QueueStore {
     if (scope) {
       const conflicting = this.db
         .prepare(
-          "SELECT kind FROM jobs WHERE user=? AND scope=? AND kind<>? AND kind IN ('resume','written-test','work-sample','outline') AND state IN ('queued','running','paused') LIMIT 1",
+          "SELECT kind FROM jobs WHERE user=? AND scope=? AND kind<>? AND kind IN ('resume','written-test','work-sample','outline','follow-up-outline') AND state IN ('queued','running','paused') LIMIT 1",
         )
         .get(user, scope, kind) as Row | undefined;
       if (conflicting)
@@ -911,7 +922,7 @@ export class QueueStore {
     const lease = token();
     const row = this.db
       .prepare(
-        `UPDATE jobs SET state='running',device=?,lease=?,until=?,leaseProtocol=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND requiredProtocol<=? AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1) OR (kind='outline' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY ${PREPARATION_PRIORITY},queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId,attempt,feedback`,
+        `UPDATE jobs SET state='running',device=?,lease=?,until=?,leaseProtocol=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND requiredProtocol<=? AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1) OR (kind='outline' AND ?=1) OR (kind='follow-up-outline' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY ${PREPARATION_PRIORITY},queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId,attempt,feedback`,
       )
       .get(
         device.id,
@@ -929,6 +940,7 @@ export class QueueStore {
         kinds.includes('outline') && connectorSupportsOutline(release?.protocol)
           ? 1
           : 0,
+        kinds.includes('follow-up-outline') ? 1 : 0,
         device.id,
       ) as Row | undefined;
     if (!row) return null;
@@ -1060,6 +1072,11 @@ export class QueueStore {
                       result,
                       validateOutlineRegenerationInput(storedInput),
                     )
+                  : job.kind === 'follow-up-outline'
+                    ? validateFollowUpOutlineResult(
+                        result,
+                        validateFollowUpOutlineInput(storedInput),
+                      )
                   : validateReport(result, validateInput(storedInput)),
         );
       } catch (validationError) {

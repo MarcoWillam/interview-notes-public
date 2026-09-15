@@ -165,6 +165,7 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
                       kind === 'resume' ||
                       kind === 'written-test' ||
                       kind === 'outline' ||
+                      kind === 'follow-up-outline' ||
                       (kind === 'work-sample' &&
                         capabilities.includes('work-sample')),
                   )
@@ -337,6 +338,7 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
                   body.kind === 'resume' ||
                   body.kind === 'written-test' ||
                   body.kind === 'outline' ||
+                  body.kind === 'follow-up-outline' ||
                   body.kind === 'work-sample'
                 ? body.kind
                 : null;

@@ -14,8 +14,14 @@ import {
 import {
   CONNECTOR_PROTOCOL,
   CONNECTOR_VERSION,
+  SERVER_DRIVEN_EXECUTION_PROTOCOL,
 } from '../lib/connector-release.ts';
 import { builtInRoleTemplates } from '../lib/default-role-templates.ts';
+import {
+  followUpInputFixture,
+  followUpResultFixture,
+} from './fixtures/follow-up-outline.ts';
+import type { CloudInterview } from '../lib/cloud-interview.ts';
 const resumeInput = {
   role: '产品经理',
   requirements: '用户研究与需求分析',
@@ -119,6 +125,167 @@ const setup = () => {
     },
   };
 };
+const saveFollowUpRecord = (store: QueueStore, user: string, id: string) => {
+  const input = followUpInputFixture();
+  const record: CloudInterview = {
+    id,
+    createdAt: 1_000_000,
+    updatedAt: 1_000_000,
+    candidate: '张三',
+    role: input.role,
+    requirements: input.requirements,
+    dimensionText: input.dimensionText,
+    focus: input.focus,
+    scoringGuidance: input.scoringGuidance,
+    reportRequirements: input.reportRequirements,
+    resumeText: input.resumeText,
+    resumeName: 'resume.txt',
+    resumeReading: input.resumeReading,
+    outlineVersion: input.outlineVersion,
+    transcript: '',
+    reviewed: false,
+    report: null,
+    conclusion: '',
+    confirmed: false,
+  };
+  return store.interviews.put(user, id, 0, `create-${id}`, record);
+};
+
+void test('follow-up outline tasks require a bound matching interview and protocol five', () => {
+  const { s, a } = setup();
+  try {
+    const input = followUpInputFixture();
+    assert.throws(
+      () =>
+        s.submit(
+          a,
+          'follow-up-unbound-123',
+          '补充追问 · 自驱力',
+          input,
+          'follow-up-outline',
+        ),
+      /补充追问需要绑定面试记录/,
+    );
+    const record = saveFollowUpRecord(s, a, 'record-follow-up-123');
+    assert.throws(
+      () =>
+        s.submit(
+          a,
+          'follow-up-invalid-input-123',
+          '补充追问 · 自驱力',
+          { ...input, requestedFocus: '' },
+          'follow-up-outline',
+          record.record.id,
+          { interviewId: record.record.id, interviewRevision: record.revision },
+        ),
+      /补充关注点必须为 2–200 个字符/,
+    );
+    assert.throws(
+      () =>
+        s.submit(
+          a,
+          'follow-up-wrong-scope-123',
+          '补充追问 · 自驱力',
+          input,
+          'follow-up-outline',
+          'record-other-follow-up-123',
+          { interviewId: record.record.id, interviewRevision: record.revision },
+        ),
+      /任务与面试记录不匹配/,
+    );
+    const job = s.submit(
+      a,
+      'follow-up-bound-123',
+      '补充追问 · 自驱力',
+      input,
+      'follow-up-outline',
+      record.record.id,
+      { interviewId: record.record.id, interviewRevision: record.revision },
+    );
+    assert.equal(job.requiredProtocol, SERVER_DRIVEN_EXECUTION_PROTOCOL);
+    const protocol4 = s.redeem(s.pairing(a).code, '协议四电脑', {
+      version: '2026.9.13-1',
+      protocol: 4,
+    });
+    assert.equal(
+      s.claim(protocol4.token, true, ['follow-up-outline'], {
+        version: '2026.9.13-1',
+        protocol: 4,
+      }),
+      null,
+    );
+    const protocol5 = s.redeem(s.pairing(a).code, '协议五电脑', {
+      version: CONNECTOR_VERSION,
+      protocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
+    });
+    const claimed = s.claim(protocol5.token, true, ['follow-up-outline'], {
+      version: CONNECTOR_VERSION,
+      protocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
+    })! as {
+      id: string;
+      lease: string;
+      kind: string;
+      execution: { attempt: number };
+    };
+    assert.equal(claimed.id, job.id);
+    assert.equal(claimed.kind, 'follow-up-outline');
+    assert.equal(claimed.execution.attempt, 1);
+  } finally {
+    s.close();
+  }
+});
+
+void test('follow-up outline repairs one invalid protocol five result under its lease', () => {
+  const { s, a } = setup();
+  try {
+    const record = saveFollowUpRecord(s, a, 'record-follow-up-repair-123');
+    const device = s.redeem(s.pairing(a).code, '协议五电脑', {
+      version: CONNECTOR_VERSION,
+      protocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
+    });
+    const job = s.submit(
+      a,
+      'follow-up-repair-123',
+      '补充追问 · 自驱力',
+      followUpInputFixture(),
+      'follow-up-outline',
+      record.record.id,
+      { interviewId: record.record.id, interviewRevision: record.revision },
+    );
+    const claimed = s.claim(device.token, true, ['follow-up-outline'], {
+      version: CONNECTOR_VERSION,
+      protocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
+    })! as { id: string; lease: string; execution: { attempt: number } };
+    const retry = s.finish(
+      device.token,
+      claimed.id,
+      claimed.lease,
+      { questions: [] },
+      false,
+      undefined,
+      claimed.execution.attempt,
+    );
+    assert.equal(retry.accepted, false);
+    assert.equal(retry.retry?.execution.attempt, 2);
+    assert.equal(s.get(a, job.id).state, 'running');
+    assert.deepEqual(
+      s.finish(
+        device.token,
+        claimed.id,
+        claimed.lease,
+        followUpResultFixture(),
+        false,
+        undefined,
+        2,
+      ),
+      { accepted: true },
+    );
+    assert.equal(s.get(a, job.id).state, 'completed');
+    assert.deepEqual(s.get(a, job.id).report, followUpResultFixture());
+  } finally {
+    s.close();
+  }
+});
 void test('outline regeneration requires a current connector and reports its version', () => {
   const { s, a } = setup();
   const outlineInput = {
