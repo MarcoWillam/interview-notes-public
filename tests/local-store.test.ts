@@ -401,11 +401,9 @@ void test('follow-up groups and active task survive reopening without changing t
   );
 });
 
-void test('rebasing a task result atomically preserves the merged draft and replaces the stale sync base', async () => {
+void test('a proven conflict-free task merge atomically preserves the draft and records the compared revision', async () => {
   const store = createLocalStore(new IDBFactory(), 'follow-up-rebase');
   await store.saveRemoteInterview(session, 4);
-  await store.queueInterviewSync(session);
-  const before = (await store.listPendingSync())[0];
   const { followUpGroupFixture } =
     await import('./fixtures/follow-up-outline.ts');
   const merged = {
@@ -413,11 +411,36 @@ void test('rebasing a task result atomically preserves the merged draft and repl
     transcript: '最新输入',
     outlineSupplements: [followUpGroupFixture()],
   };
-  await store.rebaseInterviewDraft(merged, 5);
+  await store.saveFollowUpRefresh(merged, 5, { upload: true });
   assert.deepEqual(await store.getInterview(session.id), merged);
   assert.equal((await store.getSyncMeta(session.id))?.revision, 5);
   const pending = (await store.listPendingSync())[0];
   assert.deepEqual(pending.record, merged);
   assert.equal(pending.baseRevision, 5);
-  assert.notEqual(pending.mutationId, before.mutationId);
+  assert.ok(pending.mutationId);
+});
+
+void test('task refresh cannot upload a conflict under a new CAS revision and preserves both sides atomically', async () => {
+  const store = createLocalStore(new IDBFactory(), 'follow-up-conflict-save');
+  await store.saveRemoteInterview(session, 4);
+  await store.queueInterviewSync(session);
+  const before = await store.listPendingSync();
+  const remote = { ...session, transcript: '云端版本' };
+  const conflict = {
+    id: 'conflict-one',
+    interviewId: session.id,
+    createdAt: 1,
+    local: { ...session, transcript: '本地版本' },
+    remote,
+  };
+  await assert.rejects(
+    store.saveFollowUpRefresh(remote, 5, { upload: true, conflict }),
+    /不能使用新的云端版本号上传/,
+  );
+  assert.deepEqual(await store.listPendingSync(), before);
+  assert.equal((await store.getSyncMeta(session.id))?.revision, 4);
+  await store.saveFollowUpRefresh(remote, 5, { upload: false, conflict });
+  assert.deepEqual(await store.listInterviewConflicts(), [conflict]);
+  assert.deepEqual(await store.getInterview(session.id), remote);
+  assert.equal((await store.listPendingSync()).length, 0);
 });

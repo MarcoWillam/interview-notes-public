@@ -462,29 +462,44 @@ export function createLocalStore(
       run<void>(['syncOutbox'], 'readwrite', (tx) => {
         tx.objectStore('syncOutbox').delete(id);
       }),
-    rebaseInterviewDraft: (
+    saveFollowUpRefresh: (
       record: SavedInterview,
       revision: number,
-      reason: CloudVersionReason = 'periodic-edit',
+      result: {
+        upload: boolean;
+        reason?: CloudVersionReason;
+        conflictId?: string;
+        conflict?: InterviewConflict;
+      },
     ) =>
-      run<void>(['interviews', 'syncMeta', 'syncOutbox'], 'readwrite', (tx) => {
-        tx.objectStore('interviews').put(record);
-        tx.objectStore('syncMeta').put({
-          id: record.id,
-          revision,
-          syncedAt: Date.now(),
-        } satisfies InterviewSyncMeta);
-        // A new mutation must use the revision that supplied the server fields.
-        tx.objectStore('syncOutbox').put({
-          id: record.id,
-          operation: 'put',
-          mutationId: crypto.randomUUID(),
-          baseRevision: revision,
-          record,
-          reason,
-          queuedAt: Date.now(),
-        } satisfies InterviewSyncOutbox);
-      }),
+      run<void>(
+        ['interviews', 'syncMeta', 'syncOutbox', 'conflicts'],
+        'readwrite',
+        (tx) => {
+          if (result.conflict && result.upload)
+            throw new Error('存在冲突的本地版本不能使用新的云端版本号上传。');
+          tx.objectStore('interviews').put(record);
+          tx.objectStore('syncMeta').put({
+            id: record.id,
+            revision,
+            syncedAt: Date.now(),
+          } satisfies InterviewSyncMeta);
+          if (result.conflict) tx.objectStore('conflicts').put(result.conflict);
+          else if (result.conflictId)
+            tx.objectStore('conflicts').delete(result.conflictId);
+          if (result.upload) {
+            tx.objectStore('syncOutbox').put({
+              id: record.id,
+              operation: 'put',
+              mutationId: crypto.randomUUID(),
+              baseRevision: revision,
+              record,
+              reason: result.reason || 'periodic-edit',
+              queuedAt: Date.now(),
+            } satisfies InterviewSyncOutbox);
+          } else tx.objectStore('syncOutbox').delete(record.id);
+        },
+      ),
     saveRemoteInterview: (record: SavedInterview, revision: number) =>
       run<void>(['interviews', 'syncMeta'], 'readwrite', (tx) => {
         tx.objectStore('interviews').put(record);

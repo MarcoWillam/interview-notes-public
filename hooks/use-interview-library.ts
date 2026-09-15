@@ -33,6 +33,10 @@ import {
   migrateAndSyncInterviews,
   type InterviewWorkspace,
 } from '@/lib/interview-sync';
+import {
+  interviewDraft,
+  mergeFollowUpRefresh,
+} from '@/lib/interview-follow-up-refresh';
 export type Draft = Omit<SavedInterview, 'id' | 'createdAt' | 'updatedAt'>;
 type FollowUpFields = Pick<
   Draft,
@@ -44,7 +48,6 @@ export function useInterviewLibrary(
   clear: (seed: NewInterviewSeed) => void,
   options: {
     cloud: boolean;
-    onFollowUpRefresh?: (fields: FollowUpFields) => void;
   } = { cloud: false },
 ) {
   const access = useLocalAccess();
@@ -87,10 +90,15 @@ export function useInterviewLibrary(
     draft,
     restore,
     clear,
-    onFollowUpRefresh: options.onFollowUpRefresh,
   });
+  // Background synchronization may advance IndexedDB without changing the page.
+  // Keep the last snapshot this page actually restored or persisted as its base.
+  const visibleDraftBase = useRef(new Map<string, SavedInterview>());
   const followUpFields = useRef(
-    new Map<string, { epoch: number; fields: FollowUpFields }>(),
+    new Map<
+      string,
+      { epoch: number; fields: FollowUpFields; draft: Draft; upload: boolean }
+    >(),
   );
   const createdAt = useRef<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -207,7 +215,6 @@ export function useInterviewLibrary(
       draft,
       restore,
       clear,
-      onFollowUpRefresh: options.onFollowUpRefresh,
     };
   });
   async function refresh() {
@@ -250,6 +257,7 @@ export function useInterviewLibrary(
         const latest = rows.sort((a, b) => b.updatedAt - a.updatedAt)[0];
         if (latest) {
           createdAt.current = latest.createdAt ?? latest.updatedAt;
+          visibleDraftBase.current.set(latest.id, latest);
           await callbacks.current.restore(await normalizeSession(latest));
           if (disposed) return;
           selectId(latest.id);
@@ -276,7 +284,7 @@ export function useInterviewLibrary(
     const fieldEpoch = followUpFields.current.get(currentId)?.epoch || 0;
     const updatedAt = Date.now();
     createdAt.current ??= updatedAt;
-    const saved = {
+    let saved = {
       ...value,
       id: currentId,
       createdAt: createdAt.current,
@@ -287,12 +295,25 @@ export function useInterviewLibrary(
       .then(async () => {
         const refreshed = followUpFields.current.get(currentId);
         if (refreshed && refreshed.epoch !== fieldEpoch) {
-          Object.assign(saved, refreshed.fields);
-          stamp = JSON.stringify({ ...value, ...refreshed.fields });
+          const latest =
+            currentId === activeId.current
+              ? callbacks.current.draft
+              : refreshed.draft;
+          const reconciled = { ...latest, ...refreshed.fields };
+          saved = {
+            ...reconciled,
+            id: currentId,
+            createdAt: saved.createdAt,
+            updatedAt: saved.updatedAt,
+          };
+          stamp = JSON.stringify(reconciled);
+          if (!refreshed.upload && stamp === JSON.stringify(refreshed.draft))
+            return saved;
         }
         const store = localStore();
         const previous = await store.getInterview(currentId);
         await store.saveInterviewDraft(saved);
+        visibleDraftBase.current.set(currentId, saved);
         if (options.cloud) {
           await store.queueInterviewSync(
             saved,
@@ -364,42 +385,98 @@ export function useInterviewLibrary(
       .catch(() => {})
       .then(async () => {
         await previousSyncs;
+        const store = localStore();
+        const persisted = await store.getInterview(interviewId);
+        if (!persisted) return;
+        const base = visibleDraftBase.current.get(interviewId) || persisted;
+        const pending = (await store.listPendingSync()).find(
+          (item) => item.id === interviewId,
+        );
+        const unresolvedConflict = (await store.listInterviewConflicts()).some(
+          (item) => item.interviewId === interviewId,
+        );
+        const startingDraft =
+          interviewId === activeId.current
+            ? callbacks.current.draft
+            : interviewDraft(base);
         const value = await transport.current.get(interviewId);
         if (value.deletedAt != null) return;
-        const store = localStore();
-        const local = await store.getInterview(interviewId);
-        if (!local) return;
         const fields: FollowUpFields = {
           outlineSupplements: value.record.outlineSupplements,
           followUpOutlineJobId: value.record.followUpOutlineJobId,
         };
-        const latest =
-          interviewId === activeId.current ? callbacks.current.draft : local;
-        const merged: SavedInterview = {
-          ...value.record,
-          ...latest,
-          ...fields,
-          id: interviewId,
-          createdAt: local.createdAt ?? value.record.createdAt,
-          updatedAt: Date.now(),
-        };
-        await store.rebaseInterviewDraft(
-          merged,
-          value.revision,
-          cloudVersionReason(local, merged),
-        );
-        followUpFields.current.set(interviewId, {
-          epoch: (followUpFields.current.get(interviewId)?.epoch || 0) + 1,
-          fields,
-        });
-        if (interviewId === activeId.current) {
-          // Apply only task-owned fields. Edits made during GET/IndexedDB awaits
-          // stay in React and their queued autosave receives this same field epoch.
-          callbacks.current.draft = { ...callbacks.current.draft, ...fields };
-          callbacks.current.onFollowUpRefresh?.(fields);
+        const conflictId = crypto.randomUUID();
+        // Persistence is asynchronous. If the user types during it, compare that
+        // newer draft against the same common base before publishing any state.
+        while (true) {
+          const latest =
+            interviewId === activeId.current
+              ? callbacks.current.draft
+              : startingDraft;
+          const stamp = JSON.stringify(latest);
+          const result = mergeFollowUpRefresh(
+            base,
+            latest,
+            value.record,
+            !!pending || unresolvedConflict,
+          );
+          const merged: SavedInterview = {
+            ...value.record,
+            ...result.draft,
+            updatedAt: result.upload ? Date.now() : value.record.updatedAt,
+          };
+          await store.saveFollowUpRefresh(merged, value.revision, {
+            upload: result.upload,
+            reason: cloudVersionReason(base, merged),
+            conflictId,
+            conflict: result.conflict
+              ? {
+                  id: conflictId,
+                  interviewId,
+                  local: {
+                    ...base,
+                    ...latest,
+                    ...fields,
+                    updatedAt: Date.now(),
+                  },
+                  remote: value.record,
+                  createdAt: Date.now(),
+                }
+              : undefined,
+          });
+          const conflicts = await store.listInterviewConflicts();
+          if (
+            interviewId === activeId.current &&
+            JSON.stringify(callbacks.current.draft) !== stamp
+          )
+            continue;
+          visibleDraftBase.current.set(interviewId, merged);
+          followUpFields.current.set(interviewId, {
+            epoch: (followUpFields.current.get(interviewId)?.epoch || 0) + 1,
+            fields,
+            draft: result.draft,
+            upload: result.upload,
+          });
+          if (interviewId === activeId.current) {
+            callbacks.current.draft = result.draft;
+            await callbacks.current.restore(merged);
+          }
+          setSessions((rows) => updateInterviewSummary(rows, merged));
+          setConflicts(conflicts);
+          setConflictCount(conflicts.length);
+          setSyncStatus(
+            conflicts.length
+              ? 'conflict'
+              : result.upload
+                ? 'pending'
+                : 'synced',
+          );
+          if (result.conflict && interviewId === activeId.current)
+            setError(
+              '面试资料存在同时编辑的冲突，双方版本均已保留，请在记录管理中处理。',
+            );
+          break;
         }
-        setSessions((rows) => updateInterviewSummary(rows, merged));
-        setSyncStatus('pending');
       });
     writes.current = next.catch(() => {});
     syncs.current = next.catch(() => {});
@@ -422,6 +499,7 @@ export function useInterviewLibrary(
         setReady(false);
         if (timer.current) clearTimeout(timer.current);
         createdAt.current = value.record.createdAt ?? value.record.updatedAt;
+        visibleDraftBase.current.set(interviewId, value.record);
         await callbacks.current.restore(normalized);
       }
       await refresh();
@@ -440,6 +518,7 @@ export function useInterviewLibrary(
       createdAt.current = row.createdAt ?? row.updatedAt;
       const restored = await normalizeSession(row);
       selectId(nextId);
+      visibleDraftBase.current.set(nextId, row);
       await callbacks.current.restore(restored);
       setSaved(
         nextId +
@@ -654,6 +733,7 @@ export function useInterviewLibrary(
     if (interviewId === id) {
       setReady(false);
       createdAt.current = result.record.createdAt ?? result.record.updatedAt;
+      visibleDraftBase.current.set(interviewId, result.record);
       await callbacks.current.restore(await normalizeSession(result.record));
       setReady(true);
     }
@@ -718,8 +798,10 @@ export function useInterviewLibrary(
       crypto.randomUUID(),
     );
     await localStore().saveRemoteInterview(result.record, result.revision);
-    if (interviewId === id)
+    if (interviewId === id) {
+      visibleDraftBase.current.set(interviewId, result.record);
       await callbacks.current.restore(await normalizeSession(result.record));
+    }
     await refresh();
   }
   async function discardPendingResult(interviewId: string, jobId: string) {

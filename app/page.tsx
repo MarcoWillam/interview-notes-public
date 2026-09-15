@@ -512,10 +512,6 @@ export default function Home({
     reset,
     {
       cloud: !!workspaceAccount && !workspaceAccount.preview,
-      onFollowUpRefresh: (fields) => {
-        setOutlineSupplements(fields.outlineSupplements || []);
-        setFollowUpOutlineJobId(fields.followUpOutlineJobId);
-      },
     },
   );
   const libraryRef = useRef(library);
