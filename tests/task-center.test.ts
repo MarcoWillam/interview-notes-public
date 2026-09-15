@@ -248,6 +248,14 @@ void test('task center navigation opens a record while analysis is busy', async 
   const busyRef = { current: true };
   const analysis = new AbortController();
   const followUp = new AbortController();
+  const remoteWaitRef = {
+    current: {
+      controller: analysis,
+      jobId: 'server-job',
+      kind: 'analyze',
+      recordId: 'interview-one',
+    },
+  };
   const handler = await loadPageHandler(
     'openInterviewFromTaskCenter',
     {
@@ -265,6 +273,7 @@ void test('task center navigation opens a record while analysis is busy', async 
         state.view = value;
       },
       library: {
+        id: 'interview-one',
         open: async (id: string) => {
           opened.push(id);
           await wait;
@@ -274,6 +283,7 @@ void test('task center navigation opens a record while analysis is busy', async 
       busy: 'analyze',
       queuedCodex: true,
       remoteJob: { id: 'server-job', state: 'running' },
+      remoteWaitRef,
       analysisController: { current: analysis },
       followUpController: { current: followUp },
       cancelledRemotely: { current: false },
@@ -301,6 +311,7 @@ void test('task center navigation opens a record while analysis is busy', async 
   assert.equal(followUp.signal.aborted, true);
   assert.equal(state.busy, null);
   assert.equal(state.remoteJob, null);
+  assert.equal(remoteWaitRef.current, null);
   release();
   await opening;
   assert.equal(state.pending, null);
@@ -328,6 +339,7 @@ void test('task center navigation blocks local or unidentified work', async () =
           state.view = value;
         },
         library: {
+          id: 'interview-one',
           open: async () => {
             opens++;
           },
@@ -336,6 +348,7 @@ void test('task center navigation blocks local or unidentified work', async () =
         busy: boundary === 'local' ? 'analyze' : 'resume-read',
         queuedCodex: boundary === 'unidentified',
         remoteJob: null,
+        remoteWaitRef: { current: null },
         analysisController: { current: analysis },
         followUpController: { current: null },
         cancelledRemotely: { current: false },
@@ -353,6 +366,185 @@ void test('task center navigation blocks local or unidentified work', async () =
     assert.equal(state.view, 'workbench', boundary);
     assert.match(String(state.error), /完成|取消|任务中心/, boundary);
   }
+});
+
+void test('task center navigation does not detach an import with a stale remote job', async () => {
+  const state: Record<string, unknown> = {};
+  const controller = new AbortController();
+  let opens = 0;
+  const handler = await loadPageHandler(
+    'openInterviewFromTaskCenter',
+    {
+      taskCenterNavigationRef: { current: false },
+      setTaskCenterOpeningId() {},
+      setError: (value: unknown) => {
+        state.error = value;
+      },
+      setTab() {},
+      setView() {},
+      library: {
+        id: 'interview-one',
+        open: async () => {
+          opens++;
+        },
+      },
+      busyRef: { current: true },
+      busy: 'import',
+      queuedCodex: true,
+      remoteJob: { id: 'old-server-job', state: 'running' },
+      remoteWaitRef: {
+        current: {
+          controller,
+          jobId: 'old-server-job',
+          kind: 'analyze',
+          recordId: 'interview-one',
+        },
+      },
+      analysisController: { current: controller },
+      followUpController: { current: null },
+      cancelledRemotely: { current: false },
+      setBusy() {},
+      setRemoteJob() {},
+      setCancelling() {},
+    },
+    ['releaseRecordTaskWaits'],
+  );
+
+  await handler('interview-two');
+  assert.equal(opens, 0);
+  assert.equal(controller.signal.aborted, false);
+  assert.match(String(state.error), /导入|当前任务|完成/);
+});
+
+void test('task center navigation requires controller and job ownership', async () => {
+  for (const mismatch of ['controller', 'job'] as const) {
+    const state: Record<string, unknown> = {};
+    const controller = new AbortController();
+    const boundController =
+      mismatch === 'controller' ? new AbortController() : controller;
+    let opens = 0;
+    const handler = await loadPageHandler(
+      'openInterviewFromTaskCenter',
+      {
+        taskCenterNavigationRef: { current: false },
+        setTaskCenterOpeningId() {},
+        setError: (value: unknown) => {
+          state.error = value;
+        },
+        setTab() {},
+        setView() {},
+        library: {
+          id: 'interview-one',
+          open: async () => {
+            opens++;
+          },
+        },
+        busyRef: { current: true },
+        busy: 'analyze',
+        queuedCodex: true,
+        remoteJob: {
+          id: mismatch === 'job' ? 'different-job' : 'server-job',
+          state: 'running',
+        },
+        remoteWaitRef: {
+          current: {
+            controller: boundController,
+            jobId: 'server-job',
+            kind: 'analyze',
+            recordId: 'interview-one',
+          },
+        },
+        analysisController: { current: controller },
+        followUpController: { current: null },
+        cancelledRemotely: { current: false },
+        setBusy() {},
+        setRemoteJob() {},
+        setCancelling() {},
+      },
+      ['releaseRecordTaskWaits'],
+    );
+
+    await handler('interview-two');
+    assert.equal(opens, 0, mismatch);
+    assert.equal(controller.signal.aborted, false, mismatch);
+    assert.match(String(state.error), /任务中心|完成/, mismatch);
+  }
+});
+
+void test('remote wait binding only tracks the current active analysis controller', async () => {
+  const currentController = new AbortController();
+  const otherController = new AbortController();
+  const remoteWaitRef = { current: null as Record<string, unknown> | null };
+  const jobs: unknown[] = [];
+  const track = await loadPageHandler('trackRemoteWait', {
+    analysisController: { current: currentController },
+    remoteWaitRef,
+    setRemoteJob: (job: unknown) => jobs.push(job),
+  });
+  const activeJob = {
+    id: 'current-job',
+    label: '当前任务',
+    state: 'running',
+    created: now,
+    updated: now,
+  };
+  const call = track as unknown as (
+    controller: AbortController,
+    job: typeof activeJob,
+    kind: string,
+    recordId: string,
+  ) => void;
+
+  call(otherController, activeJob, 'analyze', 'record-one');
+  assert.equal(remoteWaitRef.current, null);
+  assert.equal(jobs.length, 0);
+
+  call(currentController, activeJob, 'analyze', 'record-one');
+  assert.deepEqual(remoteWaitRef.current, {
+    controller: currentController,
+    jobId: 'current-job',
+    kind: 'analyze',
+    recordId: 'record-one',
+  });
+  assert.equal(jobs.length, 1);
+
+  call(
+    currentController,
+    { ...activeJob, state: 'completed' },
+    'analyze',
+    'record-one',
+  );
+  assert.equal(remoteWaitRef.current, null);
+  assert.equal(jobs.length, 2);
+});
+
+void test('clearing stale remote display does not abort local work', async () => {
+  const controller = new AbortController();
+  const state: Record<string, unknown> = {};
+  const remoteWaitRef = {
+    current: {
+      controller,
+      jobId: 'old-job',
+      kind: 'analyze',
+      recordId: 'old-record',
+    },
+  };
+  const clear = await loadPageHandler('clearRemoteTaskDisplay', {
+    remoteWaitRef,
+    setRemoteJob: (value: unknown) => {
+      state.remoteJob = value;
+    },
+    setCancelling: (value: unknown) => {
+      state.cancelling = value;
+    },
+    cancelledRemotely: { current: true },
+  });
+
+  (clear as unknown as () => void)();
+  assert.equal(remoteWaitRef.current, null);
+  assert.equal(state.remoteJob, null);
+  assert.equal(state.cancelling, false);
+  assert.equal(controller.signal.aborted, false);
 });
 
 void test('task center navigation exposes open failures and releases pending state', async () => {
@@ -375,6 +567,7 @@ void test('task center navigation exposes open failures and releases pending sta
         state.view = value;
       },
       library: {
+        id: 'interview-one',
         open: async () => {
           throw new Error('记录已不存在');
         },
@@ -383,6 +576,7 @@ void test('task center navigation exposes open failures and releases pending sta
       busy: null,
       queuedCodex: true,
       remoteJob: null,
+      remoteWaitRef: { current: null },
       analysisController: { current: null },
       followUpController: { current: null },
       cancelledRemotely: { current: false },
@@ -403,10 +597,19 @@ void test('task center navigation exposes open failures and releases pending sta
 
 function lifecycleEnvironment() {
   const state: Record<string, unknown> = {};
+  const analysisController = new AbortController();
   const environment: Record<string, unknown> = {
     followUpRecordId: { current: 'record-one' },
     busyRef: { current: true },
-    analysisController: { current: new AbortController() },
+    analysisController: { current: analysisController },
+    remoteWaitRef: {
+      current: {
+        controller: analysisController,
+        jobId: 'server-job',
+        kind: 'analyze',
+        recordId: 'record-one',
+      },
+    },
     followUpController: { current: new AbortController() },
     cancelledRemotely: { current: true },
     outlineVersionForStandards: () => 2,
@@ -530,6 +733,11 @@ void test('restore and reset execute the shared record task cleanup', async () =
     );
     assert.equal(state.busy, null, lifecycle);
     assert.equal(state.remoteJob, null, lifecycle);
+    assert.equal(
+      (environment.remoteWaitRef as { current: unknown }).current,
+      null,
+      lifecycle,
+    );
   }
 });
 
@@ -539,18 +747,36 @@ void test('an old async completion cannot release a new record task', async () =
   const newController = new AbortController();
   const analysisController = { current: newController };
   const busyRef = { current: true };
+  const remoteWaitRef = {
+    current: {
+      controller: newController,
+      jobId: 'new-job',
+      kind: 'analyze',
+      recordId: 'new-record',
+    },
+  };
   const finish = await loadPageHandler('finishAnalysisWait', {
     analysisController,
     busyRef,
+    remoteWaitRef,
     setBusy: (value: unknown) => {
       state.busy = value;
     },
+    setRemoteJob: (value: unknown) => {
+      state.remoteJob = value;
+    },
+    setCancelling: (value: unknown) => {
+      state.cancelling = value;
+    },
+    cancelledRemotely: { current: false },
   });
 
   (finish as unknown as (controller: AbortController) => void)(oldController);
   assert.equal(analysisController.current, newController);
   assert.equal(busyRef.current, true);
   assert.equal(state.busy, undefined);
+  assert.equal(remoteWaitRef.current?.jobId, 'new-job');
+  assert.equal(state.remoteJob, undefined);
   const source = await readFile(
     new URL('../app/page.tsx', import.meta.url),
     'utf8',

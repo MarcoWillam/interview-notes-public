@@ -62,7 +62,7 @@ void test('resume reading is scoped to the current local interview record', asyn
     new URL('../app/page.tsx', import.meta.url),
     'utf8',
   );
-  assert.match(page, /submitRemoteResume\([\s\S]*scope: library\.id/);
+  assert.match(page, /submitRemoteResume\([\s\S]*scope: recordId/);
 });
 const writtenTestInput = {
   role: resumeInput.role,
