@@ -2634,6 +2634,14 @@ fieldset label:last-of-type {
   .follow-up-outline-heading .secondary-button {
     width: 100%;
   }
+  .follow-up-outline-dialog [data-slot='dialog-footer'],
+  .follow-up-outline-delete-dialog [data-slot='alert-dialog-footer'] {
+    flex-direction: column-reverse;
+  }
+  .follow-up-outline-dialog [data-slot='dialog-footer'] > button,
+  .follow-up-outline-delete-dialog [data-slot='alert-dialog-footer'] > button {
+    width: 100%;
+  }
 }
 @media (max-width: 480px) {
   .follow-up-outline {
@@ -2644,14 +2652,6 @@ fieldset label:last-of-type {
   }
   .follow-up-outline-delete {
     align-self: flex-start;
-  }
-  .follow-up-outline-dialog [data-slot='dialog-footer'],
-  .follow-up-outline-delete-dialog [data-slot='alert-dialog-footer'] {
-    flex-direction: column-reverse;
-  }
-  .follow-up-outline-dialog [data-slot='dialog-footer'] > button,
-  .follow-up-outline-delete-dialog [data-slot='alert-dialog-footer'] > button {
-    width: 100%;
   }
 }
 @media (max-width: 720px) {

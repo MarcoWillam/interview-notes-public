@@ -256,7 +256,6 @@ export function FollowUpOutlineView({
               id="follow-up-requested-focus"
               ref={textareaRef}
               rows={4}
-              maxLength={200}
               value={requestedFocus}
               disabled={disabled}
               aria-describedby="follow-up-requested-focus-count"

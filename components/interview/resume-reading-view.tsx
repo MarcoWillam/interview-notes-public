@@ -184,15 +184,6 @@ export function ResumeReadingView({
         </div>
       </div>
       {value.outline && <InterviewOutlineV2View outline={value.outline} />}
-      {value.outline && (
-        <FollowUpOutlineView
-          groups={groups}
-          busy={busy}
-          draft={draft}
-          onGenerate={onGenerate}
-          onDelete={onDelete}
-        />
-      )}
       {!value.outline && !!questions.length && (
         <section className="interview-guide">
           <h4>
@@ -210,6 +201,15 @@ export function ResumeReadingView({
             })}
           </div>
         </section>
+      )}
+      {(value.outline || !!questions.length) && (
+        <FollowUpOutlineView
+          groups={groups}
+          busy={busy}
+          draft={draft}
+          onGenerate={onGenerate}
+          onDelete={onDelete}
+        />
       )}
       {value.writtenTestSupplement?.length ? (
         <WrittenTestSupplementView questions={value.writtenTestSupplement} />
