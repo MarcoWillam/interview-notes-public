@@ -34,11 +34,18 @@ import {
   type InterviewWorkspace,
 } from '@/lib/interview-sync';
 export type Draft = Omit<SavedInterview, 'id' | 'createdAt' | 'updatedAt'>;
+type FollowUpFields = Pick<
+  Draft,
+  'outlineSupplements' | 'followUpOutlineJobId'
+>;
 export function useInterviewLibrary(
   draft: Draft,
   restore: (session: SavedInterview) => Promise<void>,
   clear: (seed: NewInterviewSeed) => void,
-  options: { cloud: boolean } = { cloud: false },
+  options: {
+    cloud: boolean;
+    onFollowUpRefresh?: (fields: FollowUpFields) => void;
+  } = { cloud: false },
 ) {
   const access = useLocalAccess();
   const [id, setId] = useState('');
@@ -76,7 +83,15 @@ export function useInterviewLibrary(
     quota: 0,
     persistent: false,
   });
-  const callbacks = useRef({ draft, restore, clear });
+  const callbacks = useRef({
+    draft,
+    restore,
+    clear,
+    onFollowUpRefresh: options.onFollowUpRefresh,
+  });
+  const followUpFields = useRef(
+    new Map<string, { epoch: number; fields: FollowUpFields }>(),
+  );
   const createdAt = useRef<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const writes = useRef(Promise.resolve());
@@ -188,7 +203,12 @@ export function useInterviewLibrary(
     };
   }
   useEffect(() => {
-    callbacks.current = { draft, restore, clear };
+    callbacks.current = {
+      draft,
+      restore,
+      clear,
+      onFollowUpRefresh: options.onFollowUpRefresh,
+    };
   });
   async function refresh() {
     const store = localStore();
@@ -252,7 +272,8 @@ export function useInterviewLibrary(
     };
   }, [access, options.cloud, synchronize]);
   function write(currentId: string, value: Draft) {
-    const stamp = JSON.stringify(value);
+    let stamp = JSON.stringify(value);
+    const fieldEpoch = followUpFields.current.get(currentId)?.epoch || 0;
     const updatedAt = Date.now();
     createdAt.current ??= updatedAt;
     const saved = {
@@ -264,6 +285,11 @@ export function useInterviewLibrary(
     const next = writes.current
       .catch(() => {})
       .then(async () => {
+        const refreshed = followUpFields.current.get(currentId);
+        if (refreshed && refreshed.epoch !== fieldEpoch) {
+          Object.assign(saved, refreshed.fields);
+          stamp = JSON.stringify({ ...value, ...refreshed.fields });
+        }
         const store = localStore();
         const previous = await store.getInterview(currentId);
         await store.saveInterviewDraft(saved);
@@ -328,6 +354,57 @@ export function useInterviewLibrary(
     const meta = await localStore().getSyncMeta(id);
     if (!meta) throw new Error('面试记录尚未同步到云端，请稍后重试。');
     return { interviewId: id, interviewRevision: meta.revision };
+  }
+  async function refreshFollowUpFromCloud(interviewId = id) {
+    if (!options.cloud) return;
+    const previousSyncs = syncs.current;
+    // Reserve both queues before the GET. Autosaves can keep accepting input,
+    // but neither a stale write nor an outbox upload may pass this reconciliation.
+    const next = writes.current
+      .catch(() => {})
+      .then(async () => {
+        await previousSyncs;
+        const value = await transport.current.get(interviewId);
+        if (value.deletedAt != null) return;
+        const store = localStore();
+        const local = await store.getInterview(interviewId);
+        if (!local) return;
+        const fields: FollowUpFields = {
+          outlineSupplements: value.record.outlineSupplements,
+          followUpOutlineJobId: value.record.followUpOutlineJobId,
+        };
+        const latest =
+          interviewId === activeId.current ? callbacks.current.draft : local;
+        const merged: SavedInterview = {
+          ...value.record,
+          ...latest,
+          ...fields,
+          id: interviewId,
+          createdAt: local.createdAt ?? value.record.createdAt,
+          updatedAt: Date.now(),
+        };
+        await store.rebaseInterviewDraft(
+          merged,
+          value.revision,
+          cloudVersionReason(local, merged),
+        );
+        followUpFields.current.set(interviewId, {
+          epoch: (followUpFields.current.get(interviewId)?.epoch || 0) + 1,
+          fields,
+        });
+        if (interviewId === activeId.current) {
+          // Apply only task-owned fields. Edits made during GET/IndexedDB awaits
+          // stay in React and their queued autosave receives this same field epoch.
+          callbacks.current.draft = { ...callbacks.current.draft, ...fields };
+          callbacks.current.onFollowUpRefresh?.(fields);
+        }
+        setSessions((rows) => updateInterviewSummary(rows, merged));
+        setSyncStatus('pending');
+      });
+    writes.current = next.catch(() => {});
+    syncs.current = next.catch(() => {});
+    await next;
+    void synchronize().catch(() => {});
   }
   async function refreshFromCloud(interviewId = id) {
     if (!options.cloud) return;
@@ -674,6 +751,7 @@ export function useInterviewLibrary(
     flush,
     flushForTask,
     refreshFromCloud,
+    refreshFollowUpFromCloud,
     open,
     create,
     remove,

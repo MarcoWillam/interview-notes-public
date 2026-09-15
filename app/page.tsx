@@ -510,7 +510,13 @@ export default function Home({
       setNotice('已从当前浏览器恢复面试记录。');
     },
     reset,
-    { cloud: !!workspaceAccount && !workspaceAccount.preview },
+    {
+      cloud: !!workspaceAccount && !workspaceAccount.preview,
+      onFollowUpRefresh: (fields) => {
+        setOutlineSupplements(fields.outlineSupplements || []);
+        setFollowUpOutlineJobId(fields.followUpOutlineJobId);
+      },
+    },
   );
   const libraryRef = useRef(library);
   useEffect(() => {
@@ -946,7 +952,7 @@ export default function Home({
         if (!current()) return;
         if (job.state === 'completed') {
           if (job.resultDisposition === 'applied') {
-            await libraryRef.current.refreshFromCloud(recordId);
+            await libraryRef.current.refreshFollowUpFromCloud(recordId);
             if (followUpRecordId.current !== recordId) return;
             setFollowUpOutlineJobId(undefined);
             setFollowUpOutlineDraft('');
@@ -956,7 +962,7 @@ export default function Home({
             return;
           }
           if (job.resultDisposition === 'pending') {
-            await libraryRef.current.refreshFromCloud(recordId);
+            await libraryRef.current.refreshFollowUpFromCloud(recordId);
             if (followUpRecordId.current !== recordId) return;
             setFollowUpOutlineJobId(undefined);
             setFollowUpOutlineDraft(draft);

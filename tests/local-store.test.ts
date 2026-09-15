@@ -400,3 +400,24 @@ void test('follow-up groups and active task survive reopening without changing t
     record.report,
   );
 });
+
+void test('rebasing a task result atomically preserves the merged draft and replaces the stale sync base', async () => {
+  const store = createLocalStore(new IDBFactory(), 'follow-up-rebase');
+  await store.saveRemoteInterview(session, 4);
+  await store.queueInterviewSync(session);
+  const before = (await store.listPendingSync())[0];
+  const { followUpGroupFixture } =
+    await import('./fixtures/follow-up-outline.ts');
+  const merged = {
+    ...session,
+    transcript: '最新输入',
+    outlineSupplements: [followUpGroupFixture()],
+  };
+  await store.rebaseInterviewDraft(merged, 5);
+  assert.deepEqual(await store.getInterview(session.id), merged);
+  assert.equal((await store.getSyncMeta(session.id))?.revision, 5);
+  const pending = (await store.listPendingSync())[0];
+  assert.deepEqual(pending.record, merged);
+  assert.equal(pending.baseRevision, 5);
+  assert.notEqual(pending.mutationId, before.mutationId);
+});
