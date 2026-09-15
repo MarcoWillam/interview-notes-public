@@ -162,17 +162,26 @@ void test('server builds a validated follow-up outline text contract', () => {
 
 void test('follow-up outline retries append bounded feedback without changing payload', () => {
   const input = followUpInputFixture();
+  const retainedFeedback = `first line ${'x'.repeat(989)}`;
+  const discardedMarker = '<<discarded-feedback-marker>>';
+  const feedback = `first line\n${'x'.repeat(989)}${discardedMarker}\nignored suffix`;
   const initial = executionContractFor('follow-up-outline', input, {
     feedback: '初次执行不应附带历史校验信息。',
   });
   const contract = executionContractFor('follow-up-outline', input, {
     attempt: 2,
-    feedback: `问题不符合约束。\n${'x'.repeat(2000)}`,
+    feedback,
   });
   assert.doesNotMatch(initial.instructions, /上一次结果未通过服务器校验/);
   assert.equal(contract.attempt, 2);
   assert.deepEqual(contract.payload, executionContractFor('follow-up-outline', input).payload);
-  assert.match(contract.instructions, /上一次结果未通过服务器校验/);
-  assert.ok(contract.instructions.endsWith('请修正后重新返回完整 JSON。'));
-  assert.ok(contract.instructions.length < 3_000);
+  assert.ok(
+    contract.instructions.endsWith(
+      `上一次结果未通过服务器校验：${retainedFeedback}。请修正后重新返回完整 JSON。`,
+    ),
+  );
+  assert.equal(retainedFeedback.length, 1_000);
+  assert.ok(feedback.length > 1_000);
+  assert.ok(!contract.instructions.includes(discardedMarker));
+  assert.ok(!contract.instructions.includes('ignored suffix'));
 });
