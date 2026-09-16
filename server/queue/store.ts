@@ -54,6 +54,7 @@ import {
   assertInterviewJobInputMatches,
   interviewJobSource,
 } from '../../lib/interview-job-binding.ts';
+import type { InterviewHandoffStage } from '../../lib/interview-handoff.ts';
 export type JobKind = CodexExecutionKind;
 export class QueueError extends Error {
   status: number;
@@ -233,6 +234,41 @@ export class QueueStore {
       username: String(user.username),
       active: !!user.active,
     }));
+  }
+  handoffAccounts(user: string) {
+    return (
+      this.db
+        .prepare(
+          'SELECT username FROM users WHERE active=1 AND id<>? ORDER BY username',
+        )
+        .all(user) as Row[]
+    ).map((account) => ({ username: String(account.username) }));
+  }
+  handoffInterview(
+    sourceUser: string,
+    sourceUsername: string,
+    sourceInterview: string,
+    sourceRevision: number,
+    targetUsername: string,
+    stage: InterviewHandoffStage,
+    mutationId: string,
+  ) {
+    if (stage === 'initial' && sourceUsername !== 'owner')
+      throw new QueueError('仅 owner 可以派发初试。', 403);
+    const target = this.userByName(targetUsername);
+    if (!target.active)
+      throw new QueueError('接收账号已停用，无法派发。', 409);
+    if (String(target.id) === sourceUser)
+      throw new QueueError('不能把面试派发给当前账号。');
+    return this.interviews.handoff(
+      sourceUser,
+      sourceInterview,
+      sourceRevision,
+      String(target.id),
+      String(target.username),
+      stage,
+      mutationId,
+    );
   }
   setUserActive(username: string, active: boolean) {
     const user = this.userByName(username);

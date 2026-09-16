@@ -1,6 +1,6 @@
 'use client';
 
-import { Settings2 } from 'lucide-react';
+import { Send, Settings2 } from 'lucide-react';
 import {
   interviewStatusLabel,
   type InterviewStatus,
@@ -22,6 +22,8 @@ export type InterviewSessionSummaryProps = {
   onOpen: () => void;
   interviewStage?: InterviewStage;
   priorRoundSource?: PriorRoundSource;
+  handoffLabel?: string;
+  onHandoff?: () => void;
 };
 
 export function InterviewSessionSummary({
@@ -39,6 +41,8 @@ export function InterviewSessionSummary({
   onOpen,
   interviewStage = 'initial',
   priorRoundSource,
+  handoffLabel,
+  onHandoff,
 }: InterviewSessionSummaryProps) {
   const writtenTestStatus = !writtenTestConfirmed
     ? '待确认'
@@ -92,15 +96,27 @@ export function InterviewSessionSummary({
           </dd>
         </div>
       </dl>
-      <button
-        className="secondary-button"
-        disabled={disabled}
-        onClick={onOpen}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-      >
-        <Settings2 size={16} /> 面试设置
-      </button>
+      <div className="interview-session-actions">
+        {handoffLabel && onHandoff && (
+          <button
+            className="secondary-button handoff-button"
+            disabled={disabled}
+            onClick={onHandoff}
+            aria-haspopup="dialog"
+          >
+            <Send size={16} /> {handoffLabel}
+          </button>
+        )}
+        <button
+          className="secondary-button"
+          disabled={disabled}
+          onClick={onOpen}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+        >
+          <Settings2 size={16} /> 面试设置
+        </button>
+      </div>
     </section>
   );
 }

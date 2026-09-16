@@ -102,6 +102,7 @@ import { InterviewSidebar } from '@/components/interview/interview-sidebar';
 import { GlobalPreferences } from '@/components/interview/global-preferences';
 import { InterviewPreparation } from '@/components/interview/interview-preparation';
 import { InterviewSessionSummary } from '@/components/interview/interview-session-summary';
+import { InterviewHandoffDialog } from '@/components/interview/interview-handoff-dialog';
 import { CandidateDashboard } from '@/components/interview/candidate-dashboard';
 import { SecondRoundOutlineView } from '@/components/interview/second-round-outline-view';
 import { SecondRoundComparisonView } from '@/components/interview/second-round-comparison-view';
@@ -247,6 +248,8 @@ export default function Home({
   const [secondRoundAssessmentSourceHash, setSecondRoundAssessmentSourceHash] =
     useState<string>();
   const [secondRoundCreateOpen, setSecondRoundCreateOpen] = useState(false);
+  const [handoffOpen, setHandoffOpen] = useState(false);
+  const [handoffTarget, setHandoffTarget] = useState('');
   const [candidate, setCandidate] = useState('');
   const [role, setRole] = useState('');
   const [requirements, setRequirements] = useState('');
@@ -698,6 +701,39 @@ export default function Home({
       cloud: !!workspaceAccount && !workspaceAccount.preview,
     },
   );
+  const handoffStage =
+    interviewStage === 'initial' && workspaceAccount && !workspaceAccount.preview
+      ? confirmed
+        ? 'second'
+        : workspaceAccount?.owner
+          ? 'initial'
+          : null
+      : null;
+  useEffect(() => {
+    let disposed = false;
+    void Promise.resolve()
+      .then(() => {
+        if (disposed) return null;
+        setHandoffTarget('');
+        if (!handoffStage || !library.id) return null;
+        return remoteRequest<{
+          handoffs: Array<{ stage: InterviewStage; targetUsername: string }>;
+        }>(`/api/interviews/${encodeURIComponent(library.id)}/handoffs`);
+      })
+      .then((result) => {
+        if (!disposed && result)
+          setHandoffTarget(
+            result.handoffs.find(({ stage }) => stage === handoffStage)
+              ?.targetUsername || '',
+          );
+      })
+      .catch(() => {
+        // The handoff dialog reports actionable errors when the user opens it.
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [handoffStage, library.id]);
   async function refreshCurrentAnalysisRecord(
     controller: AbortController,
     recordId: string,
@@ -3263,6 +3299,18 @@ export default function Home({
               disabled={!!busy || outlineTaskActive}
               open={preparationOpen}
               onOpen={() => setPreparationOpen(true)}
+              handoffLabel={
+                handoffStage
+                  ? handoffTarget
+                    ? `已派发${handoffStage === 'second' ? '复试' : '初试'} · ${handoffTarget}`
+                    : handoffStage === 'second'
+                      ? '派发复试'
+                      : '派发初试'
+                  : undefined
+              }
+              onHandoff={
+                handoffStage ? () => setHandoffOpen(true) : undefined
+              }
             />
             {error && (
               <div role="alert" className="message error">
@@ -4462,6 +4510,27 @@ export default function Home({
               localAction(() => createSecondRoundInterview(seed))
             }
           />
+          {handoffStage && (
+            <InterviewHandoffDialog
+              open={handoffOpen}
+              onOpenChange={setHandoffOpen}
+              sourceId={library.id}
+              candidate={candidate}
+              stage={handoffStage}
+              onPrepare={async () => {
+                const binding = await library.flushForTask();
+                if (!binding)
+                  throw new Error('面试记录尚未同步到云端，请稍后重试。');
+                return { sourceRevision: binding.interviewRevision };
+              }}
+              onSuccess={(handoff) => {
+                setHandoffTarget(handoff.targetUsername);
+                setNotice(
+                  `${handoff.stage === 'second' ? '复试' : '初试'}已派发给 ${handoff.targetUsername}。`,
+                );
+              }}
+            />
+          )}
         </div>
       </div>
     </div>

@@ -130,6 +130,185 @@ void test('record API returns a current summary for stale revisions', async () =
   }
 });
 
+void test('handoff account discovery returns active accounts except the caller', async () => {
+  const { store, alice, call } = setup();
+  try {
+    store.setUserActive('bob', false);
+    const response = await call(alice, '/api/handoff-accounts');
+    assert.equal(response.status, 200);
+    assert.deepEqual(await responseJson(response), {
+      accounts: [{ username: 'owner' }],
+    });
+  } finally {
+    store.close();
+  }
+});
+
+void test('owner hands off one clean initial interview snapshot', async () => {
+  const { store, alice, owner, call } = setup();
+  try {
+    const prepared = {
+      ...record,
+      id: 'owner-source-12345',
+      hasWrittenTest: true,
+      writtenTestConfirmed: true,
+      resumeReading: {
+        candidateName: '接口候选人',
+        summary: '已阅读',
+        sections: [],
+        followUps: [],
+      },
+      transcript: '旧面试记录',
+      reviewed: true,
+      report: null,
+      conclusion: '旧结论',
+      confirmed: true,
+    } satisfies CloudInterview;
+    await call(owner, `/api/interviews/${prepared.id}`, 'PUT', {
+      baseRevision: 0,
+      mutationId: 'handoff-source-create-1',
+      record: prepared,
+    });
+
+    const response = await call(
+      owner,
+      `/api/interviews/${prepared.id}/handoff`,
+      'POST',
+      {
+        targetUsername: 'alice',
+        stage: 'initial',
+        sourceRevision: 1,
+        mutationId: 'handoff-initial-12345',
+      },
+    );
+    assert.equal(response.status, 201);
+    const result = await responseJson<{
+      handoff: {
+        stage: string;
+        targetUsername: string;
+        targetInterviewId: string;
+      };
+    }>(response);
+    assert.equal(result.handoff.stage, 'initial');
+    assert.equal(result.handoff.targetUsername, 'alice');
+
+    const target = await responseJson<{ record: CloudInterview }>(
+      await call(
+        alice,
+        `/api/interviews/${result.handoff.targetInterviewId}`,
+      ),
+    );
+    assert.equal(target.record.candidate, prepared.candidate);
+    assert.equal(target.record.resumeText, prepared.resumeText);
+    assert.equal(target.record.hasWrittenTest, true);
+    assert.equal(target.record.resumeReading, null);
+    assert.equal(target.record.transcript, '');
+    assert.equal(target.record.confirmed, false);
+    assert.equal(
+      (await call(owner, `/api/interviews/${result.handoff.targetInterviewId}`))
+        .status,
+      404,
+    );
+    assert.equal(
+      (
+        await responseJson<{ record: CloudInterview }>(
+          await call(owner, `/api/interviews/${prepared.id}`),
+        )
+      ).record.conclusion,
+      '旧结论',
+    );
+
+    const listed = await responseJson<{
+      handoffs: Array<{ targetUsername: string; targetInterviewId: string }>;
+    }>(await call(owner, `/api/interviews/${prepared.id}/handoffs`));
+    assert.deepEqual(listed.handoffs, [result.handoff]);
+
+    const duplicate = await call(
+      owner,
+      `/api/interviews/${prepared.id}/handoff`,
+      'POST',
+      {
+        targetUsername: 'alice',
+        stage: 'initial',
+        sourceRevision: 1,
+        mutationId: 'handoff-initial-other',
+      },
+    );
+    assert.equal(duplicate.status, 409);
+  } finally {
+    store.close();
+  }
+});
+
+void test('confirmed initial interview owner hands off an independent second round', async () => {
+  const { store, alice, bob, call } = setup();
+  try {
+    const completed = {
+      ...record,
+      id: 'completed-source-12345',
+      transcript: '候选人：我主动发起了校园项目。',
+      transcriptName: '初试记录.md',
+      conclusion: '建议进入复试。',
+      confirmed: true,
+    } satisfies CloudInterview;
+    await call(alice, `/api/interviews/${completed.id}`, 'PUT', {
+      baseRevision: 0,
+      mutationId: 'handoff-source-create-2',
+      record: completed,
+    });
+    const response = await call(
+      alice,
+      `/api/interviews/${completed.id}/handoff`,
+      'POST',
+      {
+        targetUsername: 'bob',
+        stage: 'second',
+        sourceRevision: 1,
+        mutationId: 'handoff-second-12345',
+      },
+    );
+    assert.equal(response.status, 201);
+    const result = await responseJson<{
+      handoff: { targetInterviewId: string; targetUsername: string };
+    }>(response);
+    const target = await responseJson<{ record: CloudInterview }>(
+      await call(bob, `/api/interviews/${result.handoff.targetInterviewId}`),
+    );
+    assert.equal(target.record.interviewStage, 'second');
+    assert.equal(target.record.priorRoundSource, 'bole-markdown');
+    assert.match(target.record.priorRoundText || '', /建议进入复试/);
+    assert.equal(target.record.transcript, '');
+    assert.equal(target.record.confirmed, false);
+  } finally {
+    store.close();
+  }
+});
+
+void test('handoff rejects unauthorized initial, incomplete second and invalid targets', async () => {
+  const { store, alice, call } = setup();
+  try {
+    await call(alice, `/api/interviews/${record.id}`, 'PUT', {
+      baseRevision: 0,
+      mutationId: 'handoff-source-create-3',
+      record,
+    });
+    const send = (targetUsername: string, stage: 'initial' | 'second') =>
+      call(alice, `/api/interviews/${record.id}/handoff`, 'POST', {
+        targetUsername,
+        stage,
+        sourceRevision: 1,
+        mutationId: `handoff-denied-${targetUsername}-${stage}`,
+      });
+    assert.equal((await send('bob', 'initial')).status, 403);
+    assert.equal((await send('bob', 'second')).status, 409);
+    assert.equal((await send('alice', 'second')).status, 400);
+    store.setUserActive('bob', false);
+    assert.equal((await send('bob', 'second')).status, 409);
+  } finally {
+    store.close();
+  }
+});
+
 void test('record API restores history and soft-deleted records', async () => {
   const { store, alice, call } = setup();
   try {

@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { randomUUID } from 'node:crypto';
 import {
   MAX_CLOUD_INTERVIEW_BYTES,
   interviewSummary,
@@ -13,6 +14,11 @@ import {
   resultVersionReason,
 } from '../../lib/interview-job-binding.ts';
 import type { CodexExecutionKind } from '../../lib/codex-execution-contract.ts';
+import {
+  createInitialHandoffRecord,
+  createSecondRoundHandoffRecord,
+  type InterviewHandoffStage,
+} from '../../lib/interview-handoff.ts';
 
 type Row = Record<string, string | number | null>;
 
@@ -45,6 +51,13 @@ export type PendingInterviewResult = {
   state: 'pending' | 'applied' | 'discarded';
   createdAt: number;
   updatedAt: number;
+};
+
+export type InterviewHandoff = {
+  stage: InterviewHandoffStage;
+  targetUsername: string;
+  targetInterviewId: string;
+  createdAt: number;
 };
 
 export class InterviewStoreError extends Error {
@@ -194,10 +207,24 @@ export class InterviewStore {
         content TEXT NOT NULL,
         updated INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS interview_handoffs(
+        sourceUser TEXT NOT NULL,
+        sourceInterview TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        sourceRevision INTEGER NOT NULL,
+        targetUser TEXT NOT NULL,
+        targetUsername TEXT NOT NULL,
+        targetInterview TEXT NOT NULL,
+        mutationId TEXT NOT NULL,
+        created INTEGER NOT NULL,
+        PRIMARY KEY(sourceUser,sourceInterview,stage),
+        UNIQUE(sourceUser,mutationId)
+      );
       CREATE INDEX IF NOT EXISTS interviews_user_updated ON interviews(user,deletedAt,updated DESC);
       CREATE INDEX IF NOT EXISTS interview_versions_record ON interview_versions(user,interview,created DESC);
       CREATE INDEX IF NOT EXISTS interview_events_record ON interview_events(user,interview,created DESC);
       CREATE INDEX IF NOT EXISTS interview_pending_record ON interview_pending_results(user,interview,state,created DESC);
+      CREATE INDEX IF NOT EXISTS interview_handoffs_target ON interview_handoffs(targetUser,created DESC);
     `);
   }
 
@@ -239,6 +266,144 @@ export class InterviewStore {
         row.deletedAt === null ? null : Number(row.deletedAt),
       ),
     );
+  }
+
+  handoffs(user: string, id: string): InterviewHandoff[] {
+    this.stored(user, id, true);
+    return (
+      this.db
+        .prepare(
+          'SELECT stage,targetUsername,targetInterview,created FROM interview_handoffs WHERE sourceUser=? AND sourceInterview=? ORDER BY created',
+        )
+        .all(user, id) as Row[]
+    ).map((row) => ({
+      stage: String(row.stage) as InterviewHandoffStage,
+      targetUsername: String(row.targetUsername),
+      targetInterviewId: String(row.targetInterview),
+      createdAt: Number(row.created),
+    }));
+  }
+
+  handoff(
+    sourceUser: string,
+    sourceInterview: string,
+    sourceRevision: number,
+    targetUser: string,
+    targetUsername: string,
+    stage: InterviewHandoffStage,
+    mutationId: string,
+  ): InterviewHandoff {
+    validateMutationId(mutationId);
+    if (!Number.isSafeInteger(sourceRevision) || sourceRevision < 1)
+      throw new InterviewStoreError('面试修订号无效。');
+    if (stage !== 'initial' && stage !== 'second')
+      throw new InterviewStoreError('派发阶段无效。');
+    const repeated = this.db
+      .prepare(
+        'SELECT sourceInterview,stage,targetUsername,targetInterview,created FROM interview_handoffs WHERE sourceUser=? AND mutationId=?',
+      )
+      .get(sourceUser, mutationId) as Row | undefined;
+    if (repeated) {
+      if (
+        String(repeated.sourceInterview) !== sourceInterview ||
+        String(repeated.stage) !== stage ||
+        String(repeated.targetUsername) !== targetUsername
+      )
+        throw new InterviewStoreError('派发操作编号已被其他操作使用。', 409);
+      return {
+        stage,
+        targetUsername,
+        targetInterviewId: String(repeated.targetInterview),
+        createdAt: Number(repeated.created),
+      };
+    }
+    const source = this.stored(sourceUser, sourceInterview);
+    if (source.revision !== sourceRevision)
+      throw new RevisionConflict(
+        interviewSummary(source.record, source.revision, source.deletedAt),
+      );
+    if ((source.record.interviewStage || 'initial') !== 'initial')
+      throw new InterviewStoreError('仅初试记录可以继续派发。', 409);
+    if (
+      !source.record.candidate.trim() ||
+      !source.record.role.trim() ||
+      !source.record.resumeText.trim()
+    )
+      throw new InterviewStoreError('请先补全候选人、岗位和简历资料。', 409);
+    if (stage === 'second' && !source.record.confirmed)
+      throw new InterviewStoreError('请先确认初试结论，再派发复试。', 409);
+    const existing = this.db
+      .prepare(
+        'SELECT targetUsername,targetInterview,created FROM interview_handoffs WHERE sourceUser=? AND sourceInterview=? AND stage=?',
+      )
+      .get(sourceUser, sourceInterview, stage) as Row | undefined;
+    if (existing)
+      throw new InterviewStoreError(
+        `该记录已派发给 ${String(existing.targetUsername)}。`,
+        409,
+      );
+    const targetInterviewId = randomUUID();
+    const now = this.now();
+    const targetRecord =
+      stage === 'initial'
+        ? createInitialHandoffRecord(source.record, {
+            id: targetInterviewId,
+            now,
+          })
+        : createSecondRoundHandoffRecord(source.record, {
+            id: targetInterviewId,
+            now,
+          });
+    const content = JSON.stringify(targetRecord);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db
+        .prepare(
+          'INSERT INTO interviews(user,id,content,revision,created,updated,deletedAt) VALUES(?,?,?,1,?,?,NULL)',
+        )
+        .run(targetUser, targetInterviewId, content, now, now);
+      this.db
+        .prepare(
+          'INSERT INTO interview_versions(user,interview,revision,reason,content,created) VALUES(?,?,1,?,?,?)',
+        )
+        .run(
+          targetUser,
+          targetInterviewId,
+          stage === 'second' ? 'second-round-material-imported' : 'periodic-edit',
+          content,
+          now,
+        );
+      this.db
+        .prepare(
+          'INSERT INTO interview_mutations(user,mutationId,interview,baseRevision,resultRevision,created) VALUES(?,?,?,0,1,?)',
+        )
+        .run(
+          targetUser,
+          `handoff-${targetInterviewId}`,
+          targetInterviewId,
+          now,
+        );
+      this.db
+        .prepare(
+          'INSERT INTO interview_handoffs(sourceUser,sourceInterview,stage,sourceRevision,targetUser,targetUsername,targetInterview,mutationId,created) VALUES(?,?,?,?,?,?,?,?,?)',
+        )
+        .run(
+          sourceUser,
+          sourceInterview,
+          stage,
+          sourceRevision,
+          targetUser,
+          targetUsername,
+          targetInterviewId,
+          mutationId,
+          now,
+        );
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { stage, targetUsername, targetInterviewId, createdAt: now };
   }
 
   private repeatedMutation(user: string, mutationId: string) {

@@ -208,6 +208,8 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
           .filter((item) => trash ? item.deletedAt !== null : item.deletedAt === null);
         return json({ interviews });
       }
+      if (path === '/api/handoff-accounts' && method === 'GET')
+        return json({ accounts: store.handoffAccounts(user.id) });
       if (path === '/api/interview-workspace') {
         if (method === 'GET') return json(store.interviews.workspace(user.id));
         if (method === 'PUT')
@@ -251,6 +253,27 @@ export function queueApi(store: QueueStore, config: QueueConfig) {
                 str('mutationId', 100),
               ),
             );
+        }
+        if (section === 'handoffs' && parts.length === 2 && method === 'GET')
+          return json({ handoffs: store.interviews.handoffs(user.id, id) });
+        if (section === 'handoff' && parts.length === 2 && method === 'POST') {
+          const stage = str('stage', 20);
+          if (stage !== 'initial' && stage !== 'second')
+            throw new InterviewStoreError('派发阶段无效。');
+          return json(
+            {
+              handoff: store.handoffInterview(
+                user.id,
+                user.username,
+                id,
+                Number(body.sourceRevision),
+                str('targetUsername', 80),
+                stage,
+                str('mutationId', 100),
+              ),
+            },
+            201,
+          );
         }
         if (section === 'restore' && parts.length === 2 && method === 'POST')
           return json(
