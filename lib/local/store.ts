@@ -13,6 +13,7 @@ import {
 } from '../default-role-templates.ts';
 import type { CloudInterview } from '../cloud-interview.ts';
 import type { CloudVersionReason } from '../cloud-interview.ts';
+import type { InterviewStage } from '../second-round.ts';
 import { stableJsonFingerprint } from '../interview-draft-merge.ts';
 export type SavedInterview = CloudInterview & {
   /** Older local records may predate creation-time tracking. */
@@ -48,6 +49,7 @@ export type InterviewGroup = {
 export type NewInterviewSeed = {
   standards: InterviewStandards;
   sourceTemplateId: string;
+  interviewStage?: InterviewStage;
 };
 export type AudioRecord = {
   id: string;

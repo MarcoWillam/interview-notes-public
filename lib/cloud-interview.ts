@@ -6,6 +6,13 @@ import type { Report } from './interview.ts';
 import type { ResumeReading } from './resume-reading.ts';
 import type { WorkSampleAssessment } from './work-sample.ts';
 import { interviewStatus, type InterviewStatus } from './interview-status.ts';
+import type {
+  InterviewStage,
+  PriorRoundComparison,
+  PriorRoundSource,
+  SecondRoundDigest,
+  SecondRoundOutline,
+} from './second-round.ts';
 
 export const MAX_CLOUD_INTERVIEW_BYTES = 2 * 1024 * 1024;
 
@@ -15,6 +22,9 @@ export type CloudVersionReason =
   | 'outline-regenerated'
   | 'follow-up-outline-generated'
   | 'follow-up-outline-deleted'
+  | 'second-round-material-imported'
+  | 'second-round-outline-generated'
+  | 'second-round-assessment-generated'
   | 'transcript-imported'
   | 'work-sample-analyzed'
   | 'written-test-supplemented'
@@ -59,6 +69,15 @@ export type CloudInterview = {
   outlineRevision?: string;
   outlineSupplements?: FollowUpOutlineGroup[];
   followUpOutlineJobId?: string;
+  interviewStage?: InterviewStage;
+  priorRoundSource?: PriorRoundSource;
+  priorRoundText?: string;
+  priorRoundName?: string;
+  priorRoundDigest?: SecondRoundDigest | null;
+  secondRoundOutline?: SecondRoundOutline | null;
+  secondRoundOutlineJobId?: string;
+  priorRoundComparison?: PriorRoundComparison[];
+  secondRoundAssessmentJobId?: string;
 };
 
 export type CloudInterviewSummary = {
@@ -71,6 +90,7 @@ export type CloudInterviewSummary = {
   createdAt: number;
   updatedAt: number;
   deletedAt: number | null;
+  interviewStage?: InterviewStage;
 };
 
 const allowedKeys = new Set<keyof CloudInterview>([
@@ -108,6 +128,15 @@ const allowedKeys = new Set<keyof CloudInterview>([
   'outlineRevision',
   'outlineSupplements',
   'followUpOutlineJobId',
+  'interviewStage',
+  'priorRoundSource',
+  'priorRoundText',
+  'priorRoundName',
+  'priorRoundDigest',
+  'secondRoundOutline',
+  'secondRoundOutlineJobId',
+  'priorRoundComparison',
+  'secondRoundAssessmentJobId',
 ]);
 
 const reasons = new Set<CloudVersionReason>([
@@ -116,6 +145,9 @@ const reasons = new Set<CloudVersionReason>([
   'outline-regenerated',
   'follow-up-outline-generated',
   'follow-up-outline-deleted',
+  'second-round-material-imported',
+  'second-round-outline-generated',
+  'second-round-assessment-generated',
   'transcript-imported',
   'work-sample-analyzed',
   'written-test-supplemented',
@@ -204,6 +236,22 @@ export function validateCloudInterview(value: unknown): CloudInterview {
   optionalString(record.outlineRegenerationJobId, 100, '提纲任务');
   optionalString(record.followUpOutlineJobId, 100, '补充追问任务');
   optionalString(record.outlineRevision, 200, '提纲修订');
+  optionalString(record.priorRoundText, 80000, '初试资料');
+  optionalString(record.priorRoundName, 300, '初试资料名称');
+  optionalString(record.secondRoundOutlineJobId, 100, '复试提纲任务');
+  optionalString(record.secondRoundAssessmentJobId, 100, '复试评估任务');
+  if (
+    record.interviewStage !== undefined &&
+    record.interviewStage !== 'initial' &&
+    record.interviewStage !== 'second'
+  )
+    throw new Error('面试轮次格式无效。');
+  if (
+    record.priorRoundSource !== undefined &&
+    record.priorRoundSource !== 'bole-markdown' &&
+    record.priorRoundSource !== 'external'
+  )
+    throw new Error('初试资料来源无效。');
   if (record.groupId !== undefined && record.groupId !== null)
     string(record.groupId, 100, '分组');
   for (const key of [
@@ -228,7 +276,14 @@ export function validateCloudInterview(value: unknown): CloudInterview {
     throw new Error('提纲版本格式无效。');
   if (record.outlineRegeneratedAt !== undefined)
     timestamp(record.outlineRegeneratedAt);
-  for (const key of ['resumeReading', 'report', 'workSample'])
+  for (const key of [
+    'resumeReading',
+    'report',
+    'workSample',
+    'priorRoundDigest',
+    'secondRoundOutline',
+    'priorRoundComparison',
+  ])
     if (record[key] !== undefined) plainJson(record[key]);
   if (record.outlineSupplements !== undefined)
     validateFollowUpOutlineGroups(record.outlineSupplements);
@@ -254,5 +309,6 @@ export function interviewSummary(
     createdAt: value.createdAt ?? value.updatedAt,
     updatedAt: value.updatedAt,
     deletedAt,
+    interviewStage: value.interviewStage || 'initial',
   };
 }

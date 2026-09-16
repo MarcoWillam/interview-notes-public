@@ -101,6 +101,15 @@ export function cloudVersionReason(
   next: CloudInterview,
 ): CloudVersionReason {
   if (!previous) return 'periodic-edit';
+  if (!previous.priorRoundText && next.priorRoundText)
+    return 'second-round-material-imported';
+  if (!previous.secondRoundOutline && next.secondRoundOutline)
+    return 'second-round-outline-generated';
+  if (
+    !previous.priorRoundComparison?.length &&
+    !!next.priorRoundComparison?.length
+  )
+    return 'second-round-assessment-generated';
   if (
     (previous.outlineSupplements?.length || 0) >
     (next.outlineSupplements?.length || 0)
