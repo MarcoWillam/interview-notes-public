@@ -4040,6 +4040,7 @@ fieldset label:last-of-type {
   display: grid;
   gap: 14px;
   min-height: 0;
+  padding-top: 12px;
 }
 
 .second-round-material-grid {
@@ -4138,8 +4139,7 @@ fieldset label:last-of-type {
   text-align: right;
 }
 
-.second-round-preparation .panel-heading,
-.second-round-outline-heading {
+.second-round-preparation .panel-heading {
   background: linear-gradient(135deg, #edf7f4, #f7fbfa);
 }
 
@@ -4155,61 +4155,13 @@ fieldset label:last-of-type {
 }
 
 .second-round-outline {
-  display: grid;
-  gap: 14px;
   margin-top: 16px;
-  padding: 16px;
-  border: 1px solid #9fcbbf;
-  border-radius: 14px;
-  background: #f8fcfb;
 }
 
-.second-round-outline-heading,
-.second-round-question-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+.second-round-summary {
+  margin-top: -4px;
 }
 
-.second-round-outline-heading h3,
-.second-round-question h4 {
-  margin: 2px 0 0;
-}
-
-.second-round-required,
-.second-round-reserve {
-  display: grid;
-  gap: 10px;
-}
-
-.second-round-question {
-  display: grid;
-  gap: 9px;
-  padding: 14px;
-  border: 1px solid #c7ded8;
-  border-radius: 12px;
-  background: white;
-}
-
-.second-round-question-heading {
-  justify-content: flex-start;
-}
-.second-round-question-heading > span {
-  display: grid;
-  place-items: center;
-  flex: 0 0 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: #17624f;
-  color: white;
-  font-weight: 700;
-}
-.second-round-question-heading p,
-.second-round-goal {
-  margin: 2px 0 0;
-  color: var(--muted-foreground);
-}
 .second-round-question-details {
   display: grid;
   gap: 8px;
@@ -4263,9 +4215,6 @@ fieldset label:last-of-type {
   }
   .second-round-confirmation dd {
     text-align: left;
-  }
-  .second-round-outline {
-    padding: 11px;
   }
 }
 

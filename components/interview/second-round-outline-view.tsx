@@ -11,18 +11,29 @@ function Question({
   index: number;
 }) {
   return (
-    <article className="second-round-question">
-      <div className="second-round-question-heading">
-        <span>{index}</span>
-        <div>
-          <h4>{value.question}</h4>
-          <p>{value.dimensions.join(' · ')}</p>
-        </div>
+    <article className="interview-question-card outline-v2-question second-round-question">
+      <div className="outline-v2-question-heading">
+        <span className="question-source-badge source-role">复试追问</span>
+        <span>预计 5–8 分钟</span>
       </div>
-      <p className="second-round-goal">{value.goal}</p>
+      <h5>{`${index}. ${value.question}`}</h5>
+      <div className="interview-question-dimensions" aria-label="考察维度">
+        <span className="dimension-badge">
+          主维度 · {value.dimensions[0]}
+        </span>
+        {value.dimensions.slice(1).map((dimension) => (
+          <span className="dimension-badge secondary" key={dimension}>
+            辅助 · {dimension}
+          </span>
+        ))}
+      </div>
       <details>
-        <summary>查看初复试差异、依据和追问</summary>
+        <summary>验证目标、初复试差异、依据与追问</summary>
         <div className="second-round-question-details">
+          <p>
+            <strong>验证目标：</strong>
+            {value.goal}
+          </p>
           <p>
             <strong>为何复试再问：</strong>
             {value.difference}
@@ -35,29 +46,29 @@ function Question({
           )}
           {value.priorEvidence && (
             <blockquote>
-              <span>初试依据</span>
+              <strong>初试依据</strong>
               {value.priorEvidence}
             </blockquote>
           )}
           {value.resumeEvidence && (
             <blockquote>
-              <span>简历依据</span>
+              <strong>简历依据</strong>
               {value.resumeEvidence}
             </blockquote>
           )}
-          <strong>观察点</strong>
+          <p className="question-detail-label">重点观察</p>
           <ul>
             {value.listenFor.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
-          <strong>风险信号</strong>
+          <p className="question-detail-label">风险信号</p>
           <ul>
             {value.riskSignals.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
-          <strong>条件追问</strong>
+          <p className="question-detail-label">条件追问</p>
           <ul>
             {value.probes.map((item) => (
               <li key={item}>{item}</li>
@@ -75,30 +86,34 @@ export function SecondRoundOutlineView({
   value: SecondRoundOutline;
 }) {
   return (
-    <section className="second-round-outline">
-      <div className="second-round-outline-heading">
-        <div>
-          <span className="eyebrow">Codex 复试准备</span>
-          <h3>复试提纲 · 45–60 分钟</h3>
-        </div>
-        <span className="badge">6 道必问</span>
-      </div>
-      <p>{value.summary}</p>
-      <div className="second-round-required">
+    <section className="interview-guide outline-v2 second-round-outline">
+      <header className="outline-v2-heading">
+        <h4>必问题 · {value.requiredQuestions.length} 道</h4>
+        <span>预计 45–60 分钟</span>
+      </header>
+      <p className="outline-v2-section-note second-round-summary">
+        {value.summary}
+      </p>
+      <div className="interview-question-list">
         {value.requiredQuestions.map((question, index) => (
           <Question value={question} index={index + 1} key={question.id} />
         ))}
       </div>
       {!!value.reserveQuestions.length && (
-        <details className="second-round-reserve">
+        <details className="outline-v2-section second-round-reserve">
           <summary>候选题 · {value.reserveQuestions.length} 道</summary>
-          {value.reserveQuestions.map((question, index) => (
-            <Question
-              value={question}
-              index={value.requiredQuestions.length + index + 1}
-              key={question.id}
-            />
-          ))}
+          <p className="outline-v2-section-note">
+            按面试进展选用，无需全部提问。
+          </p>
+          <div className="interview-question-list">
+            {value.reserveQuestions.map((question, index) => (
+              <Question
+                value={question}
+                index={value.requiredQuestions.length + index + 1}
+                key={question.id}
+              />
+            ))}
+          </div>
         </details>
       )}
     </section>
