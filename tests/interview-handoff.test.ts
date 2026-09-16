@@ -129,3 +129,44 @@ void test('second-round handoff embeds the confirmed initial interview export', 
   assert.equal(record.report, null);
   assert.equal(record.confirmed, false);
 });
+
+void test('second-round handoff preserves imported initial materials from a standalone second round', () => {
+  const standaloneSecondRound: CloudInterview = {
+    ...source,
+    id: 'source-second-round-12345',
+    interviewStage: 'second',
+    priorRoundSource: 'external',
+    priorRoundText: '# 外部初试记录\n\n候选人已完成初试。',
+    priorRoundName: '外部初试记录.txt',
+    priorRoundDigest: {
+      initialQuestions: ['请介绍一次项目取舍。'],
+      verified: ['表达清晰'],
+      gaps: ['数据意识待验证'],
+      risks: [],
+      conflicts: [],
+    },
+    secondRoundOutline: null,
+    transcript: '复试官：旧复试内容。',
+    transcriptName: '旧复试记录.txt',
+    reviewed: true,
+    report: null,
+    conclusion: '旧复试结论',
+    confirmed: false,
+  };
+
+  const record = createSecondRoundHandoffRecord(standaloneSecondRound, {
+    id: 'target-second-round-12345',
+    now: 700,
+  });
+
+  assert.equal(record.interviewStage, 'second');
+  assert.equal(record.priorRoundSource, 'external');
+  assert.equal(record.priorRoundText, standaloneSecondRound.priorRoundText);
+  assert.equal(record.priorRoundName, standaloneSecondRound.priorRoundName);
+  assert.equal(record.priorRoundDigest, null);
+  assert.equal(record.secondRoundOutline, null);
+  assert.equal(record.transcript, '');
+  assert.equal(record.transcriptName, undefined);
+  assert.equal(record.conclusion, '');
+  assert.equal(record.confirmed, false);
+});

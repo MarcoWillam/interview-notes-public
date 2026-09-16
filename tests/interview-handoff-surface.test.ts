@@ -15,6 +15,10 @@ void test('workbench offers initial and second-round handoff from the session su
 
   assert.match(page, /workspaceAccount\?\.owner[\s\S]*?\? 'initial'/);
   assert.match(page, /confirmed[\s\S]*?\? 'second'/);
+  assert.match(
+    page,
+    /interviewStage === 'second'[\s\S]{0,120}?confirmed[\s\S]{0,80}?null[\s\S]{0,80}?'second'/,
+  );
   assert.match(page, /<InterviewHandoffDialog/);
   assert.match(page, /library\.flushForTask\(\)/);
   assert.match(summary, /派发初试|handoffLabel/);

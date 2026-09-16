@@ -322,16 +322,29 @@ export class InterviewStore {
       throw new RevisionConflict(
         interviewSummary(source.record, source.revision, source.deletedAt),
       );
-    if ((source.record.interviewStage || 'initial') !== 'initial')
-      throw new InterviewStoreError('仅初试记录可以继续派发。', 409);
+    const sourceStage = source.record.interviewStage || 'initial';
+    if (stage === 'initial' && sourceStage !== 'initial')
+      throw new InterviewStoreError('复试记录不能派发为初试。', 409);
     if (
       !source.record.candidate.trim() ||
       !source.record.role.trim() ||
       !source.record.resumeText.trim()
     )
       throw new InterviewStoreError('请先补全候选人、岗位和简历资料。', 409);
-    if (stage === 'second' && !source.record.confirmed)
+    if (
+      stage === 'second' &&
+      sourceStage === 'initial' &&
+      !source.record.confirmed
+    )
       throw new InterviewStoreError('请先确认初试结论，再派发复试。', 409);
+    if (
+      stage === 'second' &&
+      sourceStage === 'second' &&
+      (!source.record.priorRoundSource ||
+        !source.record.priorRoundText?.trim() ||
+        !source.record.priorRoundName?.trim())
+    )
+      throw new InterviewStoreError('请先补全初试资料，再派发复试。', 409);
     const existing = this.db
       .prepare(
         'SELECT targetUsername,targetInterview,created FROM interview_handoffs WHERE sourceUser=? AND sourceInterview=? AND stage=?',

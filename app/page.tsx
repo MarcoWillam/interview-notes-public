@@ -702,12 +702,16 @@ export default function Home({
     },
   );
   const handoffStage =
-    interviewStage === 'initial' && workspaceAccount && !workspaceAccount.preview
-      ? confirmed
-        ? 'second'
-        : workspaceAccount?.owner
-          ? 'initial'
-          : null
+    workspaceAccount && !workspaceAccount.preview
+      ? interviewStage === 'second'
+        ? confirmed
+          ? null
+          : 'second'
+        : confirmed
+          ? 'second'
+          : workspaceAccount?.owner
+            ? 'initial'
+            : null
       : null;
   useEffect(() => {
     let disposed = false;

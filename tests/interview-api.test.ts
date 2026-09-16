@@ -284,6 +284,58 @@ void test('confirmed initial interview owner hands off an independent second rou
   }
 });
 
+void test('standalone second-round preparation can be handed off as an independent second round', async () => {
+  const { store, alice, bob, call } = setup();
+  try {
+    const prepared = {
+      ...record,
+      id: 'standalone-second-source-12345',
+      interviewStage: 'second',
+      priorRoundSource: 'external',
+      priorRoundText: '# 外部初试记录\n\n候选人完成了初试。',
+      priorRoundName: '外部初试记录.txt',
+      priorRoundDigest: null,
+      secondRoundOutline: null,
+      transcript: '不应派发的旧复试记录',
+      conclusion: '不应派发的旧复试结论',
+    } satisfies CloudInterview;
+    await call(alice, `/api/interviews/${prepared.id}`, 'PUT', {
+      baseRevision: 0,
+      mutationId: 'handoff-standalone-source-create',
+      record: prepared,
+    });
+
+    const response = await call(
+      alice,
+      `/api/interviews/${prepared.id}/handoff`,
+      'POST',
+      {
+        targetUsername: 'bob',
+        stage: 'second',
+        sourceRevision: 1,
+        mutationId: 'handoff-standalone-second',
+      },
+    );
+
+    assert.equal(response.status, 201);
+    const result = await responseJson<{
+      handoff: { targetInterviewId: string; targetUsername: string };
+    }>(response);
+    const target = await responseJson<{ record: CloudInterview }>(
+      await call(bob, `/api/interviews/${result.handoff.targetInterviewId}`),
+    );
+    assert.equal(target.record.interviewStage, 'second');
+    assert.equal(target.record.priorRoundSource, 'external');
+    assert.equal(target.record.priorRoundText, prepared.priorRoundText);
+    assert.equal(target.record.priorRoundName, prepared.priorRoundName);
+    assert.equal(target.record.transcript, '');
+    assert.equal(target.record.conclusion, '');
+    assert.equal(target.record.confirmed, false);
+  } finally {
+    store.close();
+  }
+});
+
 void test('handoff rejects unauthorized initial, incomplete second and invalid targets', async () => {
   const { store, alice, call } = setup();
   try {

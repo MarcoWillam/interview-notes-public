@@ -68,33 +68,40 @@ export function createSecondRoundHandoffRecord(
   source: CloudInterview,
   options: HandoffRecordOptions,
 ) {
+  const standaloneSecondRound = source.interviewStage === 'second';
   const dimensions = source.dimensionText
     .split('、')
     .map((item) => item.trim())
     .filter(Boolean);
-  const priorRoundText = exportMarkdown(
-    source.candidate,
-    {
-      role: source.role,
-      requirements: source.requirements,
-      dimensions,
-      focus: source.focus,
-      scoringGuidance: source.scoringGuidance,
-      reportRequirements: source.reportRequirements,
-      resumeText: source.resumeText,
-      transcript: source.transcript,
-      ...(source.workSample ? { workSample: source.workSample } : {}),
-    },
-    source.report,
-    source.conclusion,
-    source.confirmed,
-  );
+  const priorRoundText = standaloneSecondRound
+    ? source.priorRoundText
+    : exportMarkdown(
+        source.candidate,
+        {
+          role: source.role,
+          requirements: source.requirements,
+          dimensions,
+          focus: source.focus,
+          scoringGuidance: source.scoringGuidance,
+          reportRequirements: source.reportRequirements,
+          resumeText: source.resumeText,
+          transcript: source.transcript,
+          ...(source.workSample ? { workSample: source.workSample } : {}),
+        },
+        source.report,
+        source.conclusion,
+        source.confirmed,
+      );
   return validateCloudInterview({
     ...cleanRecord(source, options),
     interviewStage: 'second',
-    priorRoundSource: 'bole-markdown',
+    priorRoundSource: standaloneSecondRound
+      ? source.priorRoundSource
+      : 'bole-markdown',
     priorRoundText,
-    priorRoundName: `${source.candidate.trim() || '候选人'}-面试记录.md`,
+    priorRoundName: standaloneSecondRound
+      ? source.priorRoundName
+      : `${source.candidate.trim() || '候选人'}-面试记录.md`,
     priorRoundDigest: null,
     secondRoundOutline: null,
   });
