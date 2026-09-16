@@ -5,7 +5,7 @@
 ## 当前云服务器
 
 - 网站：`https://your-server-ip`，初始账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。其他面试官账号通过下述服务器命令创建。
-- 代码：当前版本为 `/opt/interview-notes/releases/20260916-3`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一版本 `20260916-2` 保留用于回滚；更早版本继续保留但不作为首选回滚目标。
+- 代码：当前版本为 `/opt/interview-notes/releases/20260916-4`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一版本 `20260916-3` 保留用于回滚；更早版本继续保留但不作为首选回滚目标。
 - 数据：`/var/lib/interview-notes/queue.sqlite`；环境配置：`/etc/interview-notes/server.env`；运行时：`/opt/node-v24.13.0-linux-x64/bin/node`。服务器只需已构建的 `dist/web` 和队列服务源码，无需安装模型或上传电脑上的 Codex 登录信息。
 - Nginx：`/etc/nginx/conf.d/interview-notes.conf`，对应仓库 `deploy/nginx-ip.conf`，HTTP 自动跳转 HTTPS，80 端口保留 ACME 验证路径。
 - 证书：Let's Encrypt IP 证书，由 acme.sh 3.1.2 的 `shortlived` profile 签发。使用 `--days 3`，`interview-cert-renew.timer` 每天两次检查续期；续期成功自动安装到 `/etc/nginx/ssl/interview/` 并检查、重载 Nginx。不要关闭公网 80 端口，否则续期验证会失败。
@@ -25,7 +25,7 @@ journalctl -u interview-notes -n 50 --no-pager
 
 发布包采用明确白名单：`dist/web`、`server/start.ts`、`server/execution-contract.ts`、`server/queue/{api,http,store}.ts`、`server/interviews/{store,backup,backup-cli}.ts`、上述服务端文件导入的 `lib/*.ts`、备份 systemd 单元和 `package.json`。这些文件构成云端服务的 import 闭包；作品读取器与 Codex 运行逻辑只打入 `dist/web` 内的连接器下载包，不作为云端运行依赖。生产服务此外仅依赖 Node 内置模块，不需要 `node_modules`。包内不得包含 `.env*`、`.local`、SQLite/WAL、备份、简历或作品源文件、浏览器数据、Codex credentials、`node_modules` 或 `.git`；后续增加服务端依赖时重新核对闭包。PDF CMap 与字体资源随 `dist/web` 一起发布。
 
-本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。当前 `20260916-3` 的规范化发布归档 SHA-256 为 `859de595e11432cb55108945c8f57b26fe0f7e3d5ca7556644d54f05ac5a3143`。macOS 打包时必须禁用 AppleDouble 和扩展属性，发布校验会拒绝 `._*` 条目。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。本机端口健康探针必须带 `Host: your-server-ip`，否则正式环境的来源校验会返回 403；服务重启后在有限重试窗口内探测，不能把首次连接拒绝误判为启动失败。
+本机生成 SHA-256，上传到服务器临时目录后须验证同一 hash；解压前列出并逐项检查归档清单，拒绝绝对路径、`..`、链接及白名单外文件。当前 `20260916-4` 的规范化发布归档 SHA-256 为 `216091c9a87bb609604bdfb4f393c01aaadf47e83d2df14f590d3d35dfe7db7e`。macOS 打包时必须禁用 AppleDouble 和扩展属性，发布校验会拒绝 `._*` 条目。若 release 同名已存在，先只读检查并选择带时间后缀的新目录，不能覆盖当前版本。代码目录/文件使用 root 所有、755/644，使专用服务账号可读。保留 `/var/lib/interview-notes` 与 `/etc/interview-notes/server.env`，记录旧 `current` 目标后以临时符号链接加原子 rename 切换并重启 `interview-notes`；检查失败须切回旧目标并重启。旧 release 保留供回滚。本机端口健康探针必须带 `Host: your-server-ip`，否则正式环境的来源校验会返回 403；服务重启后在有限重试窗口内探测，不能把首次连接拒绝误判为启动失败。
 
 发布检查包括 `nginx -t`、`systemctl is-active interview-notes nginx interview-cert-renew.timer`、HTTPS `/api/session`，以及 HTTP 308 跳转、无需跳过校验的 TLS 证书、登录 Cookie 的 HttpOnly/Secure/SameSite=Strict、登录后工作台和实际构建清单中的 JS/CSS、PDF CMap/font 资源。账号和连接凭据仅由本机脚本读取，不打印值，不写入发布包；`.local/cloud-access.txt` 与 `.local/cloud-connector.json` 保持权限 600。
 
@@ -271,3 +271,11 @@ owner 的本机连接器已升级后迁移到 `<PROJECT_ROOT>/Library/Applicatio
 `20260916-3` 统一“新建面试”弹窗的三个操作按钮。取消、新建复试和新建初试现在使用三列等宽布局，并统一为 42px 高度、8px 圆角、相同内边距和文字居中；主次操作仅保留颜色差异。该规则仅作用于此弹窗，不改变其他弹窗按钮。
 
 本地完成 538 项自动化测试，并通过类型检查、零警告代码检查、生产构建、差异检查和浏览器视觉检查。release 包含 229 个白名单文件，规范化归档 SHA-256 为 `859de595e11432cb55108945c8f57b26fe0f7e3d5ca7556644d54f05ac5a3143`，连接器 ZIP SHA-256 为 `ada2be52a0475a81a13a09954afb2e2acc341040f863e16707fc2dc49ddffe66`。生产已原子切换到 `/opt/interview-notes/releases/20260916-3`，回滚目标为 `/opt/interview-notes/releases/20260916-2`；应用、Nginx、证书续期和记录备份定时器均为 active，应用重启次数为 0，数据库 `quick_check` 为 `ok`。公网 HTTPS、TLS、HTTP 308、实际 JS/CSS、PDF 资源、连接器下载、owner 登录、安全 Cookie 和账号隔离检查均通过，发布过程未创建 Codex 任务，也未修改候选人记录。
+
+### 独立复试任务与复试准备布局
+
+`20260916-4` 将复试提纲和复试结论改为独立任务，不再要求绑定已有面试记录或云端修订号。导入初试记录和简历后即可创建独立复试档案；任务完成时，提交任务的浏览器会按资料指纹把结果写回原复试记录，资料已经变化时只在任务中心保留结果供核对。历史上已绑定的复试任务仍可正常恢复。复试准备页同步压缩为初试资料与候选人简历两张材料卡，修正笔记本分辨率下的间距、按钮对齐和窄屏排列。
+
+本地完成 543 项自动化测试，并通过类型检查、零警告代码检查、生产构建和差异检查。release 包含 229 个白名单文件，规范化归档 SHA-256 为 `216091c9a87bb609604bdfb4f393c01aaadf47e83d2df14f590d3d35dfe7db7e`；实际前端资源为 `index-Csuld0b1.js` 和 `index-BMPZe_9_.css`，连接器 ZIP SHA-256 为 `f545dec70dbbd6bd12845acdf1cf8d229205fcfa1c2ef795e84e35de94168525`。
+
+生产发布前已完成数据库备份且备份 `quick_check` 为 `ok`，发布时没有等待、运行或暂停任务。生产已原子切换到 `/opt/interview-notes/releases/20260916-4`，回滚目标为 `/opt/interview-notes/releases/20260916-3`；环境配置与数据目录保持不变。应用、Nginx、证书续期和记录备份定时器均为 active，应用重启次数为 0，生产数据库 `quick_check` 为 `ok`，近期没有应用警告日志。公网 HTTPS 会话、TLS、HTTP 308、owner 登录、安全 Cookie、账号记录接口、实际 JS/CSS、PDF 资源和连接器下载均通过只读验收；发布和验收未创建 Codex 任务，也未修改候选人记录。
