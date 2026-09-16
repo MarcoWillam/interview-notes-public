@@ -15,6 +15,12 @@ import {
 import { applyLateWorkSample } from './work-sample-workflow.ts';
 import type { WrittenTestSupplementResult } from './written-test-supplement.ts';
 import type { WorkSampleAnalysisResult } from './work-sample.ts';
+import {
+  validateSecondRoundAssessmentInput,
+  validateSecondRoundOutlineInput,
+  type SecondRoundAssessmentResult,
+  type SecondRoundOutlineResult,
+} from './second-round.ts';
 
 const standards = (record: CloudInterview) => ({
   role: record.role,
@@ -27,6 +33,30 @@ const standards = (record: CloudInterview) => ({
 
 export function interviewJobSource(record: CloudInterview, kind: JobKind) {
   const base = standards(record);
+  if (kind === 'second-round-outline')
+    return {
+      ...base,
+      candidate: record.candidate,
+      priorRoundSource: record.priorRoundSource,
+      priorRoundText: record.priorRoundText,
+      priorRoundName: record.priorRoundName,
+      resumeText: record.resumeText,
+    };
+  if (kind === 'second-round-assessment')
+    return {
+      role: record.role,
+      requirements: record.requirements,
+      transcript: record.transcript,
+      dimensions: record.dimensionText
+        .split(/[、,，\n]/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+      resumeText: record.resumeText,
+      focus: record.focus,
+      scoringGuidance: record.scoringGuidance || '',
+      reportRequirements: record.reportRequirements || '',
+      priorRoundText: record.priorRoundText,
+    };
   if (kind === 'follow-up-outline')
     return {
       ...Object.fromEntries(
@@ -70,6 +100,26 @@ export function assertInterviewJobInputMatches(
   kind: JobKind,
   input: Record<string, unknown>,
 ) {
+  if (kind === 'second-round-outline') {
+    if (record.interviewStage !== 'second')
+      throw new Error('当前记录不是复试记录。');
+    const expected = validateSecondRoundOutlineInput(
+      interviewJobSource(record, kind),
+    );
+    if (!equal(input, expected))
+      throw new Error('复试提纲资料与云端面试记录不一致。');
+    return;
+  }
+  if (kind === 'second-round-assessment') {
+    if (record.interviewStage !== 'second' || !record.reviewed)
+      throw new Error('当前复试记录尚未完成校对。');
+    const expected = validateSecondRoundAssessmentInput(
+      interviewJobSource(record, kind),
+    );
+    if (!equal(input, expected))
+      throw new Error('复试评估资料与云端面试记录不一致。');
+    return;
+  }
   if (kind === 'follow-up-outline') {
     const expected = validateFollowUpOutlineInput({
       ...interviewJobSource(record, kind),
@@ -130,6 +180,10 @@ export function assertInterviewJobInputMatches(
 
 export function resultVersionReason(kind: JobKind): CloudVersionReason {
   if (kind === 'follow-up-outline') return 'follow-up-outline-generated';
+  if (kind === 'second-round-outline')
+    return 'second-round-outline-generated';
+  if (kind === 'second-round-assessment')
+    return 'second-round-assessment-generated';
   return kind === 'resume'
     ? 'outline-generated'
     : kind === 'written-test'
@@ -148,6 +202,29 @@ export function applyInterviewJobResult(
   now: number,
   metadata?: { jobId: string },
 ): CloudInterview {
+  if (kind === 'second-round-outline') {
+    if (!metadata?.jobId) throw new Error('复试提纲结果缺少任务编号。');
+    const value = result as SecondRoundOutlineResult;
+    return {
+      ...record,
+      priorRoundDigest: value.digest,
+      secondRoundOutline: value.outline,
+      secondRoundOutlineJobId: undefined,
+      updatedAt: now,
+    };
+  }
+  if (kind === 'second-round-assessment') {
+    const value = result as SecondRoundAssessmentResult;
+    const { priorRoundComparison, ...report } = value;
+    return {
+      ...record,
+      report,
+      priorRoundComparison,
+      secondRoundAssessmentJobId: undefined,
+      confirmed: false,
+      updatedAt: now,
+    };
+  }
   if (kind === 'follow-up-outline') {
     if (!metadata?.jobId) throw new Error('补充追问结果缺少任务编号。');
     const next = {

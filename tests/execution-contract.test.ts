@@ -198,6 +198,46 @@ void test('server appends bounded semantic feedback only on retry', () => {
   assert.match(contract.instructions, /上一次结果未通过服务器校验/);
 });
 
+void test('server builds protocol five contracts for second-round outline and assessment', () => {
+  const priorRoundText =
+    '# 面试评估记录\n\n候选人：林小满\n岗位：AI 产品经理（校招）\n\n## 候选人简历（自述背景，待面试核实）\n组织用户访谈。\n\n## 对话记录（人工校对文本）\n候选人：我组织了访谈。';
+  const outline = executionContractFor('second-round-outline', {
+    ...standards,
+    candidate: '林小满',
+    priorRoundSource: 'bole-markdown',
+    priorRoundText,
+    priorRoundName: '初试.md',
+    resumeText: '组织用户访谈。',
+  });
+  assert.equal(outline.runner, 'structured-text');
+  assert.match(outline.instructions, /6 道必问/);
+  const outlineSchema = outline.schema as {
+    properties: { outline: { properties: { requiredQuestions: { minItems: number } } } };
+  };
+  assert.equal(
+    outlineSchema.properties.outline.properties.requiredQuestions.minItems,
+    6,
+  );
+
+  const assessment = executionContractFor('second-round-assessment', {
+    role: standards.role,
+    requirements: standards.requirements,
+    transcript: '候选人：我重新访谈了三位用户。',
+    dimensions: standards.dimensionText.split('、'),
+    resumeText: '组织用户访谈。',
+    focus: standards.focus,
+    scoringGuidance: standards.scoringGuidance,
+    reportRequirements: standards.reportRequirements,
+    priorRoundText,
+  });
+  assert.match(assessment.instructions, /只.*本轮 transcript/);
+  assert.ok(
+    (assessment.schema as { required: string[] }).required.includes(
+      'priorRoundComparison',
+    ),
+  );
+});
+
 void test('server builds a validated follow-up outline text contract', () => {
   const source = followUpInputFixture();
   const contract = executionContractFor('follow-up-outline', {

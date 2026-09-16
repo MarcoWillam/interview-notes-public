@@ -16,6 +16,8 @@ export type CodexExecutionKind =
   | 'written-test'
   | 'outline'
   | 'follow-up-outline'
+  | 'second-round-outline'
+  | 'second-round-assessment'
   | 'work-sample';
 
 export type CodexExecutionArtifact = {

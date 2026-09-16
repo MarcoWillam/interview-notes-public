@@ -41,6 +41,16 @@ import {
   type FollowUpOutlineInput,
   type FollowUpOutlineResult,
 } from './follow-up-outline.ts';
+import {
+  validateSecondRoundAssessmentInput,
+  validateSecondRoundAssessmentResult,
+  validateSecondRoundOutlineInput,
+  validateSecondRoundOutlineResult,
+  type SecondRoundAssessmentInput,
+  type SecondRoundAssessmentResult,
+  type SecondRoundOutlineInput,
+  type SecondRoundOutlineResult,
+} from './second-round.ts';
 let account: string | null = null;
 export function configureRemoteAccount(value: string) {
   account = value;
@@ -62,7 +72,9 @@ export type RemoteJob<T = Report> = {
     | 'written-test'
     | 'work-sample'
     | 'outline'
-    | 'follow-up-outline';
+    | 'follow-up-outline'
+    | 'second-round-outline'
+    | 'second-round-assessment';
   id: string;
   label: string;
   state: 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
@@ -139,14 +151,18 @@ async function submitRemoteTask<T>(
     | WrittenTestSupplementInput
     | WorkSampleInput
     | OutlineRegenerationInput
-    | FollowUpOutlineInput,
+    | FollowUpOutlineInput
+    | SecondRoundOutlineInput
+    | SecondRoundAssessmentInput,
   kind:
     | 'interview'
     | 'resume'
     | 'written-test'
     | 'work-sample'
     | 'outline'
-    | 'follow-up-outline',
+    | 'follow-up-outline'
+    | 'second-round-outline'
+    | 'second-round-assessment',
   validateResult: (value: unknown) => T,
   label: string,
   signal: AbortSignal,
@@ -446,6 +462,44 @@ export function submitRemoteFollowUpOutline(
     'follow-up-outline',
     (value) => validateFollowUpOutlineResult(value, input),
     `补充追问 · ${input.requestedFocus.slice(0, 40)}`,
+    signal,
+    onProgress,
+    dependencies,
+  );
+}
+
+export function submitRemoteSecondRoundOutline(
+  input: SecondRoundOutlineInput,
+  label: string,
+  signal: AbortSignal,
+  onProgress: (job: RemoteJob<SecondRoundOutlineResult>) => void,
+  dependencies: RemoteTaskDependencies,
+): Promise<SecondRoundOutlineResult> {
+  const normalized = validateSecondRoundOutlineInput(input);
+  return submitRemoteTask(
+    normalized,
+    'second-round-outline',
+    (value) => validateSecondRoundOutlineResult(value, normalized),
+    label,
+    signal,
+    onProgress,
+    dependencies,
+  );
+}
+
+export function submitRemoteSecondRoundAssessment(
+  input: SecondRoundAssessmentInput,
+  label: string,
+  signal: AbortSignal,
+  onProgress: (job: RemoteJob<SecondRoundAssessmentResult>) => void,
+  dependencies: RemoteTaskDependencies,
+): Promise<SecondRoundAssessmentResult> {
+  const normalized = validateSecondRoundAssessmentInput(input);
+  return submitRemoteTask(
+    normalized,
+    'second-round-assessment',
+    (value) => validateSecondRoundAssessmentResult(value, normalized),
+    label,
     signal,
     onProgress,
     dependencies,

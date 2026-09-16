@@ -22,6 +22,14 @@ import {
 } from '../lib/resume-reading.ts';
 import { aiPmWorkSampleRubricContext } from '../lib/work-sample-rubric.ts';
 import {
+  priorRoundComparisonSchema,
+  secondRoundAssessmentInstructions,
+  secondRoundOutlineInstructions,
+  secondRoundOutlineSchema,
+  validateSecondRoundAssessmentInput,
+  validateSecondRoundOutlineInput,
+} from '../lib/second-round.ts';
+import {
   validateWorkSampleInput,
   workSampleAssessmentV3Schema,
   workSampleEmbeddedInstructionsFor,
@@ -196,6 +204,30 @@ function modelDefinition(kind: CodexExecutionKind, value: unknown) {
       runner: 'structured-text' as const,
       instructions: followUpOutlineInstructions,
       schema: followUpOutlineOutputSchema,
+      payload: input,
+    };
+  }
+  if (kind === 'second-round-outline') {
+    const input = validateSecondRoundOutlineInput(value);
+    return {
+      runner: 'structured-text' as const,
+      instructions: secondRoundOutlineInstructions,
+      schema: secondRoundOutlineSchema,
+      payload: input,
+    };
+  }
+  if (kind === 'second-round-assessment') {
+    const input = validateSecondRoundAssessmentInput(value);
+    const schema = structuredClone(reportSchema) as typeof reportSchema & {
+      required: string[];
+      properties: Record<string, unknown>;
+    };
+    schema.required = [...schema.required, 'priorRoundComparison'];
+    schema.properties.priorRoundComparison = priorRoundComparisonSchema;
+    return {
+      runner: 'structured-text' as const,
+      instructions: `${assessmentInstructions}\n${secondRoundAssessmentInstructions}`,
+      schema,
       payload: input,
     };
   }

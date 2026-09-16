@@ -31,6 +31,12 @@ import {
   validateFollowUpOutlineResult,
 } from '../../lib/follow-up-outline.ts';
 import {
+  validateSecondRoundAssessmentInput,
+  validateSecondRoundAssessmentResult,
+  validateSecondRoundOutlineInput,
+  validateSecondRoundOutlineResult,
+} from '../../lib/second-round.ts';
+import {
   CONNECTOR_VERSION,
   OUTLINE_CONNECTOR_PROTOCOL,
   OUTLINE_V2_CONNECTOR_PROTOCOL,
@@ -61,7 +67,7 @@ const hash = (value: string) =>
   createHash('sha256').update(value).digest('hex');
 type Row = Record<string, string | number | null>;
 const PREPARATION_PRIORITY =
-  "CASE WHEN kind IN ('resume','written-test','work-sample','outline','follow-up-outline') THEN 0 ELSE 1 END";
+  "CASE WHEN kind IN ('resume','written-test','work-sample','outline','follow-up-outline','second-round-outline') THEN 0 ELSE 1 END";
 function validateStoredWorkSampleResult(result: unknown, storedInput: unknown) {
   const input = validateWorkSampleInput(storedInput);
   return validateWorkSampleAnalysisResult(result, input, {
@@ -143,6 +149,12 @@ export class QueueStore {
     );
     this.db.exec(
       "CREATE UNIQUE INDEX IF NOT EXISTS follow_up_outline_record_once ON jobs(user,scope) WHERE kind='follow-up-outline' AND scope IS NOT NULL AND state IN ('queued','running','paused')",
+    );
+    this.db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS second_round_outline_record_once ON jobs(user,scope) WHERE kind='second-round-outline' AND scope IS NOT NULL AND state IN ('queued','running','paused')",
+    );
+    this.db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS second_round_assessment_record_once ON jobs(user,scope) WHERE kind='second-round-assessment' AND scope IS NOT NULL AND state IN ('queued','running','paused')",
     );
     const deviceColumns = this.db
       .prepare('PRAGMA table_info(devices)')
@@ -543,12 +555,20 @@ export class QueueStore {
     if (kind === 'follow-up-outline' && (!scope || !binding))
       throw new QueueError('补充追问需要绑定面试记录。');
     if (
+      (kind === 'second-round-outline' ||
+        kind === 'second-round-assessment') &&
+      (!scope || !binding)
+    )
+      throw new QueueError('复试任务需要绑定面试记录。');
+    if (
       scope &&
       kind !== 'resume' &&
       kind !== 'written-test' &&
       kind !== 'work-sample' &&
       kind !== 'outline' &&
-      kind !== 'follow-up-outline'
+      kind !== 'follow-up-outline' &&
+      kind !== 'second-round-outline' &&
+      kind !== 'second-round-assessment'
     )
       throw new QueueError('该任务类型不支持任务范围。');
     let interviewId: string | null = null,
@@ -585,6 +605,10 @@ export class QueueStore {
                 ? validateOutlineRegenerationInput(value)
                 : kind === 'follow-up-outline'
                   ? validateFollowUpOutlineInput(value)
+                  : kind === 'second-round-outline'
+                    ? validateSecondRoundOutlineInput(value)
+                    : kind === 'second-round-assessment'
+                      ? validateSecondRoundAssessmentInput(value)
                 : kind === 'interview'
                   ? validateInput(value)
                   : (() => {
@@ -599,7 +623,9 @@ export class QueueStore {
       ),
       safeLabel = label.slice(0, 100) || '未命名面试',
       requiredProtocol =
-        kind === 'follow-up-outline'
+        kind === 'follow-up-outline' ||
+        kind === 'second-round-outline' ||
+        kind === 'second-round-assessment'
           ? SERVER_DRIVEN_EXECUTION_PROTOCOL
           : 'outlineVersion' in validatedInput &&
               validatedInput.outlineVersion === 3
@@ -650,7 +676,7 @@ export class QueueStore {
     if (scope) {
       const conflicting = this.db
         .prepare(
-          "SELECT kind FROM jobs WHERE user=? AND scope=? AND kind<>? AND kind IN ('resume','written-test','work-sample','outline','follow-up-outline') AND state IN ('queued','running','paused') LIMIT 1",
+          "SELECT kind FROM jobs WHERE user=? AND scope=? AND kind<>? AND kind IN ('resume','written-test','work-sample','outline','follow-up-outline','second-round-outline','second-round-assessment') AND state IN ('queued','running','paused') LIMIT 1",
         )
         .get(user, scope, kind) as Row | undefined;
       if (conflicting)
@@ -926,6 +952,12 @@ export class QueueStore {
     const supportsFollowUpOutline =
       connectorProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
       (kinds.includes('follow-up-outline') || kinds.includes('outline'));
+    const supportsSecondRoundOutline =
+      connectorProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
+      (kinds.includes('second-round-outline') || kinds.includes('outline'));
+    const supportsSecondRoundAssessment =
+      connectorProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
+      (kinds.includes('second-round-assessment') || kinds.includes('interview'));
     this.db
       .prepare('UPDATE devices SET seen=?,ready=? WHERE id=?')
       .run(this.now(), ready ? 1 : 0, device.id);
@@ -933,7 +965,7 @@ export class QueueStore {
     const lease = token();
     const row = this.db
       .prepare(
-        `UPDATE jobs SET state='running',device=?,lease=?,until=?,leaseProtocol=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND requiredProtocol<=? AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1) OR (kind='outline' AND ?=1) OR (kind='follow-up-outline' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY ${PREPARATION_PRIORITY},queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId,attempt,feedback`,
+        `UPDATE jobs SET state='running',device=?,lease=?,until=?,leaseProtocol=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND requiredProtocol<=? AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1) OR (kind='outline' AND ?=1) OR (kind='follow-up-outline' AND ?=1) OR (kind='second-round-outline' AND ?=1) OR (kind='second-round-assessment' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY ${PREPARATION_PRIORITY},queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId,attempt,feedback`,
       )
       .get(
         device.id,
@@ -952,6 +984,8 @@ export class QueueStore {
           ? 1
           : 0,
         supportsFollowUpOutline ? 1 : 0,
+        supportsSecondRoundOutline ? 1 : 0,
+        supportsSecondRoundAssessment ? 1 : 0,
         device.id,
       ) as Row | undefined;
     if (!row) return null;
@@ -1088,6 +1122,16 @@ export class QueueStore {
                         result,
                         validateFollowUpOutlineInput(storedInput),
                       )
+                    : job.kind === 'second-round-outline'
+                      ? validateSecondRoundOutlineResult(
+                          result,
+                          validateSecondRoundOutlineInput(storedInput),
+                        )
+                      : job.kind === 'second-round-assessment'
+                        ? validateSecondRoundAssessmentResult(
+                            result,
+                            validateSecondRoundAssessmentInput(storedInput),
+                          )
                   : validateReport(result, validateInput(storedInput)),
         );
       } catch (validationError) {
