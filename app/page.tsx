@@ -3449,78 +3449,97 @@ export default function Home({
                         <div className="panel-body second-round-preparation-body">
                           <div className="second-round-material-grid">
                             <article className="second-round-material-card">
-                              <span>
-                                {priorRoundSource === 'bole-markdown'
-                                  ? '伯乐 AI 初试记录'
-                                  : '外部初试记录'}
-                              </span>
-                              <strong>{priorRoundName || '初试资料'}</strong>
-                              <small>
-                                {priorRoundText.length.toLocaleString()} 字符
-                              </small>
-                              {!secondRoundOutline && (
-                                <div className="second-round-material-actions">
-                                  <label className="secondary-button">
-                                    <FileText size={15} />
-                                    {busy === 'import'
-                                      ? '正在读取资料…'
-                                      : '重新导入初试资料'}
-                                    <input
-                                      type="file"
-                                      accept=".md,.txt"
-                                      disabled={
-                                        !!busy || !!secondRoundOutlineJobId
-                                      }
-                                      onChange={(event) => {
-                                        const file = event.target.files?.[0];
-                                        event.target.value = '';
-                                        if (file)
-                                          void replaceSecondRoundPrior(file);
-                                      }}
-                                    />
-                                  </label>
-                                </div>
-                              )}
-                              <details className="second-round-material-details">
-                                <summary>查看初试资料原文</summary>
-                                <pre>{priorRoundText}</pre>
-                              </details>
+                              <div className="second-round-material-meta">
+                                <span>
+                                  {priorRoundSource === 'bole-markdown'
+                                    ? '伯乐 AI 初试记录'
+                                    : '外部初试记录'}
+                                </span>
+                                <strong title={priorRoundName || '初试资料'}>
+                                  {priorRoundName || '初试资料'}
+                                </strong>
+                                <small>
+                                  {priorRoundText.length.toLocaleString()} 字符
+                                </small>
+                              </div>
+                              <div className="second-round-material-controls">
+                                <details className="second-round-material-details">
+                                  <summary>查看初试资料原文</summary>
+                                  <pre>{priorRoundText}</pre>
+                                </details>
+                                {!secondRoundOutline && (
+                                  <div className="second-round-material-actions">
+                                    <label
+                                      className="secondary-button"
+                                      title="重新导入初试资料"
+                                    >
+                                      <FileText size={14} />
+                                      {busy === 'import'
+                                        ? '正在读取…'
+                                        : '重新导入'}
+                                      <input
+                                        type="file"
+                                        accept=".md,.txt"
+                                        disabled={
+                                          !!busy || !!secondRoundOutlineJobId
+                                        }
+                                        onChange={(event) => {
+                                          const file = event.target.files?.[0];
+                                          event.target.value = '';
+                                          if (file)
+                                            void replaceSecondRoundPrior(file);
+                                        }}
+                                      />
+                                    </label>
+                                  </div>
+                                )}
+                              </div>
                             </article>
                             <article className="second-round-material-card">
-                              <span>候选人简历</span>
-                              <strong>
-                                {resumeName || '已从初试记录提取'}
-                              </strong>
-                              <small>
-                                已提取 {resumeText.length.toLocaleString()} 字符
-                              </small>
-                              {!secondRoundOutline && (
-                                <div className="second-round-material-actions">
-                                  <label className="secondary-button">
-                                    <Upload size={15} />
-                                    {busy === 'import'
-                                      ? '正在提取简历…'
-                                      : '重新上传候选人简历'}
-                                    <input
-                                      type="file"
-                                      accept=".doc,.docx,.pdf"
-                                      disabled={
-                                        !!busy || !!secondRoundOutlineJobId
-                                      }
-                                      onChange={(event) => {
-                                        const file = event.target.files?.[0];
-                                        event.target.value = '';
-                                        if (file)
-                                          void replaceSecondRoundResume(file);
-                                      }}
-                                    />
-                                  </label>
-                                </div>
-                              )}
-                              <details className="second-round-material-details">
-                                <summary>查看候选人简历正文</summary>
-                                <pre>{resumeText}</pre>
-                              </details>
+                              <div className="second-round-material-meta">
+                                <span>候选人简历</span>
+                                <strong
+                                  title={resumeName || '已从初试记录提取'}
+                                >
+                                  {resumeName || '已从初试记录提取'}
+                                </strong>
+                                <small>
+                                  已提取 {resumeText.length.toLocaleString()}{' '}
+                                  字符
+                                </small>
+                              </div>
+                              <div className="second-round-material-controls">
+                                <details className="second-round-material-details">
+                                  <summary>查看候选人简历正文</summary>
+                                  <pre>{resumeText}</pre>
+                                </details>
+                                {!secondRoundOutline && (
+                                  <div className="second-round-material-actions">
+                                    <label
+                                      className="secondary-button"
+                                      title="重新上传候选人简历"
+                                    >
+                                      <Upload size={14} />
+                                      {busy === 'import'
+                                        ? '正在提取…'
+                                        : '重新上传'}
+                                      <input
+                                        type="file"
+                                        accept=".doc,.docx,.pdf"
+                                        disabled={
+                                          !!busy || !!secondRoundOutlineJobId
+                                        }
+                                        onChange={(event) => {
+                                          const file = event.target.files?.[0];
+                                          event.target.value = '';
+                                          if (file)
+                                            void replaceSecondRoundResume(file);
+                                        }}
+                                      />
+                                    </label>
+                                  </div>
+                                )}
+                              </div>
                             </article>
                           </div>
                           <section

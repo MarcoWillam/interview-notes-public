@@ -4046,44 +4046,88 @@ fieldset label:last-of-type {
 .second-round-material-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: 12px;
 }
 
 .second-round-material-card {
   display: grid;
   align-content: start;
-  gap: 5px;
+  gap: 7px;
   min-width: 0;
-  padding: 14px;
+  padding: 10px 12px;
   border: 1px solid #b8d8cf;
   border-radius: 12px;
   background: #f0f8f5;
 }
 
-.second-round-material-card > span,
-.second-round-material-card > small {
+.second-round-material-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.second-round-material-meta > span {
+  flex: none;
+  color: #234e47;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.second-round-material-meta > strong {
+  overflow: hidden;
+  min-width: 0;
+  color: #33494a;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.second-round-material-meta > strong::before,
+.second-round-material-meta > small::before {
+  margin-right: 6px;
+  color: #8da7a2;
+  content: '·';
+}
+
+.second-round-material-meta > small {
+  flex: none;
   color: var(--muted-foreground);
+  white-space: nowrap;
 }
 
-.second-round-material-card > strong {
-  overflow-wrap: anywhere;
+.second-round-material-controls {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
 }
 
-.second-round-material-card .second-round-material-actions {
-  margin-top: 7px;
+.second-round-material-controls .second-round-material-actions {
+  flex: none;
+}
+
+.second-round-material-controls .secondary-button {
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .second-round-material-card details {
   min-width: 0;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid #cce0da;
+  flex: 1;
 }
 
 .second-round-material-card summary {
   cursor: pointer;
   color: #506466;
+  font-size: 12px;
   font-weight: 600;
+  line-height: 26px;
 }
 
 .second-round-review-points {
