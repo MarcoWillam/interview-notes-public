@@ -261,7 +261,12 @@ export function CandidateDashboard({
                   disabled={disabled}
                   onClick={() => onOpen(row.id)}
                 >
-                  <strong>{row.candidate || '未命名面试'}</strong>
+                  <strong>
+                    {row.candidate || '未命名面试'}{' '}
+                    <span className="interview-stage-badge">
+                      {row.interviewStage === 'second' ? '复试' : '初试'}
+                    </span>
+                  </strong>
                   <span>{row.role || '未填写岗位'}</span>
                   <span>
                     <span

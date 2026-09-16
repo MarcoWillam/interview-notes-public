@@ -673,6 +673,15 @@ function lifecycleEnvironment() {
     'Standards',
     'PendingImport',
     'ResetOpen',
+    'InterviewStage',
+    'PriorRoundSource',
+    'PriorRoundText',
+    'PriorRoundName',
+    'PriorRoundDigest',
+    'SecondRoundOutline',
+    'SecondRoundOutlineJobId',
+    'PriorRoundComparison',
+    'SecondRoundAssessmentJobId',
   ]) {
     environment[`set${name}`] = (value: unknown) => {
       state[name[0].toLowerCase() + name.slice(1)] = value;
@@ -956,6 +965,7 @@ void test('assessment success still publishes its report after same-record resto
       setError: (value: unknown) => {
         state.error = value;
       },
+      interviewStage: 'initial',
       validateInput() {},
       input: {},
       reviewed: true,

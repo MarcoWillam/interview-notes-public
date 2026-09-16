@@ -17,6 +17,8 @@ import {
   submitRemoteWorkSample,
   submitRemoteOutline,
   submitRemoteFollowUpOutline,
+  submitRemoteSecondRoundOutline,
+  submitRemoteSecondRoundAssessment,
   listRemoteArtifacts,
   type RemoteArtifact,
 } from '@/lib/remote-analysis';
@@ -101,6 +103,12 @@ import { GlobalPreferences } from '@/components/interview/global-preferences';
 import { InterviewPreparation } from '@/components/interview/interview-preparation';
 import { InterviewSessionSummary } from '@/components/interview/interview-session-summary';
 import { CandidateDashboard } from '@/components/interview/candidate-dashboard';
+import { SecondRoundOutlineView } from '@/components/interview/second-round-outline-view';
+import { SecondRoundComparisonView } from '@/components/interview/second-round-comparison-view';
+import {
+  SecondRoundCreateDialog,
+  type SecondRoundCreateSeed,
+} from '@/components/interview/second-round-create-dialog';
 import { TaskCenter } from '@/components/interview/task-center';
 import {
   defaultStandards,
@@ -137,6 +145,15 @@ import {
   type FollowUpOutlineGroup,
   type FollowUpOutlineResult,
 } from '@/lib/follow-up-outline';
+import {
+  validateSecondRoundOutlineInput,
+  type InterviewStage,
+  type PriorRoundComparison,
+  type PriorRoundSource,
+  type SecondRoundDigest,
+  type SecondRoundOutline,
+  exportPriorRoundComparison,
+} from '@/lib/second-round';
 
 const defaultDimensions = defaultStandards.dimensionText;
 const MANUAL_TRANSCRIPT_SOURCE = '手动粘贴 / 输入';
@@ -167,10 +184,18 @@ type BusyKind =
   | 'work-sample'
   | 'outline'
   | 'follow-up-outline'
+  | 'second-round-outline'
+  | 'second-round-assessment'
   | 'prepare';
 type RemoteWaitKind = Extract<
   BusyKind,
-  'analyze' | 'resume-read' | 'written-test' | 'work-sample' | 'outline'
+  | 'analyze'
+  | 'resume-read'
+  | 'written-test'
+  | 'work-sample'
+  | 'outline'
+  | 'second-round-outline'
+  | 'second-round-assessment'
 >;
 type RemoteWaitBinding = {
   controller: AbortController;
@@ -195,6 +220,23 @@ export default function Home({
 } = {}) {
   const [view, setView] = useState<'dashboard' | 'workbench'>('dashboard');
   const [tab, setTab] = useState('resume');
+  const [interviewStage, setInterviewStage] =
+    useState<InterviewStage>('initial');
+  const [priorRoundSource, setPriorRoundSource] = useState<PriorRoundSource>();
+  const [priorRoundText, setPriorRoundText] = useState('');
+  const [priorRoundName, setPriorRoundName] = useState('');
+  const [priorRoundDigest, setPriorRoundDigest] =
+    useState<SecondRoundDigest | null>(null);
+  const [secondRoundOutline, setSecondRoundOutline] =
+    useState<SecondRoundOutline | null>(null);
+  const [secondRoundOutlineJobId, setSecondRoundOutlineJobId] =
+    useState<string>();
+  const [priorRoundComparison, setPriorRoundComparison] = useState<
+    PriorRoundComparison[]
+  >([]);
+  const [secondRoundAssessmentJobId, setSecondRoundAssessmentJobId] =
+    useState<string>();
+  const [secondRoundCreateOpen, setSecondRoundCreateOpen] = useState(false);
   const [candidate, setCandidate] = useState('');
   const [role, setRole] = useState('');
   const [requirements, setRequirements] = useState('');
@@ -491,6 +533,15 @@ export default function Home({
     setPendingResumeOutline(null);
     setPendingWrittenTestSupplement(false);
     setPendingOutlineRegeneration(false);
+    setInterviewStage(saved.interviewStage || 'initial');
+    setPriorRoundSource(saved.priorRoundSource);
+    setPriorRoundText(saved.priorRoundText || '');
+    setPriorRoundName(saved.priorRoundName || '');
+    setPriorRoundDigest(saved.priorRoundDigest || null);
+    setSecondRoundOutline(saved.secondRoundOutline || null);
+    setSecondRoundOutlineJobId(saved.secondRoundOutlineJobId);
+    setPriorRoundComparison(saved.priorRoundComparison || []);
+    setSecondRoundAssessmentJobId(saved.secondRoundAssessmentJobId);
     setLateWorkSampleOpen(false);
     setLateWorkSampleArtifact(null);
     setCandidate(saved.candidate);
@@ -531,6 +582,15 @@ export default function Home({
   }
   const library = useInterviewLibrary(
     {
+      interviewStage,
+      priorRoundSource,
+      priorRoundText,
+      priorRoundName,
+      priorRoundDigest,
+      secondRoundOutline,
+      secondRoundOutlineJobId,
+      priorRoundComparison,
+      secondRoundAssessmentJobId,
       candidate,
       role,
       requirements,
@@ -589,6 +649,53 @@ export default function Home({
     libraryRef.current = library;
     followUpRecordId.current = library.id;
   }, [library]);
+  useEffect(() => {
+    const jobId = secondRoundOutlineJobId || secondRoundAssessmentJobId;
+    if (!library.ready || !jobId || busyRef.current) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const recover = async () => {
+      try {
+        const job = await remoteRequest<RemoteJob>(
+          '/api/jobs/' + encodeURIComponent(jobId),
+        );
+        if (disposed) return;
+        if (job.state === 'completed') {
+          setSecondRoundOutlineJobId(undefined);
+          setSecondRoundAssessmentJobId(undefined);
+          await libraryRef.current.refreshFromCloud();
+          setNotice(
+            secondRoundOutlineJobId
+              ? '已恢复完成的复试提纲。'
+              : '已恢复完成的独立复试评估。',
+          );
+          return;
+        }
+        if (job.state === 'failed' || job.state === 'cancelled') {
+          setSecondRoundOutlineJobId(undefined);
+          setSecondRoundAssessmentJobId(undefined);
+          setError(job.error || '复试任务未完成，可以重新提交。');
+          return;
+        }
+        setRemoteJob({ ...job, report: null });
+        timer = setTimeout(() => void recover(), 3000);
+      } catch (reason) {
+        if (disposed) return;
+        if ((reason as { status?: number }).status === 404) {
+          setSecondRoundOutlineJobId(undefined);
+          setSecondRoundAssessmentJobId(undefined);
+          setError('复试任务已过期，可以重新提交。');
+          return;
+        }
+        timer = setTimeout(() => void recover(), 5000);
+      }
+    };
+    void recover();
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [library.ready, secondRoundAssessmentJobId, secondRoundOutlineJobId]);
   const outlineLiveRef = useRef({
     recordId: library.id,
     resumeText,
@@ -2020,6 +2127,10 @@ export default function Home({
     if (report || confirmed)
       setNotice('面试资料已修改，旧评估已清除；请重新评估并确认结论。');
     setReport(null);
+    if (interviewStage === 'second') {
+      setPriorRoundComparison([]);
+      setSecondRoundAssessmentJobId(undefined);
+    }
     setConfirmed(false);
     setError('');
   }
@@ -2042,7 +2153,145 @@ export default function Home({
       setTranscriptName('');
     setReviewed(false);
   }
+  async function runSecondRoundOutline() {
+    if (busyRef.current || secondRoundOutline || !queuedCodex) return;
+    const recordId = library.id;
+    const navigationEpoch = recordNavigationEpoch.current;
+    let outlineInput;
+    try {
+      outlineInput = validateSecondRoundOutlineInput({
+        candidate,
+        role,
+        requirements,
+        dimensionText,
+        focus,
+        scoringGuidance,
+        reportRequirements,
+        priorRoundSource,
+        priorRoundText,
+        priorRoundName,
+        resumeText,
+      });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '请补全复试资料。');
+      return;
+    }
+    clearRemoteTaskDisplay();
+    busyRef.current = true;
+    setBusy('second-round-outline');
+    setError('');
+    const controller = new AbortController();
+    analysisController.current = controller;
+    try {
+      const recordBinding = await library.flushForTask();
+      if (!recordBinding)
+        throw new Error('复试提纲需要使用已登录的云端工作台。');
+      const result = await submitRemoteSecondRoundOutline(
+        outlineInput,
+        `${candidate} · 生成复试提纲`.slice(0, 100),
+        controller.signal,
+        (job) => {
+          trackRemoteWait(controller, job, 'second-round-outline', recordId);
+          if (job.id !== secondRoundOutlineJobId) {
+            setSecondRoundOutlineJobId(job.id);
+            void library.flush({ secondRoundOutlineJobId: job.id });
+          }
+        },
+        { fetcher: fetch, pollMs: 2000, ...recordBinding },
+      );
+      if (
+        !(await refreshCurrentAnalysisRecord(
+          controller,
+          recordId,
+          navigationEpoch,
+        ))
+      )
+        return;
+      setPriorRoundDigest(result.digest);
+      setSecondRoundOutline(result.outline);
+      setSecondRoundOutlineJobId(undefined);
+      setNotice('复试提纲已生成，初试资料与简历已锁定。');
+    } catch (reason) {
+      if (analysisController.current !== controller) return;
+      setError(
+        controller.signal.aborted
+          ? '已停止等待，请在任务中心查看服务器状态。'
+          : reason instanceof Error
+            ? reason.message
+            : '复试提纲生成失败。',
+      );
+    } finally {
+      finishAnalysisWait(controller);
+    }
+  }
+
+  async function analyzeSecondRound() {
+    if (!secondRoundOutline)
+      return setError('请先生成复试提纲，再生成复试结论。');
+    if (!reviewed)
+      return setError('请先校对复试对话和说话人归属，并勾选确认。');
+    const secondInput = {
+      ...input,
+      priorRoundText,
+    };
+    const recordId = library.id;
+    const navigationEpoch = recordNavigationEpoch.current;
+    clearRemoteTaskDisplay();
+    busyRef.current = true;
+    setBusy('second-round-assessment');
+    setError('');
+    const controller = new AbortController();
+    analysisController.current = controller;
+    try {
+      const recordBinding = await library.flushForTask();
+      if (!recordBinding)
+        throw new Error('复试评估需要使用已登录的云端工作台。');
+      const data = await submitRemoteSecondRoundAssessment(
+        secondInput,
+        `${candidate} · 复试结论评估`.slice(0, 100),
+        controller.signal,
+        (job) => {
+          trackRemoteWait(controller, job, 'second-round-assessment', recordId);
+          if (job.id !== secondRoundAssessmentJobId) {
+            setSecondRoundAssessmentJobId(job.id);
+            void library.flush({ secondRoundAssessmentJobId: job.id });
+          }
+        },
+        { fetcher: fetch, pollMs: 2000, ...recordBinding },
+      );
+      if (
+        !(await refreshCurrentAnalysisRecord(
+          controller,
+          recordId,
+          navigationEpoch,
+        ))
+      )
+        return;
+      const { priorRoundComparison: comparison, ...nextReport } = data;
+      setReport(nextReport);
+      setPriorRoundComparison(comparison);
+      setSecondRoundAssessmentJobId(undefined);
+      setConfirmed(false);
+      setTab('report');
+      setNotice('独立复试评估已生成，请核实本轮引用与判断。');
+    } catch (reason) {
+      if (analysisController.current !== controller) return;
+      setError(
+        controller.signal.aborted
+          ? '已停止等待，请在任务中心查看服务器状态。'
+          : reason instanceof Error
+            ? reason.message
+            : '复试评估失败。',
+      );
+    } finally {
+      finishAnalysisWait(controller);
+    }
+  }
   async function analyze() {
+    if (interviewStage === 'second') {
+      await analyzeSecondRound();
+      return;
+    }
     if (busyRef.current || outlineTaskActive || followUpTaskActive) {
       if (outlineTaskActive)
         setError('提纲正在重新生成，请等待完成或先在任务中心停止任务。');
@@ -2185,6 +2434,15 @@ export default function Home({
     followUpRecordId.current = '';
     releaseRecordTaskWaits();
     setStandards(seed.standards);
+    setInterviewStage(seed.interviewStage || 'initial');
+    setPriorRoundSource(seed.priorRoundSource);
+    setPriorRoundText(seed.priorRoundText || '');
+    setPriorRoundName(seed.priorRoundName || '');
+    setPriorRoundDigest(null);
+    setSecondRoundOutline(null);
+    setSecondRoundOutlineJobId(undefined);
+    setPriorRoundComparison([]);
+    setSecondRoundAssessmentJobId(undefined);
     setSourceTemplateId(seed.sourceTemplateId);
     setTemplateModified(false);
     setOutlineVersion(
@@ -2192,9 +2450,9 @@ export default function Home({
     );
     setHasWrittenTest(false);
     setWrittenTestConfirmed(false);
-    setCandidate('');
-    setResumeText('');
-    setResumeName('');
+    setCandidate(seed.candidate || '');
+    setResumeText(seed.resumeText || '');
+    setResumeName(seed.resumeName || '');
     setResumeReading(null);
     setOutlineSupplements([]);
     setFollowUpOutlineJobId(undefined);
@@ -2226,15 +2484,27 @@ export default function Home({
     setResetOpen(false);
   }
   function exportRecord() {
+    const comparisonMarkdown =
+      interviewStage === 'second'
+        ? exportPriorRoundComparison(priorRoundComparison)
+        : '';
     download(
       new Blob(
         [
-          exportMarkdown(candidate, input, report, conclusion, confirmed) +
-            (resumeReading ? '\n\n' + exportResumeReading(resumeReading) : ''),
+          exportMarkdown(
+            candidate,
+            input,
+            report,
+            conclusion,
+            confirmed,
+            interviewStage === 'second' ? '独立复试评估记录' : undefined,
+          ) +
+            (resumeReading ? '\n\n' + exportResumeReading(resumeReading) : '') +
+            (comparisonMarkdown ? '\n\n' + comparisonMarkdown : ''),
         ],
         { type: 'text/markdown;charset=utf-8' },
       ),
-      `${safeName}-面试记录.md`,
+      `${safeName}-${interviewStage === 'second' ? '复试' : '面试'}记录.md`,
     );
   }
   const templateSelection = resolveTemplateSelection(
@@ -2249,12 +2519,14 @@ export default function Home({
     standards,
     templates: library.preferences,
     disabled: !!busy,
-    standardsLocked: outlineLocked,
+    standardsLocked:
+      interviewStage === 'second' ? !!secondRoundOutline : outlineLocked,
     standardsOpen,
     templateSelection,
     hasWrittenTest: effectiveHasWrittenTest,
     writtenTestConfirmed: effectiveWrittenTestConfirmed,
-    writtenTestSupported: supportsWrittenTest(sourceTemplateId),
+    writtenTestSupported:
+      interviewStage === 'initial' && supportsWrittenTest(sourceTemplateId),
     writtenTestSupplemented,
     workSampleAnalyzed: !!workSample,
     onStandardsOpenChange: setStandardsOpen,
@@ -2368,6 +2640,27 @@ export default function Home({
     recordNavigationEpoch.current++;
     await library.create();
     setView('workbench');
+  }
+  async function createSecondRoundInterview(seed: SecondRoundCreateSeed) {
+    const template = library.preferences.find(
+      ({ id }) => id === seed.sourceTemplateId,
+    );
+    if (!template) throw new Error('请选择有效的复试岗位模板。');
+    recordNavigationEpoch.current++;
+    await library.create({
+      standards: normalizeStandards(template),
+      sourceTemplateId: template.id,
+      interviewStage: 'second',
+      candidate: seed.candidate,
+      priorRoundSource: seed.priorRound.source,
+      priorRoundText: seed.priorRound.text,
+      priorRoundName: seed.priorRound.name,
+      resumeText: seed.resumeText,
+      resumeName: seed.resumeName,
+    });
+    setTab('resume');
+    setView('workbench');
+    setNotice('复试资料已导入，请确认后生成复试提纲。');
   }
   return (
     <div className="workbench-root">
@@ -2564,8 +2857,7 @@ export default function Home({
                       : '已同步到云端'
           }
           onCreate={() => {
-            if (hasContent) setResetOpen(true);
-            else void localAction(createInterview);
+            setResetOpen(true);
           }}
           onOpen={(id) => void localAction(() => openInterview(id))}
           onManage={() =>
@@ -2608,8 +2900,7 @@ export default function Home({
               groups={library.groups}
               disabled={!library.ready || library.working || !!busy}
               onCreate={() => {
-                if (hasContent) setResetOpen(true);
-                else void localAction(createInterview);
+                setResetOpen(true);
               }}
               onOpen={(id) => void localAction(() => openInterview(id))}
             />
@@ -2620,9 +2911,17 @@ export default function Home({
             inert={!library.ready || library.working || busy === 'prepare'}
           >
             <div className="page-heading">
-              <h1>{candidate ? `${candidate}的面试记录` : '当前面试'}</h1>
+              <h1>
+                {candidate
+                  ? `${candidate}的${interviewStage === 'second' ? '复试' : '面试'}记录`
+                  : interviewStage === 'second'
+                    ? '当前复试'
+                    : '当前面试'}
+              </h1>
             </div>
             <InterviewSessionSummary
+              interviewStage={interviewStage}
+              priorRoundSource={priorRoundSource}
               candidate={candidate}
               role={standards.role}
               status={interviewStatus({
@@ -2637,7 +2936,11 @@ export default function Home({
               hasWrittenTest={effectiveHasWrittenTest}
               writtenTestSupplemented={writtenTestSupplemented}
               workSampleAnalyzed={!!workSample}
-              outlineLocked={outlineLocked}
+              outlineLocked={
+                interviewStage === 'second'
+                  ? !!secondRoundOutline
+                  : outlineLocked
+              }
               disabled={!!busy || outlineTaskActive}
               open={preparationOpen}
               onOpen={() => setPreparationOpen(true)}
@@ -2690,7 +2993,9 @@ export default function Home({
               busy === 'resume-read' ||
               busy === 'written-test' ||
               busy === 'work-sample' ||
-              busy === 'outline') && (
+              busy === 'outline' ||
+              busy === 'second-round-outline' ||
+              busy === 'second-round-assessment') && (
               <output className="message">
                 <LoaderCircle className="spin" size={18} />
                 <span>
@@ -2704,6 +3009,10 @@ export default function Home({
                             ? 'Codex 正在只读分析笔试作品。可以关闭网页，稍后从任务中心查看结果。'
                             : busy === 'outline'
                               ? 'Codex 正在重新生成短问题提纲，旧提纲会保留到新结果完成。'
+                              : busy === 'second-round-outline'
+                                ? 'Codex 正在根据初试资料生成复试提纲。可以关闭网页，稍后从任务中心查看结果。'
+                                : busy === 'second-round-assessment'
+                                  ? 'Codex 正在生成独立复试结论，评分仅引用本轮复试对话。'
                               : '电脑正在分析。可以关闭网页，稍后从评估任务查看结果。'
                       : remoteJob
                         ? '任务已提交，等待已配对的电脑领取。电脑离线时也会保留任务。'
@@ -2732,19 +3041,96 @@ export default function Home({
                     <TabsList className="work-tabs">
                       <TabsTrigger value="resume">
                         <FileText />
-                        候选人简历
+                        {interviewStage === 'second'
+                          ? '复试准备'
+                          : '候选人简历'}
                       </TabsTrigger>
                       <TabsTrigger value="transcript">
                         <FileText />
-                        面试记录{transcript && <span className="tab-dot" />}
+                        {interviewStage === 'second' ? '复试记录' : '面试记录'}
+                        {transcript && <span className="tab-dot" />}
                       </TabsTrigger>
                       <TabsTrigger value="report">
                         <ClipboardCheck />
-                        结论评估{confirmed && <Check size={14} />}
+                        {interviewStage === 'second' ? '复试结论' : '结论评估'}
+                        {confirmed && <Check size={14} />}
                       </TabsTrigger>
                     </TabsList>
                   </div>
                   <TabsContent value="resume">
+                    {interviewStage === 'second' ? (
+                      <div className="panel text-panel second-round-preparation">
+                        <div className="panel-heading">
+                          <div>
+                            <span className="eyebrow">复试准备</span>
+                            <h2>根据初试资料生成复试提纲</h2>
+                            <p className="section-description">
+                              聚焦待验证点、证据不足和关键风险，避免重复初试问题。
+                            </p>
+                          </div>
+                          <span className="badge">45–60 分钟</span>
+                        </div>
+                        <div className="panel-body">
+                          <div className="second-round-material-summary">
+                            <span>
+                              {priorRoundSource === 'bole-markdown'
+                                ? '伯乐 AI 初试记录'
+                                : '外部初试记录'}
+                            </span>
+                            <strong>{priorRoundName || '初试资料'}</strong>
+                            <small>
+                              简历已提取 {resumeText.length.toLocaleString()}{' '}
+                              字符
+                            </small>
+                          </div>
+                          <details>
+                            <summary>查看初试资料原文</summary>
+                            <pre>{priorRoundText}</pre>
+                          </details>
+                          <details>
+                            <summary>查看候选人简历正文</summary>
+                            <pre>{resumeText}</pre>
+                          </details>
+                          {!secondRoundOutline ? (
+                            <div className="action-footer">
+                              <span>
+                                生成成功后，初试资料、简历和岗位标准将锁定。
+                              </span>
+                              <button
+                                className="primary-button"
+                                disabled={
+                                  !!busy || !queuedCodex || !services?.analysis
+                                }
+                                onClick={() => void runSecondRoundOutline()}
+                              >
+                                {busy === 'second-round-outline' ? (
+                                  <LoaderCircle className="spin" size={16} />
+                                ) : (
+                                  <ClipboardCheck size={16} />
+                                )}{' '}
+                                {busy === 'second-round-outline'
+                                  ? '正在生成…'
+                                  : '确认并生成复试提纲'}
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <SecondRoundOutlineView
+                                value={secondRoundOutline}
+                              />
+                              <div className="action-footer">
+                                <button
+                                  className="secondary-button"
+                                  onClick={() => setTab('transcript')}
+                                >
+                                  下一步：导入复试记录 <ArrowRight size={16} />
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
                     <div className="panel text-panel">
                       <div className="panel-heading">
                         <div>
@@ -2849,7 +3235,10 @@ export default function Home({
                               {resumeText.length.toLocaleString()} 字符
                             </span>
                           </summary>
-                          <label htmlFor="resume-text" className="field-title">
+                            <label
+                              htmlFor="resume-text"
+                              className="field-title"
+                            >
                             简历正文
                           </label>
                           <textarea
@@ -2915,6 +3304,7 @@ export default function Home({
                         </div>
                       </div>
                     </div>
+                    )}
                   </TabsContent>
                   <TabsContent value="transcript">
                     <div className="panel text-panel">
@@ -2922,8 +3312,9 @@ export default function Home({
                         <div>
                           <h2>面试记录</h2>
                           <p className="section-description">
-                            直接粘贴转写文本，或导入豆包整理后的 .md、.txt
-                            文件，再校对内容和说话人。
+                            {interviewStage === 'second'
+                              ? '导入或粘贴本轮复试对话，再校对内容和说话人。'
+                              : '直接粘贴转写文本，或导入豆包整理后的 .md、.txt 文件，再校对内容和说话人。'}
                           </p>
                         </div>
                         <span className="count">
@@ -3023,6 +3414,10 @@ export default function Home({
                               ? queuedCodex && remoteJob?.state === 'queued'
                                 ? '等待电脑…'
                                 : '正在分析…'
+                              : busy === 'second-round-assessment'
+                                ? '正在分析…'
+                                : interviewStage === 'second'
+                                  ? '生成独立复试评估'
                               : '生成辅助评估'}
                           </button>
                         </div>
@@ -3040,9 +3435,15 @@ export default function Home({
                     <div className="panel report-panel">
                       <div className="panel-heading">
                         <div>
-                          <h2>结论评估</h2>
+                          <h2>
+                            {interviewStage === 'second'
+                              ? '独立复试结论'
+                              : '结论评估'}
+                          </h2>
                           <p className="section-description">
-                            把观察和证据，整理成清晰的判断。
+                            {interviewStage === 'second'
+                              ? '评分与证据仅来自本轮复试对话，不继承初试分数。'
+                              : '把观察和证据，整理成清晰的判断。'}
                           </p>
                         </div>
                         <span className="badge">
@@ -3129,6 +3530,11 @@ export default function Home({
                               ))}
                             </section>
                           ))}
+                          {interviewStage === 'second' && (
+                            <SecondRoundComparisonView
+                              value={priorRoundComparison}
+                            />
+                          )}
                           {report.followUps.length > 0 && (
                             <div className="follow-ups">
                               <h3>值得进一步核实</h3>
@@ -3644,20 +4050,41 @@ export default function Home({
           </AlertDialog>
           <AlertDialog open={resetOpen} onOpenChange={setResetOpen}>
             <AlertDialogContent>
-              <AlertDialogTitle>开始一场新的面试？</AlertDialogTitle>
+              <AlertDialogTitle>新建面试</AlertDialogTitle>
               <AlertDialogDescription>
-                当前面试将保留在本地记录中。新面试带入已保存的全局默认标准或默认岗位模板，清空候选人资料和对话。
+                当前面试会自动保存。请选择本次面试阶段；复试将先导入初试资料和候选人简历。
               </AlertDialogDescription>
               <AlertDialogFooter>
-                <AlertDialogCancel>返回并保留</AlertDialogCancel>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+                <button
+                  className="secondary-button"
+                  onClick={() => {
+                    setResetOpen(false);
+                    setSecondRoundCreateOpen(true);
+                  }}
+                >
+                  新建复试
+                </button>
                 <AlertDialogAction
                   onClick={() => void localAction(createInterview)}
                 >
-                  保存并新建
+                  新建初试
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          <SecondRoundCreateDialog
+            open={secondRoundCreateOpen}
+            templates={library.preferences}
+            defaultTemplateId={
+              library.globalSettings.defaultTemplateId ||
+              BUILTIN_TEMPLATE_IDS.aiProductManager
+            }
+            onOpenChange={setSecondRoundCreateOpen}
+            onCreate={(seed) =>
+              localAction(() => createSecondRoundInterview(seed))
+            }
+          />
         </div>
       </div>
     </div>

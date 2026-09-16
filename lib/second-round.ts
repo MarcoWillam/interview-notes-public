@@ -469,3 +469,22 @@ export const priorRoundComparisonLabels: Record<
   conflicted: '与初试存在冲突',
   unverified: '本轮仍未验证',
 };
+
+export function exportPriorRoundComparison(
+  value: readonly PriorRoundComparison[],
+) {
+  if (!value.length) return '';
+  return [
+    '## 初试信息对照（不继承初试评分）',
+    '',
+    '以下判断与引用仅来自本轮复试对话。',
+    ...value.flatMap((item) => [
+      '',
+      `### ${priorRoundComparisonLabels[item.status]}`,
+      item.statement,
+      ...item.transcriptEvidence.map(
+        (quote) => '> ' + quote.replaceAll('\n', '\n> '),
+      ),
+    ]),
+  ].join('\n');
+}

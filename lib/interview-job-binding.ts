@@ -180,8 +180,7 @@ export function assertInterviewJobInputMatches(
 
 export function resultVersionReason(kind: JobKind): CloudVersionReason {
   if (kind === 'follow-up-outline') return 'follow-up-outline-generated';
-  if (kind === 'second-round-outline')
-    return 'second-round-outline-generated';
+  if (kind === 'second-round-outline') return 'second-round-outline-generated';
   if (kind === 'second-round-assessment')
     return 'second-round-assessment-generated';
   return kind === 'resume'
@@ -205,25 +204,27 @@ export function applyInterviewJobResult(
   if (kind === 'second-round-outline') {
     if (!metadata?.jobId) throw new Error('复试提纲结果缺少任务编号。');
     const value = result as SecondRoundOutlineResult;
-    return {
+    const next: CloudInterview = {
       ...record,
       priorRoundDigest: value.digest,
       secondRoundOutline: value.outline,
-      secondRoundOutlineJobId: undefined,
       updatedAt: now,
     };
+    delete next.secondRoundOutlineJobId;
+    return next;
   }
   if (kind === 'second-round-assessment') {
     const value = result as SecondRoundAssessmentResult;
     const { priorRoundComparison, ...report } = value;
-    return {
+    const next: CloudInterview = {
       ...record,
       report,
       priorRoundComparison,
-      secondRoundAssessmentJobId: undefined,
       confirmed: false,
       updatedAt: now,
     };
+    delete next.secondRoundAssessmentJobId;
+    return next;
   }
   if (kind === 'follow-up-outline') {
     if (!metadata?.jobId) throw new Error('补充追问结果缺少任务编号。');

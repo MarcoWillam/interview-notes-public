@@ -20,6 +20,10 @@ import type { OutlineV3SupplementResult } from '../../lib/outline-v3-supplement'
 import { groupAssessmentDimensions } from '../../lib/assessment-groups';
 import type { OutlineRegenerationResult } from '../../lib/outline-regeneration';
 import type { FollowUpOutlineResult } from '../../lib/follow-up-outline';
+import type {
+  SecondRoundAssessmentResult,
+  SecondRoundOutlineResult,
+} from '../../lib/second-round';
 import { exportInterviewOutlineV2 } from '../../lib/interview-outline-v2';
 import { exportInterviewOutlineV3 } from '../../lib/interview-outline-v3';
 import {
@@ -38,6 +42,8 @@ import {
   WrittenTestSupplementView,
 } from './resume-reading-view';
 import { InterviewOutlineV2View } from './interview-outline-v2-view';
+import { SecondRoundOutlineView } from './second-round-outline-view';
+import { SecondRoundComparisonView } from './second-round-comparison-view';
 import {
   TaskCenterView,
   taskActionPrompt,
@@ -54,12 +60,16 @@ type Job = RemoteJob<
   | WorkSampleAnalysisV3
   | OutlineRegenerationResult
   | FollowUpOutlineResult
+  | SecondRoundOutlineResult
+  | SecondRoundAssessmentResult
 >;
 
 function downloadReport(job: Job) {
   if (
     !job.report ||
-    (job.kind !== undefined && job.kind !== 'interview') ||
+    (job.kind !== undefined &&
+      job.kind !== 'interview' &&
+      job.kind !== 'second-round-assessment') ||
     !('followUps' in job.report)
   )
     return;
@@ -447,6 +457,13 @@ function TaskResult({
           />
         )}
       {job.report &&
+        job.kind === 'second-round-outline' &&
+        'outline' in job.report && (
+          <SecondRoundOutlineView
+            value={(job.report as SecondRoundOutlineResult).outline}
+          />
+        )}
+      {job.report &&
         job.kind !== 'work-sample' &&
         'dimensions' in job.report &&
         'followUps' in job.report && (
@@ -497,6 +514,12 @@ function TaskResult({
                 </section>
               ),
             )}
+            {job.kind === 'second-round-assessment' &&
+              'priorRoundComparison' in job.report && (
+                <SecondRoundComparisonView
+                  value={job.report.priorRoundComparison}
+                />
+              )}
             {job.report.followUps.length > 0 && (
               <section>
                 <h4>待核实事项</h4>

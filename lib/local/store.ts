@@ -14,6 +14,7 @@ import {
 import type { CloudInterview } from '../cloud-interview.ts';
 import type { CloudVersionReason } from '../cloud-interview.ts';
 import type { InterviewStage } from '../second-round.ts';
+import type { PriorRoundSource } from '../second-round.ts';
 import { stableJsonFingerprint } from '../interview-draft-merge.ts';
 export type SavedInterview = CloudInterview & {
   /** Older local records may predate creation-time tracking. */
@@ -50,6 +51,12 @@ export type NewInterviewSeed = {
   standards: InterviewStandards;
   sourceTemplateId: string;
   interviewStage?: InterviewStage;
+  candidate?: string;
+  priorRoundSource?: PriorRoundSource;
+  priorRoundText?: string;
+  priorRoundName?: string;
+  resumeText?: string;
+  resumeName?: string;
 };
 export type AudioRecord = {
   id: string;

@@ -5,6 +5,7 @@ import {
   interviewStatusLabel,
   type InterviewStatus,
 } from '@/lib/interview-status';
+import type { InterviewStage, PriorRoundSource } from '@/lib/second-round';
 
 export type InterviewSessionSummaryProps = {
   candidate: string;
@@ -19,6 +20,8 @@ export type InterviewSessionSummaryProps = {
   disabled: boolean;
   open: boolean;
   onOpen: () => void;
+  interviewStage?: InterviewStage;
+  priorRoundSource?: PriorRoundSource;
 };
 
 export function InterviewSessionSummary({
@@ -34,6 +37,8 @@ export function InterviewSessionSummary({
   disabled,
   open,
   onOpen,
+  interviewStage = 'initial',
+  priorRoundSource,
 }: InterviewSessionSummaryProps) {
   const writtenTestStatus = !writtenTestConfirmed
     ? '待确认'
@@ -49,6 +54,10 @@ export function InterviewSessionSummary({
     <section className="interview-session-summary" aria-label="本场面试状态">
       <dl>
         <div>
+          <dt>阶段</dt>
+          <dd>{interviewStage === 'second' ? '复试' : '初试'}</dd>
+        </div>
+        <div>
           <dt>候选人</dt>
           <dd>{candidate || '待补充'}</dd>
         </div>
@@ -56,7 +65,15 @@ export function InterviewSessionSummary({
           <dt>岗位</dt>
           <dd>{role || '待选择'}</dd>
         </div>
-        {writtenTestSupported && (
+        {interviewStage === 'second' && (
+          <div>
+            <dt>初试来源</dt>
+            <dd>
+              {priorRoundSource === 'bole-markdown' ? '伯乐 AI' : '外部记录'}
+            </dd>
+          </div>
+        )}
+        {interviewStage === 'initial' && writtenTestSupported && (
           <div>
             <dt>笔试</dt>
             <dd>{writtenTestStatus}</dd>

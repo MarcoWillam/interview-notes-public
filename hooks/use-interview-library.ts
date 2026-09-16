@@ -641,11 +641,11 @@ export function useInterviewLibrary(
   async function openLatest(nextId: string) {
     await openRecord(nextId, true);
   }
-  async function create() {
+  async function create(override?: NewInterviewSeed) {
     setWorking(true);
     try {
       await flush();
-      const seed = await localStore().getNewInterviewSeed();
+      const seed = override || (await localStore().getNewInterviewSeed());
       setReady(false);
       createdAt.current = Date.now();
       callbacks.current.clear(seed);

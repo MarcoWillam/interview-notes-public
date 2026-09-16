@@ -208,9 +208,10 @@ export function exportMarkdown(
   report: Report | null,
   conclusion: string,
   confirmed: boolean,
+  title = '面试评估记录',
 ): string {
   const lines = [
-    '# 面试评估记录',
+    `# ${title}`,
     '',
     `候选人：${candidate || '未填写'}`,
     `岗位：${input.role || '未填写'}`,

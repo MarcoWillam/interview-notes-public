@@ -501,6 +501,9 @@ function SidebarPanel({
         >
           <span className="interview-sidebar-record-heading">
             <strong>{session.candidate || '未命名面试'}</strong>
+            <span className="interview-stage-badge">
+              {session.interviewStage === 'second' ? '复试' : '初试'}
+            </span>
             <span className="interview-status-badge" data-status={status}>
               {interviewStatusLabel(status)}
             </span>
