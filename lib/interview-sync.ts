@@ -292,6 +292,19 @@ export async function syncInterviewOutbox(
       const conflict = conflictFrom(error);
       if (!conflict || !item.record) throw error;
       const cloud = await remote.get(item.id);
+      if (item.operation === 'delete') {
+        const removed = await remote.remove(
+          item.id,
+          cloud.revision,
+          item.mutationId,
+        );
+        await store.clearPendingSync(
+          item.id,
+          item.mutationId,
+          removed.revision,
+        );
+        continue;
+      }
       await store.saveInterviewConflict(item.record, cloud.record);
       await store.saveRemoteInterview(cloud.record, cloud.revision);
       await store.clearPendingSync(item.id, item.mutationId, cloud.revision);

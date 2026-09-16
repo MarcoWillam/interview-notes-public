@@ -81,7 +81,19 @@ function transport(initial: Array<{ record: SavedInterview; revision: number }> 
     async remove(id, baseRevision, mutationId) {
       calls.push(`delete:${id}:${baseRevision}:${mutationId}`);
       const found = records.get(id);
-      if (!found || found.revision !== baseRevision) throw new Error('stale');
+      if (!found) throw new Error('missing');
+      if (found.revision !== baseRevision)
+        throw new InterviewSyncConflict({
+          id,
+          candidate: found.record.candidate,
+          role: found.record.role,
+          status: 'preparing',
+          groupId: found.record.groupId || null,
+          revision: found.revision,
+          createdAt: found.record.createdAt || found.record.updatedAt,
+          updatedAt: found.record.updatedAt,
+          deletedAt: found.deletedAt,
+        });
       const saved = { ...found, revision: found.revision + 1, deletedAt: Date.now() };
       records.set(id, saved);
       return saved;
@@ -121,6 +133,28 @@ void test('network failure retains the latest local outbox entry', async () => {
   await assert.rejects(syncInterviewOutbox(store, remote), /offline/);
   assert.equal((await store.listPendingSync()).length, 1);
   assert.equal(await store.getSyncMeta(record.id), undefined);
+});
+
+void test('a stale cloud delete rebases once and still moves the server record to trash', async () => {
+  const store = createLocalStore(new IDBFactory(), 'sync-delete-conflict');
+  await store.saveRemoteInterview(record, 1);
+  await store.queueInterviewDelete(record);
+  const remoteRecord = {
+    ...record,
+    updatedAt: 200,
+    conclusion: '另一页面刚保存的备注',
+  };
+  const remote = transport([{ record: remoteRecord, revision: 2 }]);
+
+  await syncInterviewOutbox(store, remote.value);
+
+  assert.ok(remote.records.get(record.id)?.deletedAt);
+  assert.equal(remote.calls.length, 2);
+  assert.match(remote.calls[0], /delete:sync-record-12345:1:/);
+  assert.match(remote.calls[1], /delete:sync-record-12345:2:/);
+  assert.equal((await store.listPendingSync()).length, 0);
+  assert.equal((await store.getSyncMeta(record.id))?.revision, 3);
+  assert.equal((await store.listInterviewConflicts()).length, 0);
 });
 
 void test('atomic conflict save preserves a coalesced outbox with the same mutation id', async () => {

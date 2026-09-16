@@ -37,6 +37,71 @@ void test('preview workspaces keep the explicit local-only save state', async ()
   assert.match(page, /workspaceAccount\?\.preview/);
 });
 
+void test('cloud deletion keeps the local record until the server confirms it', async () => {
+  const ts = await import('typescript');
+  const { IDBFactory } = await import('fake-indexeddb');
+  const { createLocalStore } = await import('../lib/local/store.ts');
+  const source = await readFile(
+    new URL('../hooks/use-interview-library.ts', import.meta.url),
+    'utf8',
+  );
+  const file = ts.createSourceFile(
+    'hook.ts',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  let code = '';
+  const visit = (node: import('typescript').Node) => {
+    if (ts.isFunctionDeclaration(node) && node.name?.text === 'remove')
+      code = node.getText(file);
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  assert.ok(code, 'remove must exist');
+  const record = {
+    id: 'delete-cloud-record',
+    createdAt: 1,
+    updatedAt: 1,
+    candidate: '待删除候选人',
+    role: 'AI 产品经理',
+    requirements: '岗位要求',
+    dimensionText: '自驱力',
+    focus: '',
+    resumeText: '简历正文',
+    resumeName: '简历.docx',
+    resumeReading: null,
+    transcript: '',
+    reviewed: false,
+    report: null,
+    conclusion: '',
+    confirmed: false,
+  };
+  const store = createLocalStore(new IDBFactory(), 'confirmed-cloud-delete');
+  await store.saveRemoteInterview(record, 4);
+  const environment = {
+    setWorking: () => {},
+    id: 'another-current-record',
+    writes: { current: Promise.resolve() },
+    localStore: () => store,
+    options: { cloud: true },
+    setSyncStatus: () => {},
+    synchronize: async () => {
+      throw new Error('服务器删除失败');
+    },
+    refresh: async () => {},
+    setReady: () => {},
+  };
+  const remove = compileFunction(
+    `${ts.transpile(code, { target: ts.ScriptTarget.ES2022 })}; return remove;`,
+    Object.keys(environment),
+  )(...Object.values(environment)) as (id: string) => Promise<void>;
+
+  await assert.rejects(remove(record.id), /服务器删除失败/);
+  assert.ok(await store.getInterview(record.id));
+  assert.equal((await store.listPendingSync())[0]?.operation, 'delete');
+});
+
 void test('explicit draft saves and cloud refresh are scoped to the live record', async () => {
   const hook = await readFile(
     new URL('../hooks/use-interview-library.ts', import.meta.url),

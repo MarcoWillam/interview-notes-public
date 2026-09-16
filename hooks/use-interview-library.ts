@@ -674,6 +674,7 @@ export function useInterviewLibrary(
         if (meta) await store.queueInterviewDelete(targetRecord);
         else await store.dropPendingSync(target);
         setSyncStatus('pending');
+        if (meta) await synchronize();
       }
       await localStore().deleteInterview(target);
       if (target === id) {
@@ -685,7 +686,6 @@ export function useInterviewLibrary(
         setReady(true);
       }
       await refresh();
-      if (options.cloud) void synchronize().catch(() => {});
     } finally {
       setReady(true);
       setWorking(false);
