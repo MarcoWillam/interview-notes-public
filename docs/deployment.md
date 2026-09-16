@@ -5,7 +5,7 @@
 ## 当前云服务器
 
 - 网站：`https://your-server-ip`，初始账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。其他面试官账号通过下述服务器命令创建。
-- 代码：当前版本为 `/opt/interview-notes/releases/20260916-8`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一版本 `20260916-7` 保留用于回滚；更早版本继续保留但不作为首选回滚目标。
+- 代码：当前版本为 `/opt/interview-notes/releases/20260916-9`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一版本 `20260916-8` 保留用于回滚；更早版本继续保留但不作为首选回滚目标。
 - 数据：`/var/lib/interview-notes/queue.sqlite`；环境配置：`/etc/interview-notes/server.env`；运行时：`/opt/node-v24.13.0-linux-x64/bin/node`。服务器只需已构建的 `dist/web` 和队列服务源码，无需安装模型或上传电脑上的 Codex 登录信息。
 - Nginx：`/etc/nginx/conf.d/interview-notes.conf`，对应仓库 `deploy/nginx-ip.conf`，HTTP 自动跳转 HTTPS，80 端口保留 ACME 验证路径。
 - 证书：Let's Encrypt IP 证书，由 acme.sh 3.1.2 的 `shortlived` profile 签发。使用 `--days 3`，`interview-cert-renew.timer` 每天两次检查续期；续期成功自动安装到 `/etc/nginx/ssl/interview/` 并检查、重载 Nginx。不要关闭公网 80 端口，否则续期验证会失败。
@@ -319,3 +319,11 @@ owner 的本机连接器已升级后迁移到 `<PROJECT_ROOT>/Library/Applicatio
 发布后按再次明确授权重置仍处于活动状态的“林雨涵”复试验证数据：删除 `test` 账号的派发副本和对应派发关系，将 `owner` 源记录保留为资料已导入、提纲待生成状态，并清除旧提纲、初试摘要、复试评估状态及旧版本历史。随后发现 Chrome 已打开的旧页面保留 IndexedDB 草稿并继续同步，把旧提纲重新写回了云端；已退出该页面的 owner 会话，按授权从 Chrome 清除该站点的本地数据。再次刷新生产备份并确认 `quick_check` 为 `ok` 后，对唯一活动源记录执行定向重置，修订号由 25 更新为 26。延时数据库复核与公网 owner 记录接口均确认提纲和摘要为空、可重新生成，目标副本及派发关系均为 0；应用服务 active，近期无警告日志。
 
 后续用户选择彻底删除该复试记录并重新录入。生产检查发现原源记录已进回收站（ID `e3429c94-f7bb-4bce-82d7-de0295e3ed7c`），另有新建的活动复试记录（ID `fa82054b-74cf-46c5-8196-9e72b7d42c56`）仍持有提纲。备份 `quick_check` 为 `ok` 后，通过 owner 记录接口删除活动记录并刷新 Chrome；浏览器本地列表由未分组 4 条变为 3 条，不再显示“林雨涵”复试。再按两个精确 ID 清理云端回收站和历史，共删除 2 条复试记录、3 条版本及 13 条变更；两条记录均无任务、派发关系或工作台引用。延时复查匹配的 owner 复试记录为 0，数据库 `quick_check` 为 `ok`，应用 active 且近期无警告。已完成的“林雨涵”初试记录保留。
+
+### 复试任务按记录隔离
+
+`20260916-9` 修复独立复试提纲和结论任务跨记录复用：提交时将当前复试记录 ID 作为任务范围，同一记录断线重试仍可复用，新建记录即使材料与任务名称相同也会创建新任务。此版本同时包含已完成的复试材料展示优化：初试待核实与考察重点独立列出，材料原文随对应模块展开。
+
+本地 565 项自动化测试、类型检查、代码检查、生产构建及差异检查通过。release 含 230 个白名单文件，归档 SHA-256 为 `539f9d1fa63070e195f5dc02a3b17dc32206543ba57cb276e61af5348a818f21`；实际资源为 `index-Bx_YRskD.js` 和 `index-ChVP1prK.css`，连接器 ZIP SHA-256 为 `47aed981dcb9bbb6393dccfb5efab6219744aa8e8dbc630f2ce9dc22f3a99627`。
+
+线上发现 owner 新建的“林雨涵”复试在约 1 秒内得到旧提纲，内容及初试摘要均与任务中心旧复试任务完全一致。发布前确认无活动任务，原子切换到 `/opt/interview-notes/releases/20260916-9`，回滚目标为 `20260916-8`，环境和数据目录未变。按此前定向清理授权，先建立 `quick_check=ok` 的备份，再经 API 将错误复试记录送入回收站、刷新 Chrome 确认本地副本消失，最后物理删除该记录及对应旧复试任务；已完成的林雨涵初试和其任务保留。最终 owner 复试记录查询为 0，数据库 `quick_check=ok`，服务 active；公网 HTTPS、HTTP 308、owner 登录、安全 Cookie、静态资源及连接器下载哈希验收通过。

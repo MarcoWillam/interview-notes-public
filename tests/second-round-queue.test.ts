@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFile } from 'node:fs/promises';
 import { builtInRoleTemplates } from '../lib/default-role-templates.ts';
 import type { CloudInterview } from '../lib/cloud-interview.ts';
 import { interviewJobSource } from '../lib/interview-job-binding.ts';
@@ -89,6 +90,27 @@ function secondRoundRecord(now: number): CloudInterview {
     confirmed: false,
   };
 }
+
+void test('a second-round outline is reused only within its own local record', async () => {
+  const page = await readFile(new URL('../app/page.tsx', import.meta.url), 'utf8');
+  const submission = page.slice(page.indexOf('const result = await submitRemoteSecondRoundOutline('), page.indexOf('if (\n        analysisController.current !== controller', page.indexOf('const result = await submitRemoteSecondRoundOutline(')));
+  assert.equal(submission.includes('scope: recordId'), true);
+  const assessment = page.slice(page.indexOf('const data = await submitRemoteSecondRoundAssessment('), page.indexOf('if (\n        analysisController.current !== controller', page.indexOf('const data = await submitRemoteSecondRoundAssessment(')));
+  assert.equal(assessment.includes('scope: recordId'), true);
+
+  const store = new QueueStore(':memory:', () => 1_000_000);
+  try {
+    const user = store.createUser('scoped-second', 'password-scoped-123').id;
+    const input = interviewJobSource(secondRoundRecord(1_000_000), 'second-round-outline');
+    const first = store.submit(user, 'second-record-a-1', '林小满 · 生成复试提纲', input, 'second-round-outline', 'second-record-a');
+    const same = store.submit(user, 'second-record-a-2', '林小满 · 生成复试提纲', input, 'second-round-outline', 'second-record-a');
+    const other = store.submit(user, 'second-record-b-1', '林小满 · 生成复试提纲', input, 'second-round-outline', 'second-record-b');
+    assert.equal(same.id, first.id);
+    assert.notEqual(other.id, first.id);
+  } finally {
+    store.close();
+  }
+});
 
 void test('protocol five connector runs standalone second-round tasks without interview binding', () => {
   const store = new QueueStore(':memory:', () => 1_000_000);

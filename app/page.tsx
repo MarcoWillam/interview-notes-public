@@ -2487,7 +2487,7 @@ export default function Home({
               .catch(() => {});
           }
         },
-        { fetcher: fetch, pollMs: 2000 },
+        { fetcher: fetch, pollMs: 2000, scope: recordId },
       );
       if (
         analysisController.current !== controller ||
@@ -2585,7 +2585,7 @@ export default function Home({
               .catch(() => {});
           }
         },
-        { fetcher: fetch, pollMs: 2000 },
+        { fetcher: fetch, pollMs: 2000, scope: recordId },
       );
       if (
         analysisController.current !== controller ||
