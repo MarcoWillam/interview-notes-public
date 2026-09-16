@@ -11,6 +11,22 @@ void test('new interview offers distinct initial and second-round entry points',
   assert.match(page, /SecondRoundCreateDialog/);
 });
 
+void test('new interview actions share one consistent button layout', async () => {
+  const [page, styles] = await Promise.all([
+    readFile(new URL('app/page.tsx', root), 'utf8'),
+    readFile(new URL('app/globals.css', root), 'utf8'),
+  ]);
+  assert.match(page, /className="new-interview-actions"/);
+  assert.match(
+    styles,
+    /\.new-interview-actions\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/,
+  );
+  assert.match(
+    styles,
+    /\.new-interview-actions\s*>\s*button\s*\{[\s\S]*height:\s*42px[\s\S]*border-radius:\s*8px/,
+  );
+});
+
 void test('second-round creation requires external resumes and accepts Bole exports', async () => {
   const dialog = await readFile(
     new URL('components/interview/second-round-create-dialog.tsx', root),

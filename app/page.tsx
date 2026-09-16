@@ -4140,7 +4140,7 @@ export default function Home({
               <AlertDialogDescription>
                 当前面试会自动保存。请选择本次面试阶段；复试将先导入初试资料和候选人简历。
               </AlertDialogDescription>
-              <AlertDialogFooter>
+              <AlertDialogFooter className="new-interview-actions">
                 <AlertDialogCancel>取消</AlertDialogCancel>
                 <button
                   className="secondary-button"
