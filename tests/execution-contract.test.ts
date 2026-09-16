@@ -120,6 +120,69 @@ void test('server selects the V3 campus-potential prompt and schema at claim tim
   assert.deepEqual(schema.properties.outline.properties.version.enum, [3]);
 });
 
+void test('resume contracts restrict question sources to the submitted written-test state', () => {
+  const withoutWrittenTest = executionContractFor('resume', {
+    ...standards,
+    resumeText,
+    hasWrittenTest: false,
+    outlineVersion: 3,
+  });
+  const withoutSchema = withoutWrittenTest.schema as {
+    properties: {
+      outline: {
+        properties: Record<
+          'requiredQuestions' | 'reserveQuestions' | 'archivedReserveQuestions',
+          { items: { properties: { source: { enum: string[] } } } }
+        >;
+      };
+    };
+  };
+  for (const collection of [
+    'requiredQuestions',
+    'reserveQuestions',
+    'archivedReserveQuestions',
+  ] as const)
+    assert.deepEqual(
+      withoutSchema.properties.outline.properties[collection].items.properties
+        .source.enum,
+      ['role', 'resume'],
+    );
+  assert.match(withoutWrittenTest.instructions, /hasWrittenTest=false/);
+  assert.match(withoutWrittenTest.instructions, /不代表本候选人完成了笔试/);
+
+  const withWrittenTest = executionContractFor('resume', {
+    ...standards,
+    resumeText,
+    hasWrittenTest: true,
+    outlineVersion: 3,
+  });
+  const withSchema = withWrittenTest.schema as typeof withoutSchema;
+  assert.deepEqual(
+    withSchema.properties.outline.properties.requiredQuestions.items.properties
+      .source.enum,
+    ['role', 'resume', 'written-test'],
+  );
+
+  const legacyWithoutWrittenTest = executionContractFor('resume', {
+    ...standards,
+    resumeText,
+    hasWrittenTest: false,
+    outlineVersion: 1,
+  });
+  const legacySchema = legacyWithoutWrittenTest.schema as {
+    properties: {
+      interviewQuestions: {
+        items: { properties: { questionSource: { enum: string[] } } };
+      };
+    };
+  };
+  assert.deepEqual(
+    legacySchema.properties.interviewQuestions.items.properties.questionSource
+      .enum,
+    ['role', 'resume'],
+  );
+});
+
 void test('server appends bounded semantic feedback only on retry', () => {
   const contract = executionContractFor(
     'resume',
@@ -147,13 +210,19 @@ void test('server builds a validated follow-up outline text contract', () => {
     '自驱力与主动发现问题',
   );
   assert.equal(
-    (contract.schema as { properties: { questions: { minItems: number; maxItems: number } } })
-      .properties.questions.minItems,
+    (
+      contract.schema as {
+        properties: { questions: { minItems: number; maxItems: number } };
+      }
+    ).properties.questions.minItems,
     2,
   );
   assert.equal(
-    (contract.schema as { properties: { questions: { minItems: number; maxItems: number } } })
-      .properties.questions.maxItems,
+    (
+      contract.schema as {
+        properties: { questions: { minItems: number; maxItems: number } };
+      }
+    ).properties.questions.maxItems,
     2,
   );
   assert.match(contract.instructions, /自然、亲和/);
@@ -174,7 +243,10 @@ void test('follow-up outline retries append bounded feedback without changing pa
   });
   assert.doesNotMatch(initial.instructions, /上一次结果未通过服务器校验/);
   assert.equal(contract.attempt, 2);
-  assert.deepEqual(contract.payload, executionContractFor('follow-up-outline', input).payload);
+  assert.deepEqual(
+    contract.payload,
+    executionContractFor('follow-up-outline', input).payload,
+  );
   assert.ok(
     contract.instructions.endsWith(
       `上一次结果未通过服务器校验：${retainedFeedback}。请修正后重新返回完整 JSON。`,

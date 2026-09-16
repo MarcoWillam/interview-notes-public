@@ -72,12 +72,68 @@ function retryInstructions(instructions: string, feedback?: string) {
   return `${instructions}\n上一次结果未通过服务器校验：${safe}。请修正后重新返回完整 JSON。`;
 }
 
-function resumeWorkSampleDefinition(input: ReturnType<typeof validateResumeInput>) {
+type MutableSourceSchema = {
+  required: string[];
+  properties: {
+    [key: string]: unknown;
+    interviewQuestions?: {
+      items: { properties: { questionSource: { enum: string[] } } };
+    };
+    outline?: {
+      properties: Record<
+        'requiredQuestions' | 'reserveQuestions' | 'archivedReserveQuestions',
+        { items: { properties: { source: { enum: string[] } } } }
+      >;
+    };
+  };
+};
+
+function allowedResumeSources(input: ReturnType<typeof validateResumeInput>) {
+  if (input.workSample) return ['role', 'resume', 'work-sample'];
+  if (input.hasWrittenTest && input.role === 'AI 产品经理（校招）')
+    return ['role', 'resume', 'written-test'];
+  return ['role', 'resume'];
+}
+
+function resumeSchemaFor(input: ReturnType<typeof validateResumeInput>) {
   const version = input.outlineVersion ?? 1;
-  const resumeSchema = resumeOutputSchema(version);
+  const schema = structuredClone(
+    resumeOutputSchema(version),
+  ) as unknown as MutableSourceSchema;
+  const sources = allowedResumeSources(input);
+  if (version === 1)
+    schema.properties.interviewQuestions!.items.properties.questionSource.enum =
+      sources;
+  else
+    for (const collection of [
+      'requiredQuestions',
+      'reserveQuestions',
+      'archivedReserveQuestions',
+    ] as const)
+      schema.properties.outline!.properties[
+        collection
+      ].items.properties.source.enum = sources;
+  return schema;
+}
+
+function resumeSourceInstructions(
+  input: ReturnType<typeof validateResumeInput>,
+) {
+  if (input.workSample)
+    return '本次已提供作品，问题 source 只能使用 role、resume 或 work-sample，不得使用 written-test。';
+  if (input.hasWrittenTest && input.role === 'AI 产品经理（校招）')
+    return '本次 hasWrittenTest=true 且未提供作品，问题 source 只能使用 role、resume 或 written-test，不得使用 work-sample。';
+  return '本次 hasWrittenTest=false 且未提供作品。即使岗位要求或模板文字提到“笔试”“作品”或其考察框架，也不代表本候选人完成了笔试或提交了作品；所有问题 source 只能使用 role 或 resume。';
+}
+
+function resumeWorkSampleDefinition(
+  input: ReturnType<typeof validateResumeInput>,
+) {
+  const version = input.outlineVersion ?? 1;
+  const resumeSchema = resumeSchemaFor(input);
   return {
     runner: 'structured-work-sample' as const,
-    instructions: `${resumeInstructionsFor(version)}\n只使用 work_sample 工具读取笔试作品。必须返回 workSample。${version === 3 ? 'outline 的第 5–6 道必问题必须与 workSample.questions 的问题文本、文件路径和逐字引用完全一致，source=work-sample；workSample.questions 恰好两道，主问题自然、亲和且为 12–30 字' : version === 2 ? 'outline 的第 2–4 道必问题必须与 workSample.questions 的问题文本、文件路径和逐字引用完全一致，source=work-sample' : '第 2–4 题必须与 workSample.questions 完全一致，questionSource=work-sample'}；引用只能来自 UTF-8 文本或源码。\n${workSampleEmbeddedInstructionsFor(version)}`,
+    instructions: `${resumeInstructionsFor(version)}\n${resumeSourceInstructions(input)}\n只使用 work_sample 工具读取笔试作品。必须返回 workSample。${version === 3 ? 'outline 的第 5–6 道必问题必须与 workSample.questions 的问题文本、文件路径和逐字引用完全一致，source=work-sample；workSample.questions 恰好两道，主问题自然、亲和且为 12–30 字' : version === 2 ? 'outline 的第 2–4 道必问题必须与 workSample.questions 的问题文本、文件路径和逐字引用完全一致，source=work-sample' : '第 2–4 题必须与 workSample.questions 完全一致，questionSource=work-sample'}；引用只能来自 UTF-8 文本或源码。\n${workSampleEmbeddedInstructionsFor(version)}`,
     schema: {
       ...resumeSchema,
       required: [...resumeSchema.required, 'workSample'],
@@ -109,8 +165,8 @@ function modelDefinition(kind: CodexExecutionKind, value: unknown) {
     const version = input.outlineVersion ?? 1;
     return {
       runner: 'structured-text' as const,
-      instructions: resumeInstructionsFor(version),
-      schema: resumeOutputSchema(version),
+      instructions: `${resumeInstructionsFor(version)}\n${resumeSourceInstructions(input)}`,
+      schema: resumeSchemaFor(input),
       payload: input,
     };
   }
