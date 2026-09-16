@@ -132,6 +132,26 @@ function question(index: number, overrides = {}) {
   };
 }
 
+const depthAngles = [
+  'decision',
+  'tradeoff',
+  'failure',
+  'counterfactual',
+  'transfer',
+  'collaboration',
+] as const;
+
+function v2Question(index: number, overrides = {}) {
+  return {
+    ...question(index),
+    contextSummary: '初试说明了项目过程，但个人判断依据仍不清楚。',
+    contextType: 'initial-interview',
+    depthAngle: depthAngles[index % depthAngles.length],
+    resumeContext: { type: 'project', label: '校园项目' },
+    ...overrides,
+  };
+}
+
 void test('validates a six-plus-three second-round outline with grounded evidence', () => {
   const input = validateSecondRoundOutlineInput(baseInput);
   const result = validateSecondRoundOutlineResult(
@@ -157,6 +177,180 @@ void test('validates a six-plus-three second-round outline with grounded evidenc
   assert.equal(result.outline.requiredQuestions.length, 6);
   assert.equal(result.outline.reserveQuestions.length, 1);
   assert.deepEqual(result.outline.recommendedMinutes, { min: 45, max: 60 });
+});
+
+void test('validates a V2 outline with concise context and varied depth angles', () => {
+  const result = validateSecondRoundOutlineResult(
+    {
+      digest,
+      outline: {
+        version: 2,
+        recommendedMinutes: { min: 45, max: 60 },
+        summary: '重点判断候选人的决策、取舍、复盘与迁移潜力。',
+        requiredQuestions: Array.from({ length: 6 }, (_, index) =>
+          v2Question(index),
+        ),
+        reserveQuestions: [
+          v2Question(6, {
+            id: 'reserve-1',
+            question: '如果用户反对，你会怎样调整方案？',
+            resumeEvidence: null,
+            resumeContext: null,
+            contextType: 'role',
+            depthAngle: 'evidence',
+          }),
+        ],
+      },
+    },
+    baseInput,
+  );
+  assert.equal(result.outline.version, 2);
+  assert.equal(result.outline.requiredQuestions.length, 6);
+});
+
+void test('V2 limits written-test questions and requires four depth angles', () => {
+  const outline = {
+    version: 2,
+    recommendedMinutes: { min: 45, max: 60 },
+    summary: '重点判断候选人的决策、取舍、复盘与迁移潜力。',
+    requiredQuestions: Array.from({ length: 6 }, (_, index) =>
+      v2Question(index),
+    ),
+    reserveQuestions: [],
+  };
+  assert.throws(
+    () =>
+      validateSecondRoundOutlineResult(
+        {
+          digest,
+          outline: {
+            ...outline,
+            requiredQuestions: outline.requiredQuestions.map((item, index) =>
+              index < 2 ? { ...item, contextType: 'written-test' } : item,
+            ),
+          },
+        },
+        baseInput,
+      ),
+    /笔试题相关问题最多 1 道/,
+  );
+  assert.throws(
+    () =>
+      validateSecondRoundOutlineResult(
+        {
+          digest,
+          outline: {
+            ...outline,
+            requiredQuestions: outline.requiredQuestions.map((item) => ({
+              ...item,
+              depthAngle: 'decision',
+            })),
+          },
+        },
+        baseInput,
+      ),
+    /至少覆盖 4 种深挖角度/,
+  );
+});
+
+void test('V2 keeps context and validation goals concise', () => {
+  const outline = {
+    version: 2,
+    recommendedMinutes: { min: 45, max: 60 },
+    summary: '重点判断候选人的决策、取舍、复盘与迁移潜力。',
+    requiredQuestions: Array.from({ length: 6 }, (_, index) =>
+      v2Question(index),
+    ),
+    reserveQuestions: [],
+  };
+  assert.throws(
+    () =>
+      validateSecondRoundOutlineResult(
+        {
+          digest,
+          outline: {
+            ...outline,
+            requiredQuestions: [
+              v2Question(0, { goal: '判断能力。' }),
+              ...outline.requiredQuestions.slice(1),
+            ],
+          },
+        },
+        baseInput,
+      ),
+    /复试问题目的须为 12–40 字/,
+  );
+  assert.throws(
+    () =>
+      validateSecondRoundOutlineResult(
+        {
+          digest,
+          outline: {
+            ...outline,
+            requiredQuestions: [
+              v2Question(0, { contextSummary: '背景太短。' }),
+              ...outline.requiredQuestions.slice(1),
+            ],
+          },
+        },
+        baseInput,
+      ),
+    /提问背景须为 12–60 字/,
+  );
+});
+
+void test('V2 resume evidence requires a grounded source label', () => {
+  const validQuestions = Array.from({ length: 6 }, (_, index) =>
+    v2Question(index),
+  );
+  const validateFirst = (overrides: Record<string, unknown>) =>
+    validateSecondRoundOutlineResult(
+      {
+        digest,
+        outline: {
+          version: 2,
+          recommendedMinutes: { min: 45, max: 60 },
+          summary: '重点判断候选人的决策、取舍、复盘与迁移潜力。',
+          requiredQuestions: [
+            v2Question(0, overrides),
+            ...validQuestions.slice(1),
+          ],
+          reserveQuestions: [],
+        },
+      },
+      baseInput,
+    );
+  assert.throws(
+    () => validateFirst({ resumeContext: null }),
+    /简历依据必须标注来源/,
+  );
+  assert.throws(
+    () =>
+      validateFirst({
+        resumeContext: { type: 'project', label: '不存在的项目' },
+      }),
+    /简历来源无法在候选人简历中找到/,
+  );
+  assert.throws(
+    () =>
+      validateFirst({
+        resumeContext: { type: 'unspecified', label: '项目归属不清楚' },
+      }),
+    /简历中未明确具体项目/,
+  );
+  assert.throws(
+    () => validateFirst({ resumeEvidence: null }),
+    /未引用简历时不能标注简历来源/,
+  );
+  assert.equal(
+    validateFirst({
+      resumeContext: {
+        type: 'unspecified',
+        label: '简历中未明确具体项目',
+      },
+    }).outline.version,
+    2,
+  );
 });
 
 void test('standalone second-round results apply only to the unchanged source snapshot', async () => {

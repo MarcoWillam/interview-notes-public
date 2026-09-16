@@ -4162,6 +4162,82 @@ fieldset label:last-of-type {
   margin-top: -4px;
 }
 
+.second-round-question-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.second-round-depth-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border: 1px solid #c9d8e8;
+  border-radius: 999px;
+  background: #eef4fa;
+  color: #315d82;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.second-round-question-overview {
+  display: grid;
+  gap: 8px;
+}
+
+.second-round-context,
+.second-round-goal-highlight,
+.second-round-resume-source {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  gap: 8px;
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 9px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.second-round-context {
+  border: 1px solid #dce5e4;
+  background: #f7f9f9;
+  color: #4f6264;
+}
+
+.second-round-context span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.second-round-goal-highlight {
+  border: 1px solid #b9ddd2;
+  background: #eaf6f2;
+  color: #174f42;
+}
+
+.second-round-goal-highlight span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.second-round-resume-source {
+  padding-block: 6px;
+  border: 1px solid #e7ddc2;
+  background: #fbf7ec;
+  color: #765b20;
+}
+
+.second-round-question-overview strong {
+  color: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .second-round-question-details {
   display: grid;
   gap: 8px;
@@ -4215,6 +4291,12 @@ fieldset label:last-of-type {
   }
   .second-round-confirmation dd {
     text-align: left;
+  }
+  .second-round-context,
+  .second-round-goal-highlight,
+  .second-round-resume-source {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
   }
 }
 

@@ -1,7 +1,32 @@
 import type {
+  SecondRoundDepthAngle,
   SecondRoundOutline,
   SecondRoundQuestion,
+  SecondRoundQuestionV2,
 } from '../../lib/second-round';
+
+const depthAngleLabels: Record<SecondRoundDepthAngle, string> = {
+  decision: '决策依据',
+  tradeoff: '范围取舍',
+  failure: '失败复盘',
+  counterfactual: '反事实推演',
+  transfer: '迁移能力',
+  collaboration: '协作冲突',
+  evidence: '证据闭环',
+};
+
+function isV2Question(
+  value: SecondRoundQuestion,
+): value is SecondRoundQuestionV2 {
+  return 'contextSummary' in value;
+}
+
+function resumeSourceLabel(value: SecondRoundQuestionV2) {
+  if (!value.resumeContext) return '';
+  if (value.resumeContext.type === 'unspecified') return '简历中未明确具体项目';
+  const prefix = value.resumeContext.type === 'project' ? '项目' : '实习';
+  return `${prefix} · ${value.resumeContext.label}`;
+}
 
 function Question({
   value,
@@ -10,30 +35,59 @@ function Question({
   value: SecondRoundQuestion;
   index: number;
 }) {
+  const isV2 = isV2Question(value);
+  const resumeSource = isV2 ? resumeSourceLabel(value) : '';
   return (
     <article className="interview-question-card outline-v2-question second-round-question">
       <div className="outline-v2-question-heading">
-        <span className="question-source-badge source-role">复试追问</span>
+        <div className="second-round-question-tags">
+          <span className="question-source-badge source-role">复试追问</span>
+          {isV2 && (
+            <span className="second-round-depth-badge">
+              {depthAngleLabels[value.depthAngle]}
+            </span>
+          )}
+        </div>
         <span>预计 5–8 分钟</span>
       </div>
       <h5>{`${index}. ${value.question}`}</h5>
       <div className="interview-question-dimensions" aria-label="考察维度">
-        <span className="dimension-badge">
-          主维度 · {value.dimensions[0]}
-        </span>
+        <span className="dimension-badge">主维度 · {value.dimensions[0]}</span>
         {value.dimensions.slice(1).map((dimension) => (
           <span className="dimension-badge secondary" key={dimension}>
             辅助 · {dimension}
           </span>
         ))}
       </div>
-      <details>
-        <summary>验证目标、初复试差异、依据与追问</summary>
-        <div className="second-round-question-details">
-          <p>
-            <strong>验证目标：</strong>
-            {value.goal}
+      {isV2 && (
+        <div className="second-round-question-overview">
+          <p className="second-round-context">
+            <strong>提问背景</strong>
+            <span>{value.contextSummary}</span>
           </p>
+          <p className="second-round-goal-highlight">
+            <strong>重点验证</strong>
+            <span title={value.goal}>{value.goal}</span>
+          </p>
+          {resumeSource && (
+            <p className="second-round-resume-source">
+              <strong>简历来源</strong>
+              <span>{resumeSource}</span>
+            </p>
+          )}
+        </div>
+      )}
+      <details>
+        <summary>
+          {isV2 ? '初复试差异、依据与追问' : '验证目标、初复试差异、依据与追问'}
+        </summary>
+        <div className="second-round-question-details">
+          {!isV2 && (
+            <p>
+              <strong>验证目标：</strong>
+              {value.goal}
+            </p>
+          )}
           <p>
             <strong>为何复试再问：</strong>
             {value.difference}
@@ -85,8 +139,12 @@ export function SecondRoundOutlineView({
 }: {
   value: SecondRoundOutline;
 }) {
+  const isV2 = value.version === 2;
   return (
-    <section className="interview-guide outline-v2 second-round-outline">
+    <section
+      className="interview-guide outline-v2 second-round-outline"
+      data-outline-version={isV2 ? '2' : '1'}
+    >
       <header className="outline-v2-heading">
         <h4>必问题 · {value.requiredQuestions.length} 道</h4>
         <span>预计 45–60 分钟</span>

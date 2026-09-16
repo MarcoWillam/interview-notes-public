@@ -211,12 +211,40 @@ void test('server builds protocol five contracts for second-round outline and as
   });
   assert.equal(outline.runner, 'structured-text');
   assert.match(outline.instructions, /6 道必问/);
+  assert.match(outline.instructions, /默认不设置笔试问题/);
+  assert.match(outline.instructions, /最多 1 道/);
+  assert.match(outline.instructions, /至少覆盖 4 种/);
+  assert.match(outline.instructions, /简历中未明确具体项目/);
   const outlineSchema = outline.schema as {
-    properties: { outline: { properties: { requiredQuestions: { minItems: number } } } };
+    properties: {
+      outline: {
+        properties: {
+          version: { enum: number[] };
+          requiredQuestions: {
+            minItems: number;
+            items: { required: string[] };
+          };
+        };
+      };
+    };
   };
+  assert.deepEqual(
+    outlineSchema.properties.outline.properties.version.enum,
+    [2],
+  );
   assert.equal(
     outlineSchema.properties.outline.properties.requiredQuestions.minItems,
     6,
+  );
+  assert.ok(
+    outlineSchema.properties.outline.properties.requiredQuestions.items.required.includes(
+      'contextSummary',
+    ),
+  );
+  assert.ok(
+    outlineSchema.properties.outline.properties.requiredQuestions.items.required.includes(
+      'resumeContext',
+    ),
   );
 
   const assessment = executionContractFor('second-round-assessment', {

@@ -83,15 +83,26 @@ void test('second-round workbench exposes preparation, transcript and independen
     outline,
     /className="interview-question-card outline-v2-question second-round-question"/,
   );
-  assert.match(
-    outline,
-    /className="outline-v2-section second-round-reserve"/,
-  );
+  assert.match(outline, /className="outline-v2-section second-round-reserve"/);
   assert.match(outline, /复试追问/);
+  assert.match(outline, /depthAngleLabels/);
+  assert.match(outline, /value\.version === 2/);
+  assert.match(outline, /className="second-round-context"/);
+  assert.match(outline, /提问背景/);
+  assert.match(outline, /className="second-round-goal-highlight"/);
+  assert.match(outline, /重点验证/);
+  assert.match(outline, /className="second-round-resume-source"/);
+  assert.match(outline, /简历中未明确具体项目/);
   assert.match(outline, /主维度/);
   assert.match(outline, /辅助/);
   assert.match(outline, /验证目标、初复试差异、依据与追问/);
   assert.match(outline, /候选题/);
+  assert.match(
+    styles,
+    /\.second-round-context\s*\{[\s\S]*-webkit-line-clamp:\s*2/,
+  );
+  assert.match(styles, /\.second-round-goal-highlight\s*\{[\s\S]*background:/);
+  assert.match(styles, /\.second-round-resume-source\s*\{/);
   assert.match(comparison, /引用仅来自本轮复试对话/);
 });
 
