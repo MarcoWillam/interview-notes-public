@@ -5,13 +5,17 @@
 ## 当前云服务器
 
 - 网站：`https://your-server-ip`，初始账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。其他面试官账号通过下述服务器命令创建。
-- 代码：当前版本为 `/opt/interview-notes/releases/20260916-9`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一版本 `20260916-8` 保留用于回滚；更早版本继续保留但不作为首选回滚目标。
+- 代码：当前版本为 `/opt/interview-notes/releases/20260916-11`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一版本 `20260916-10` 保留用于回滚；更早版本继续保留但不作为首选回滚目标。
 - 数据：`/var/lib/interview-notes/queue.sqlite`；环境配置：`/etc/interview-notes/server.env`；运行时：`/opt/node-v24.13.0-linux-x64/bin/node`。服务器只需已构建的 `dist/web` 和队列服务源码，无需安装模型或上传电脑上的 Codex 登录信息。
 - Nginx：`/etc/nginx/conf.d/interview-notes.conf`，对应仓库 `deploy/nginx-ip.conf`，HTTP 自动跳转 HTTPS，80 端口保留 ACME 验证路径。
 - 证书：Let's Encrypt IP 证书，由 acme.sh 3.1.2 的 `shortlived` profile 签发。使用 `--days 3`，`interview-cert-renew.timer` 每天两次检查续期；续期成功自动安装到 `/etc/nginx/ssl/interview/` 并检查、重载 Nginx。不要关闭公网 80 端口，否则续期验证会失败。
 - 旧站点 `z-link` 已从 PM2 移除，原目录、压缩备份和 Nginx 配置位于 `/root/deployment-backups/before-interview-20260908/`，仅 root 可访问。云平台管理、备份和 SSH 服务保留。
 
 本机云端连接凭据单独保存在 `.local/cloud-connector.json`。可双击项目根目录的 `连接云端面试工作台.command` 启动，保持终端运行；电脑休眠或关闭连接器后，云端网页仍可访问，新任务会等待。不要同时重复启动多个相同连接器。
+
+`20260916-10` 为复试提纲增加“重新生成”入口；能从简历明确定位到项目或实习的题目，在主问题中直接写出来源名称，历史提纲在页面展示时也会补足这个口述上下文。复试重生成沿用当前资料、创建独立队列任务，成功后替换提纲并保留云端历史版本。发布前为生产 SQLite 建立了仅 root 可读的快照 `/root/deployment-backups/before-second-round-regeneration-20260916/queue.sqlite`；发布包 SHA-256 为 `bcd9d37446fd5702424909d5acb88b2ab6233bca1d743b38a8b8f0c5febe371a`。本地 566 项测试、类型检查、代码检查和构建通过，线上 HTTPS、服务状态与数据库 quick_check 正常。
+
+`20260916-11` 将项目或实习名称写入题干变成结果校验后的确定性处理，修正模型偶尔只填写来源标签、未写进主问题的情况。owner 现有 4 份复试提纲均已重新生成并应用；明确关联来源的题干覆盖率依次为 7/7、8/8、8/8、7/7。发布包 SHA-256 为 `787ef7e0d3fedb15622f6a95a85c8a7aaf5c5f7b27dfdbbe9239468e97a6d638`；线上服务、HTTPS、数据库 quick_check 和空任务队列复核通过。
 
 运维检查命令（在云服务器执行）：
 

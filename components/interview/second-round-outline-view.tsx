@@ -4,6 +4,7 @@ import type {
   SecondRoundQuestion,
   SecondRoundQuestionV2,
 } from '../../lib/second-round';
+import { spokenSecondRoundQuestion } from '../../lib/second-round';
 
 const depthAngleLabels: Record<SecondRoundDepthAngle, string> = {
   decision: '决策依据',
@@ -50,7 +51,7 @@ function Question({
         </div>
         <span>预计 5–8 分钟</span>
       </div>
-      <h5>{`${index}. ${value.question}`}</h5>
+      <h5>{`${index}. ${spokenSecondRoundQuestion(value)}`}</h5>
       <div className="interview-question-dimensions" aria-label="考察维度">
         <span className="dimension-badge">主维度 · {value.dimensions[0]}</span>
         {value.dimensions.slice(1).map((dimension) => (

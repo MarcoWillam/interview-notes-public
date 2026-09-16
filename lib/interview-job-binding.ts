@@ -178,9 +178,12 @@ export function assertInterviewJobInputMatches(
   }
 }
 
-export function resultVersionReason(kind: JobKind): CloudVersionReason {
+export function resultVersionReason(kind: JobKind, record?: CloudInterview): CloudVersionReason {
   if (kind === 'follow-up-outline') return 'follow-up-outline-generated';
-  if (kind === 'second-round-outline') return 'second-round-outline-generated';
+  if (kind === 'second-round-outline')
+    return record?.secondRoundOutline
+      ? 'second-round-outline-regenerated'
+      : 'second-round-outline-generated';
   if (kind === 'second-round-assessment')
     return 'second-round-assessment-generated';
   return kind === 'resume'

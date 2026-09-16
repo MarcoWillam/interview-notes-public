@@ -24,6 +24,7 @@ export type CloudVersionReason =
   | 'follow-up-outline-deleted'
   | 'second-round-material-imported'
   | 'second-round-outline-generated'
+  | 'second-round-outline-regenerated'
   | 'second-round-assessment-generated'
   | 'transcript-imported'
   | 'work-sample-analyzed'
@@ -151,6 +152,7 @@ const reasons = new Set<CloudVersionReason>([
   'follow-up-outline-deleted',
   'second-round-material-imported',
   'second-round-outline-generated',
+  'second-round-outline-regenerated',
   'second-round-assessment-generated',
   'transcript-imported',
   'work-sample-analyzed',

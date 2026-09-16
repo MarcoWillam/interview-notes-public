@@ -720,7 +720,7 @@ export class InterviewStore {
       current.revision,
       `job-${jobId}`,
       applyInterviewJobResult(current.record, kind, result, this.now(), { jobId }),
-      resultVersionReason(kind),
+      resultVersionReason(kind, current.record),
     );
   }
 
@@ -785,7 +785,7 @@ export class InterviewStore {
         this.now(),
         { jobId },
       ),
-      resultVersionReason(kind),
+      resultVersionReason(kind, current.record),
     );
     this.db
       .prepare(

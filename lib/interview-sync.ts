@@ -106,6 +106,12 @@ export function cloudVersionReason(
   if (!previous.secondRoundOutline && next.secondRoundOutline)
     return 'second-round-outline-generated';
   if (
+    previous.secondRoundOutline &&
+    next.secondRoundOutline &&
+    JSON.stringify(previous.secondRoundOutline) !== JSON.stringify(next.secondRoundOutline)
+  )
+    return 'second-round-outline-regenerated';
+  if (
     !previous.priorRoundComparison?.length &&
     !!next.priorRoundComparison?.length
   )

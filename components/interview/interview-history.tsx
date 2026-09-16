@@ -19,6 +19,7 @@ const reasonLabels: Record<CloudVersionReason, string> = {
   'follow-up-outline-deleted': '删除补充追问',
   'second-round-material-imported': '导入复试资料',
   'second-round-outline-generated': '生成复试提纲',
+  'second-round-outline-regenerated': '重新生成复试提纲',
   'second-round-assessment-generated': '生成复试评估',
   'transcript-imported': '导入面试记录',
   'work-sample-analyzed': '完成作品分析',

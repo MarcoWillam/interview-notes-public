@@ -53,6 +53,7 @@ import {
   LogOut,
   Monitor,
   MoreHorizontal,
+  RefreshCw,
   UserPlus,
   LayoutDashboard,
 } from 'lucide-react';
@@ -2427,10 +2428,10 @@ export default function Home({
       setBusy(null);
     }
   }
-  async function runSecondRoundOutline() {
+  async function runSecondRoundOutline(regenerate = false) {
     if (
       busyRef.current ||
-      secondRoundOutline ||
+      (secondRoundOutline && !regenerate) ||
       secondRoundOutlineJobId ||
       !queuedCodex
     )
@@ -2471,7 +2472,7 @@ export default function Home({
       let trackedJobId = secondRoundOutlineJobId;
       const result = await submitRemoteSecondRoundOutline(
         outlineInput,
-        `${candidate} · 生成复试提纲`.slice(0, 100),
+        `${candidate} · ${regenerate ? `重新生成复试提纲 · ${crypto.randomUUID().slice(0, 8)}` : '生成复试提纲'}`.slice(0, 100),
         controller.signal,
         (job) => {
           trackRemoteWait(controller, job, 'second-round-outline', recordId);
@@ -2526,7 +2527,7 @@ export default function Home({
       setSecondRoundOutline(outcome.result.outline);
       setSecondRoundOutlineJobId(undefined);
       setSecondRoundOutlineSourceHash(undefined);
-      setNotice('复试提纲已生成，初试资料与简历已锁定。');
+      setNotice(regenerate ? '复试提纲已重新生成。' : '复试提纲已生成，初试资料与简历已锁定。');
     } catch (reason) {
       if (analysisController.current !== controller) return;
       setError(
@@ -3610,6 +3611,18 @@ export default function Home({
                                 value={secondRoundOutline}
                               />
                               <div className="action-footer">
+                                <button
+                                  className="secondary-button"
+                                  disabled={!!busy || !!secondRoundOutlineJobId || !queuedCodex || !services?.analysis}
+                                  onClick={() => void runSecondRoundOutline(true)}
+                                >
+                                  {busy === 'second-round-outline' ? (
+                                    <LoaderCircle className="spin" size={16} />
+                                  ) : (
+                                    <RefreshCw size={16} />
+                                  )}{' '}
+                                  {busy === 'second-round-outline' ? '正在重新生成…' : '重新生成复试提纲'}
+                                </button>
                                 <button
                                   className="secondary-button"
                                   onClick={() => setTab('transcript')}

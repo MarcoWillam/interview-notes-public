@@ -107,6 +107,9 @@ void test('a second-round outline is reused only within its own local record', a
     const other = store.submit(user, 'second-record-b-1', '林小满 · 生成复试提纲', input, 'second-round-outline', 'second-record-b');
     assert.equal(same.id, first.id);
     assert.notEqual(other.id, first.id);
+    store.action(user, first.id, 'stop');
+    const regenerated = store.submit(user, 'second-record-a-3', '林小满 · 重新生成复试提纲 · abc12345', input, 'second-round-outline', 'second-record-a');
+    assert.notEqual(regenerated.id, first.id);
   } finally {
     store.close();
   }

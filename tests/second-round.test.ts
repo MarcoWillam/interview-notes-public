@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  spokenSecondRoundQuestion,
   parsePriorRoundDocument,
   validateSecondRoundAssessmentResult,
   validateSecondRoundOutlineInput,
@@ -152,6 +153,29 @@ function v2Question(index: number, overrides = {}) {
   };
 }
 
+void test('spoken follow-up questions name a grounded project once', () => {
+  const item = v2Question(0, {
+    question: '监测看板上线后，你如何证明它产生了价值？',
+    resumeContext: { type: 'project', label: '医疗客服 AI 模型优化项目' },
+  });
+  assert.equal(
+    spokenSecondRoundQuestion({ question: item.question, resumeContext: { type: 'project', label: '医疗客服 AI 模型优化项目' } }),
+    '在医疗客服 AI 模型优化项目中，监测看板上线后，你如何证明它产生了价值？',
+  );
+  assert.equal(
+    spokenSecondRoundQuestion({ question: '在医疗客服 AI 模型优化项目中，你如何验证价值？', resumeContext: { type: 'project', label: '医疗客服 AI 模型优化项目' } }),
+    '在医疗客服 AI 模型优化项目中，你如何验证价值？',
+  );
+  assert.equal(
+    spokenSecondRoundQuestion({ question: item.question, resumeContext: { type: 'unspecified', label: '简历中未明确具体项目' } }),
+    item.question,
+  );
+  assert.equal(
+    spokenSecondRoundQuestion({ question: item.question, resumeContext: { type: 'internship', label: '海外独立站--产品运营实习生' } }),
+    '在“海外独立站--产品运营实习生”这段实习中，监测看板上线后，你如何证明它产生了价值？',
+  );
+});
+
 void test('validates a six-plus-three second-round outline with grounded evidence', () => {
   const input = validateSecondRoundOutlineInput(baseInput);
   const result = validateSecondRoundOutlineResult(
@@ -206,6 +230,11 @@ void test('validates a V2 outline with concise context and varied depth angles',
   );
   assert.equal(result.outline.version, 2);
   assert.equal(result.outline.requiredQuestions.length, 6);
+  assert.equal(
+    result.outline.requiredQuestions[0].question,
+    '在校园项目中，当时你为何选择第1种验证方式？',
+  );
+  assert.deepEqual(validateSecondRoundOutlineResult(result, baseInput), result);
 });
 
 void test('V2 limits written-test questions and requires four depth angles', () => {
