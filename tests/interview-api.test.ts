@@ -295,7 +295,27 @@ void test('standalone second-round preparation can be handed off as an independe
       priorRoundText: '# 外部初试记录\n\n候选人完成了初试。',
       priorRoundName: '外部初试记录.txt',
       priorRoundDigest: null,
-      secondRoundOutline: null,
+      secondRoundOutline: {
+        version: 1,
+        recommendedMinutes: { min: 45, max: 60 },
+        summary: '继续验证候选人的判断与取舍。',
+        requiredQuestions: [
+          {
+            id: 'required-1',
+            question: '如果重新做一次，你会先改变哪个关键决定？',
+            dimensions: ['自驱力'],
+            goal: '验证复盘深度。',
+            priorEvidence: '候选人已介绍原方案。',
+            resumeEvidence: null,
+            relatedInitialQuestion: '你当时为什么这样设计？',
+            difference: '从复述方案转为验证反事实思考。',
+            listenFor: ['能说明调整依据。'],
+            riskSignals: ['只给笼统结论。'],
+            probes: ['什么信息会让你改变答案？'],
+          },
+        ],
+        reserveQuestions: [],
+      },
       transcript: '不应派发的旧复试记录',
       conclusion: '不应派发的旧复试结论',
     } satisfies CloudInterview;
@@ -328,6 +348,10 @@ void test('standalone second-round preparation can be handed off as an independe
     assert.equal(target.record.priorRoundSource, 'external');
     assert.equal(target.record.priorRoundText, prepared.priorRoundText);
     assert.equal(target.record.priorRoundName, prepared.priorRoundName);
+    assert.deepEqual(
+      target.record.secondRoundOutline,
+      prepared.secondRoundOutline,
+    );
     assert.equal(target.record.transcript, '');
     assert.equal(target.record.conclusion, '');
     assert.equal(target.record.confirmed, false);

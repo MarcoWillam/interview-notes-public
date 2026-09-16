@@ -102,7 +102,11 @@ export function createSecondRoundHandoffRecord(
     priorRoundName: standaloneSecondRound
       ? source.priorRoundName
       : `${source.candidate.trim() || '候选人'}-面试记录.md`,
-    priorRoundDigest: null,
-    secondRoundOutline: null,
+    priorRoundDigest: standaloneSecondRound
+      ? (source.priorRoundDigest ?? null)
+      : null,
+    secondRoundOutline: standaloneSecondRound
+      ? (source.secondRoundOutline ?? null)
+      : null,
   });
 }

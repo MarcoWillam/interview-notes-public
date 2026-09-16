@@ -131,6 +131,27 @@ void test('second-round handoff embeds the confirmed initial interview export', 
 });
 
 void test('second-round handoff preserves imported initial materials from a standalone second round', () => {
+  const generatedOutline = {
+    version: 1 as const,
+    recommendedMinutes: { min: 45 as const, max: 60 as const },
+    summary: '继续验证候选人的判断与取舍。',
+    requiredQuestions: [
+      {
+        id: 'required-1',
+        question: '如果重新做一次，你会先改变哪个关键决定？',
+        dimensions: ['自驱力'],
+        goal: '验证复盘深度。',
+        priorEvidence: '候选人已介绍原方案。',
+        resumeEvidence: null,
+        relatedInitialQuestion: '你当时为什么这样设计？',
+        difference: '从复述方案转为验证反事实思考。',
+        listenFor: ['能说明调整依据。'],
+        riskSignals: ['只给笼统结论。'],
+        probes: ['什么信息会让你改变答案？'],
+      },
+    ],
+    reserveQuestions: [],
+  };
   const standaloneSecondRound: CloudInterview = {
     ...source,
     id: 'source-second-round-12345',
@@ -145,7 +166,7 @@ void test('second-round handoff preserves imported initial materials from a stan
       risks: [],
       conflicts: [],
     },
-    secondRoundOutline: null,
+    secondRoundOutline: generatedOutline,
     transcript: '复试官：旧复试内容。',
     transcriptName: '旧复试记录.txt',
     reviewed: true,
@@ -163,8 +184,8 @@ void test('second-round handoff preserves imported initial materials from a stan
   assert.equal(record.priorRoundSource, 'external');
   assert.equal(record.priorRoundText, standaloneSecondRound.priorRoundText);
   assert.equal(record.priorRoundName, standaloneSecondRound.priorRoundName);
-  assert.equal(record.priorRoundDigest, null);
-  assert.equal(record.secondRoundOutline, null);
+  assert.deepEqual(record.priorRoundDigest, standaloneSecondRound.priorRoundDigest);
+  assert.deepEqual(record.secondRoundOutline, generatedOutline);
   assert.equal(record.transcript, '');
   assert.equal(record.transcriptName, undefined);
   assert.equal(record.conclusion, '');

@@ -33,6 +33,7 @@ void test('handoff dialog explains snapshot delivery and prevents a second dispa
 
   assert.match(dialog, /选择接收面试官/);
   assert.match(dialog, /独立副本/);
+  assert.match(dialog, /已生成的复试提纲会一并传递/);
   assert.match(dialog, /原始简历附件和作品 ZIP 不会传输/);
   assert.match(dialog, /\/api\/handoff-accounts/);
   assert.match(dialog, /\/handoffs/);

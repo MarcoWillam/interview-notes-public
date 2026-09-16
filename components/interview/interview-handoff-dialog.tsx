@@ -165,7 +165,9 @@ export function InterviewHandoffDialog({
             <div className="handoff-snapshot-note">
               <strong>接收方会获得独立副本</strong>
               <span>
-                派发后双方记录互不覆盖；原始简历附件和作品 ZIP 不会传输。
+                {stage === 'second'
+                  ? '已生成的复试提纲会一并传递；派发后双方记录互不覆盖，原始简历附件和作品 ZIP 不会传输。'
+                  : '派发后双方记录互不覆盖；原始简历附件和作品 ZIP 不会传输。'}
               </span>
             </div>
             {error && (
