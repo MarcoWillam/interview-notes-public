@@ -146,6 +146,7 @@ import {
   type FollowUpOutlineResult,
 } from '@/lib/follow-up-outline';
 import {
+  parsePriorRoundDocument,
   validateSecondRoundOutlineInput,
   type InterviewStage,
   type PriorRoundComparison,
@@ -2153,6 +2154,53 @@ export default function Home({
       setTranscriptName('');
     setReviewed(false);
   }
+  async function replaceSecondRoundPrior(file: File) {
+    if (secondRoundOutline || busyRef.current) return;
+    busyRef.current = true;
+    setBusy('import');
+    setError('');
+    try {
+      const text = await importTranscript(file);
+      const parsed = parsePriorRoundDocument(text, file.name);
+      setPriorRoundSource(parsed.source);
+      setPriorRoundText(parsed.text);
+      setPriorRoundName(parsed.name);
+      setPriorRoundDigest(null);
+      if (parsed.embeddedResumeText) {
+        setResumeText(parsed.embeddedResumeText);
+        setResumeName(parsed.name);
+      } else if (priorRoundSource === 'bole-markdown') {
+        setResumeText('');
+        setResumeName('');
+      }
+      if (!candidate.trim() && parsed.candidate)
+        setCandidate(parsed.candidate);
+      setNotice('初试资料已更新，请确认简历和岗位后生成复试提纲。');
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : '初试资料读取失败。',
+      );
+    } finally {
+      busyRef.current = false;
+      setBusy(null);
+    }
+  }
+  async function replaceSecondRoundResume(file: File) {
+    if (secondRoundOutline || busyRef.current) return;
+    busyRef.current = true;
+    setBusy('import');
+    setError('');
+    try {
+      setResumeText(await importResume(file));
+      setResumeName(file.name);
+      setNotice('候选人简历已更新，请确认后生成复试提纲。');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '简历提取失败。');
+    } finally {
+      busyRef.current = false;
+      setBusy(null);
+    }
+  }
   async function runSecondRoundOutline() {
     if (busyRef.current || secondRoundOutline || !queuedCodex) return;
     const recordId = library.id;
@@ -3083,6 +3131,44 @@ export default function Home({
                               字符
                             </small>
                           </div>
+                          {!secondRoundOutline && (
+                            <div className="second-round-material-actions">
+                              <label className="secondary-button">
+                                <FileText size={15} />
+                                {busy === 'import'
+                                  ? '正在读取资料…'
+                                  : '重新导入初试资料'}
+                                <input
+                                  type="file"
+                                  accept=".md,.txt"
+                                  disabled={!!busy}
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    event.target.value = '';
+                                    if (file)
+                                      void replaceSecondRoundPrior(file);
+                                  }}
+                                />
+                              </label>
+                              <label className="secondary-button">
+                                <Upload size={15} />
+                                {busy === 'import'
+                                  ? '正在提取简历…'
+                                  : '重新上传候选人简历'}
+                                <input
+                                  type="file"
+                                  accept=".doc,.docx,.pdf"
+                                  disabled={!!busy}
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    event.target.value = '';
+                                    if (file)
+                                      void replaceSecondRoundResume(file);
+                                  }}
+                                />
+                              </label>
+                            </div>
+                          )}
                           <details>
                             <summary>查看初试资料原文</summary>
                             <pre>{priorRoundText}</pre>

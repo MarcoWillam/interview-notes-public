@@ -4007,6 +4007,20 @@ fieldset label:last-of-type {
   background: #f0f8f5;
 }
 
+.second-round-material-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.second-round-material-actions label {
+  cursor: pointer;
+}
+
+.second-round-material-actions input {
+  display: none;
+}
+
 .second-round-confirmation {
   display: grid;
   gap: 10px;

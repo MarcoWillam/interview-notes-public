@@ -38,6 +38,9 @@ void test('second-round workbench exposes preparation, transcript and independen
   assert.match(page, /复试准备/);
   assert.match(page, /复试记录/);
   assert.match(page, /独立复试结论/);
+  assert.match(page, /重新导入初试资料/);
+  assert.match(page, /重新上传候选人简历/);
+  assert.match(page, /!secondRoundOutline/);
   assert.match(outline, /复试提纲 · 45–60 分钟/);
   assert.match(outline, /候选题/);
   assert.match(comparison, /引用仅来自本轮复试对话/);
