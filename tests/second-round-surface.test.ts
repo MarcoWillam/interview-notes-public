@@ -69,8 +69,28 @@ void test('second-round workbench exposes preparation, transcript and independen
     styles,
     /\.second-round-material-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
   );
+  assert.match(
+    styles,
+    /\.second-round-preparation-body\s*\{[\s\S]*padding-top:\s*12px/,
+  );
   assert.match(styles, /@media \(max-width:\s*760px\)/);
-  assert.match(outline, /复试提纲 · 45–60 分钟/);
+  assert.match(
+    outline,
+    /className="interview-guide outline-v2 second-round-outline"/,
+  );
+  assert.match(outline, /className="outline-v2-heading"/);
+  assert.match(
+    outline,
+    /className="interview-question-card outline-v2-question second-round-question"/,
+  );
+  assert.match(
+    outline,
+    /className="outline-v2-section second-round-reserve"/,
+  );
+  assert.match(outline, /复试追问/);
+  assert.match(outline, /主维度/);
+  assert.match(outline, /辅助/);
+  assert.match(outline, /验证目标、初复试差异、依据与追问/);
   assert.match(outline, /候选题/);
   assert.match(comparison, /引用仅来自本轮复试对话/);
 });
