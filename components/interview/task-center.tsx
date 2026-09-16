@@ -406,6 +406,13 @@ function TaskResult({
           打开面试记录
         </button>
       )}
+      {!job.interviewId &&
+        (job.kind === 'second-round-outline' ||
+          job.kind === 'second-round-assessment') && (
+          <p className="small-note">
+            独立复试任务会由提交任务的浏览器自动写回原复试记录；如果资料已经变化，结果会保留在任务中心供核对。
+          </p>
+        )}
       {job.report && 'sections' in job.report && (
         <ResumeReadingView value={job.report} />
       )}

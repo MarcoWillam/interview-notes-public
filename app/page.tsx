@@ -147,6 +147,7 @@ import {
 } from '@/lib/follow-up-outline';
 import {
   parsePriorRoundDocument,
+  validateSecondRoundAssessmentInput,
   validateSecondRoundOutlineInput,
   type InterviewStage,
   type PriorRoundComparison,
@@ -155,6 +156,10 @@ import {
   type SecondRoundOutline,
   exportPriorRoundComparison,
 } from '@/lib/second-round';
+import {
+  recoverSecondRoundTaskResult,
+  secondRoundTaskSourceHash,
+} from '@/lib/second-round-task';
 
 const defaultDimensions = defaultStandards.dimensionText;
 const MANUAL_TRANSCRIPT_SOURCE = '手动粘贴 / 输入';
@@ -232,10 +237,14 @@ export default function Home({
     useState<SecondRoundOutline | null>(null);
   const [secondRoundOutlineJobId, setSecondRoundOutlineJobId] =
     useState<string>();
+  const [secondRoundOutlineSourceHash, setSecondRoundOutlineSourceHash] =
+    useState<string>();
   const [priorRoundComparison, setPriorRoundComparison] = useState<
     PriorRoundComparison[]
   >([]);
   const [secondRoundAssessmentJobId, setSecondRoundAssessmentJobId] =
+    useState<string>();
+  const [secondRoundAssessmentSourceHash, setSecondRoundAssessmentSourceHash] =
     useState<string>();
   const [secondRoundCreateOpen, setSecondRoundCreateOpen] = useState(false);
   const [candidate, setCandidate] = useState('');
@@ -477,6 +486,63 @@ export default function Home({
     scoringGuidance,
     reportRequirements,
   };
+  const secondRoundContext = useRef({
+    candidate,
+    role,
+    requirements,
+    dimensionText,
+    focus,
+    scoringGuidance,
+    reportRequirements,
+    priorRoundSource,
+    priorRoundText,
+    priorRoundName,
+    resumeText,
+    input,
+  });
+  useEffect(() => {
+    secondRoundContext.current = {
+      candidate,
+      role,
+      requirements,
+      dimensionText,
+      focus,
+      scoringGuidance,
+      reportRequirements,
+      priorRoundSource,
+      priorRoundText,
+      priorRoundName,
+      resumeText,
+      input: {
+        role,
+        requirements,
+        transcript,
+        dimensions: dimensionText
+          .split(/[、,，\n]/)
+          .map((value) => value.trim())
+          .filter(Boolean),
+        resumeText,
+        focus,
+        scoringGuidance,
+        reportRequirements,
+        ...(workSample ? { workSample } : {}),
+      },
+    };
+  }, [
+    candidate,
+    role,
+    requirements,
+    dimensionText,
+    focus,
+    scoringGuidance,
+    reportRequirements,
+    priorRoundSource,
+    priorRoundText,
+    priorRoundName,
+    resumeText,
+    transcript,
+    workSample,
+  ]);
   function clearRemoteTaskDisplay() {
     remoteWaitRef.current = null;
     setRemoteJob(null);
@@ -541,8 +607,10 @@ export default function Home({
     setPriorRoundDigest(saved.priorRoundDigest || null);
     setSecondRoundOutline(saved.secondRoundOutline || null);
     setSecondRoundOutlineJobId(saved.secondRoundOutlineJobId);
+    setSecondRoundOutlineSourceHash(saved.secondRoundOutlineSourceHash);
     setPriorRoundComparison(saved.priorRoundComparison || []);
     setSecondRoundAssessmentJobId(saved.secondRoundAssessmentJobId);
+    setSecondRoundAssessmentSourceHash(saved.secondRoundAssessmentSourceHash);
     setLateWorkSampleOpen(false);
     setLateWorkSampleArtifact(null);
     setCandidate(saved.candidate);
@@ -590,8 +658,10 @@ export default function Home({
       priorRoundDigest,
       secondRoundOutline,
       secondRoundOutlineJobId,
+      secondRoundOutlineSourceHash,
       priorRoundComparison,
       secondRoundAssessmentJobId,
+      secondRoundAssessmentSourceHash,
       candidate,
       role,
       requirements,
@@ -653,8 +723,34 @@ export default function Home({
   useEffect(() => {
     const jobId = secondRoundOutlineJobId || secondRoundAssessmentJobId;
     if (!library.ready || !jobId || busyRef.current) return;
+    const kind = secondRoundOutlineJobId
+      ? 'second-round-outline'
+      : 'second-round-assessment';
+    const sourceHash =
+      kind === 'second-round-outline'
+        ? secondRoundOutlineSourceHash
+        : secondRoundAssessmentSourceHash;
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const clearTask = async (persist = true) => {
+      if (kind === 'second-round-outline') {
+        if (persist)
+          await libraryRef.current.flush({
+            secondRoundOutlineJobId: undefined,
+            secondRoundOutlineSourceHash: undefined,
+          });
+        setSecondRoundOutlineJobId(undefined);
+        setSecondRoundOutlineSourceHash(undefined);
+      } else {
+        if (persist)
+          await libraryRef.current.flush({
+            secondRoundAssessmentJobId: undefined,
+            secondRoundAssessmentSourceHash: undefined,
+          });
+        setSecondRoundAssessmentJobId(undefined);
+        setSecondRoundAssessmentSourceHash(undefined);
+      }
+    };
     const recover = async () => {
       try {
         const job = await remoteRequest<RemoteJob>(
@@ -662,19 +758,103 @@ export default function Home({
         );
         if (disposed) return;
         if (job.state === 'completed') {
-          setSecondRoundOutlineJobId(undefined);
-          setSecondRoundAssessmentJobId(undefined);
-          await libraryRef.current.refreshFromCloud();
-          setNotice(
-            secondRoundOutlineJobId
-              ? '已恢复完成的复试提纲。'
-              : '已恢复完成的独立复试评估。',
-          );
+          if (job.resultDisposition === 'applied') {
+            await clearTask(false);
+            await libraryRef.current.refreshFromCloud();
+            setNotice(
+              kind === 'second-round-outline'
+                ? '已恢复完成的复试提纲。'
+                : '已恢复完成的独立复试评估。',
+            );
+            return;
+          }
+          if (job.resultDisposition === 'pending') {
+            await clearTask(false);
+            await libraryRef.current.refreshFromCloud();
+            setError(
+              '复试任务已完成，但资料发生变化。请在记录管理中确认结果。',
+            );
+            return;
+          }
+          if (!sourceHash || !job.report) {
+            await clearTask();
+            setError('复试任务缺少来源快照，请在任务中心查看结果并重新提交。');
+            return;
+          }
+          const current = secondRoundContext.current;
+          let outcome;
+          try {
+            outcome =
+              kind === 'second-round-outline'
+                ? await recoverSecondRoundTaskResult(
+                    kind,
+                    validateSecondRoundOutlineInput(current),
+                    sourceHash,
+                    job.report,
+                  )
+                : await recoverSecondRoundTaskResult(
+                    kind,
+                    validateSecondRoundAssessmentInput({
+                      ...current.input,
+                      priorRoundText: current.priorRoundText,
+                    }),
+                    sourceHash,
+                    job.report,
+                  );
+          } catch (reason) {
+            await clearTask();
+            setError(
+              reason instanceof Error
+                ? `复试结果未自动应用：${reason.message}`
+                : '复试结果结构校验失败，请在任务中心查看并重新提交。',
+            );
+            return;
+          }
+          if (outcome.status === 'stale') {
+            await clearTask();
+            setError(
+              '复试资料在任务期间已变化，结果未自动应用。可在任务中心查看后重新提交当前材料。',
+            );
+            return;
+          }
+          if (kind === 'second-round-outline') {
+            const result = outcome.result as Awaited<
+              ReturnType<typeof submitRemoteSecondRoundOutline>
+            >;
+            await libraryRef.current.flush({
+              priorRoundDigest: result.digest,
+              secondRoundOutline: result.outline,
+              secondRoundOutlineJobId: undefined,
+              secondRoundOutlineSourceHash: undefined,
+            });
+            setPriorRoundDigest(result.digest);
+            setSecondRoundOutline(result.outline);
+            setSecondRoundOutlineJobId(undefined);
+            setSecondRoundOutlineSourceHash(undefined);
+            setNotice('已恢复完成的复试提纲。');
+          } else {
+            const result = outcome.result as Awaited<
+              ReturnType<typeof submitRemoteSecondRoundAssessment>
+            >;
+            const { priorRoundComparison: comparison, ...nextReport } = result;
+            await libraryRef.current.flush({
+              report: nextReport,
+              priorRoundComparison: comparison,
+              secondRoundAssessmentJobId: undefined,
+              secondRoundAssessmentSourceHash: undefined,
+              confirmed: false,
+            });
+            setReport(nextReport);
+            setPriorRoundComparison(comparison);
+            setSecondRoundAssessmentJobId(undefined);
+            setSecondRoundAssessmentSourceHash(undefined);
+            setConfirmed(false);
+            setNotice('已恢复完成的独立复试评估。');
+          }
           return;
         }
         if (job.state === 'failed' || job.state === 'cancelled') {
-          setSecondRoundOutlineJobId(undefined);
-          setSecondRoundAssessmentJobId(undefined);
+          await clearTask();
           setError(job.error || '复试任务未完成，可以重新提交。');
           return;
         }
@@ -683,8 +863,7 @@ export default function Home({
       } catch (reason) {
         if (disposed) return;
         if ((reason as { status?: number }).status === 404) {
-          setSecondRoundOutlineJobId(undefined);
-          setSecondRoundAssessmentJobId(undefined);
+          await clearTask();
           setError('复试任务已过期，可以重新提交。');
           return;
         }
@@ -696,7 +875,13 @@ export default function Home({
       disposed = true;
       if (timer) clearTimeout(timer);
     };
-  }, [library.ready, secondRoundAssessmentJobId, secondRoundOutlineJobId]);
+  }, [
+    library.ready,
+    secondRoundAssessmentJobId,
+    secondRoundAssessmentSourceHash,
+    secondRoundOutlineJobId,
+    secondRoundOutlineSourceHash,
+  ]);
   const outlineLiveRef = useRef({
     recordId: library.id,
     resumeText,
@@ -2155,7 +2340,7 @@ export default function Home({
     setReviewed(false);
   }
   async function replaceSecondRoundPrior(file: File) {
-    if (secondRoundOutline || busyRef.current) return;
+    if (secondRoundOutline || secondRoundOutlineJobId || busyRef.current) return;
     busyRef.current = true;
     setBusy('import');
     setError('');
@@ -2186,7 +2371,7 @@ export default function Home({
     }
   }
   async function replaceSecondRoundResume(file: File) {
-    if (secondRoundOutline || busyRef.current) return;
+    if (secondRoundOutline || secondRoundOutlineJobId || busyRef.current) return;
     busyRef.current = true;
     setBusy('import');
     setError('');
@@ -2202,7 +2387,13 @@ export default function Home({
     }
   }
   async function runSecondRoundOutline() {
-    if (busyRef.current || secondRoundOutline || !queuedCodex) return;
+    if (
+      busyRef.current ||
+      secondRoundOutline ||
+      secondRoundOutlineJobId ||
+      !queuedCodex
+    )
+      return;
     const recordId = library.id;
     const navigationEpoch = recordNavigationEpoch.current;
     let outlineInput;
@@ -2231,33 +2422,69 @@ export default function Home({
     const controller = new AbortController();
     analysisController.current = controller;
     try {
-      const recordBinding = await library.flushForTask();
-      if (!recordBinding)
-        throw new Error('复试提纲需要使用已登录的云端工作台。');
+      await library.flush();
+      const sourceHash = await secondRoundTaskSourceHash(
+        'second-round-outline',
+        outlineInput,
+      );
+      let trackedJobId = secondRoundOutlineJobId;
       const result = await submitRemoteSecondRoundOutline(
         outlineInput,
         `${candidate} · 生成复试提纲`.slice(0, 100),
         controller.signal,
         (job) => {
           trackRemoteWait(controller, job, 'second-round-outline', recordId);
-          if (job.id !== secondRoundOutlineJobId) {
+          if (job.id !== trackedJobId) {
+            trackedJobId = job.id;
             setSecondRoundOutlineJobId(job.id);
-            void library.flush({ secondRoundOutlineJobId: job.id });
+            setSecondRoundOutlineSourceHash(sourceHash);
+            void library
+              .flush({
+                secondRoundOutlineJobId: job.id,
+                secondRoundOutlineSourceHash: sourceHash,
+              })
+              .catch(() => {});
           }
         },
-        { fetcher: fetch, pollMs: 2000, ...recordBinding },
+        { fetcher: fetch, pollMs: 2000 },
       );
       if (
-        !(await refreshCurrentAnalysisRecord(
-          controller,
-          recordId,
-          navigationEpoch,
-        ))
+        analysisController.current !== controller ||
+        followUpRecordId.current !== recordId ||
+        recordNavigationEpoch.current !== navigationEpoch
       )
         return;
-      setPriorRoundDigest(result.digest);
-      setSecondRoundOutline(result.outline);
+      const currentInput = validateSecondRoundOutlineInput(
+        secondRoundContext.current,
+      );
+      const outcome = await recoverSecondRoundTaskResult(
+        'second-round-outline',
+        currentInput,
+        sourceHash,
+        result,
+      );
+      if (outcome.status === 'stale') {
+        await library.flush({
+          secondRoundOutlineJobId: undefined,
+          secondRoundOutlineSourceHash: undefined,
+        });
+        setSecondRoundOutlineJobId(undefined);
+        setSecondRoundOutlineSourceHash(undefined);
+        setError(
+          '复试资料在任务期间已变化，结果未自动应用。可在任务中心查看后重新提交当前材料。',
+        );
+        return;
+      }
+      await library.flush({
+        priorRoundDigest: outcome.result.digest,
+        secondRoundOutline: outcome.result.outline,
+        secondRoundOutlineJobId: undefined,
+        secondRoundOutlineSourceHash: undefined,
+      });
+      setPriorRoundDigest(outcome.result.digest);
+      setSecondRoundOutline(outcome.result.outline);
       setSecondRoundOutlineJobId(undefined);
+      setSecondRoundOutlineSourceHash(undefined);
       setNotice('复试提纲已生成，初试资料与简历已锁定。');
     } catch (reason) {
       if (analysisController.current !== controller) return;
@@ -2274,6 +2501,7 @@ export default function Home({
   }
 
   async function analyzeSecondRound() {
+    if (busyRef.current || secondRoundAssessmentJobId) return;
     if (!secondRoundOutline)
       return setError('请先生成复试提纲，再生成复试结论。');
     if (!reviewed)
@@ -2291,34 +2519,75 @@ export default function Home({
     const controller = new AbortController();
     analysisController.current = controller;
     try {
-      const recordBinding = await library.flushForTask();
-      if (!recordBinding)
-        throw new Error('复试评估需要使用已登录的云端工作台。');
+      const normalizedInput = validateSecondRoundAssessmentInput(secondInput);
+      await library.flush();
+      const sourceHash = await secondRoundTaskSourceHash(
+        'second-round-assessment',
+        normalizedInput,
+      );
+      let trackedJobId = secondRoundAssessmentJobId;
       const data = await submitRemoteSecondRoundAssessment(
-        secondInput,
+        normalizedInput,
         `${candidate} · 复试结论评估`.slice(0, 100),
         controller.signal,
         (job) => {
           trackRemoteWait(controller, job, 'second-round-assessment', recordId);
-          if (job.id !== secondRoundAssessmentJobId) {
+          if (job.id !== trackedJobId) {
+            trackedJobId = job.id;
             setSecondRoundAssessmentJobId(job.id);
-            void library.flush({ secondRoundAssessmentJobId: job.id });
+            setSecondRoundAssessmentSourceHash(sourceHash);
+            void library
+              .flush({
+                secondRoundAssessmentJobId: job.id,
+                secondRoundAssessmentSourceHash: sourceHash,
+              })
+              .catch(() => {});
           }
         },
-        { fetcher: fetch, pollMs: 2000, ...recordBinding },
+        { fetcher: fetch, pollMs: 2000 },
       );
       if (
-        !(await refreshCurrentAnalysisRecord(
-          controller,
-          recordId,
-          navigationEpoch,
-        ))
+        analysisController.current !== controller ||
+        followUpRecordId.current !== recordId ||
+        recordNavigationEpoch.current !== navigationEpoch
       )
         return;
-      const { priorRoundComparison: comparison, ...nextReport } = data;
+      const current = secondRoundContext.current;
+      const currentInput = validateSecondRoundAssessmentInput({
+        ...current.input,
+        priorRoundText: current.priorRoundText,
+      });
+      const outcome = await recoverSecondRoundTaskResult(
+        'second-round-assessment',
+        currentInput,
+        sourceHash,
+        data,
+      );
+      if (outcome.status === 'stale') {
+        await library.flush({
+          secondRoundAssessmentJobId: undefined,
+          secondRoundAssessmentSourceHash: undefined,
+        });
+        setSecondRoundAssessmentJobId(undefined);
+        setSecondRoundAssessmentSourceHash(undefined);
+        setError(
+          '复试资料在任务期间已变化，结果未自动应用。可在任务中心查看后重新提交当前材料。',
+        );
+        return;
+      }
+      const { priorRoundComparison: comparison, ...nextReport } =
+        outcome.result;
+      await library.flush({
+        report: nextReport,
+        priorRoundComparison: comparison,
+        secondRoundAssessmentJobId: undefined,
+        secondRoundAssessmentSourceHash: undefined,
+        confirmed: false,
+      });
       setReport(nextReport);
       setPriorRoundComparison(comparison);
       setSecondRoundAssessmentJobId(undefined);
+      setSecondRoundAssessmentSourceHash(undefined);
       setConfirmed(false);
       setTab('report');
       setNotice('独立复试评估已生成，请核实本轮引用与判断。');
@@ -2489,8 +2758,10 @@ export default function Home({
     setPriorRoundDigest(null);
     setSecondRoundOutline(null);
     setSecondRoundOutlineJobId(undefined);
+    setSecondRoundOutlineSourceHash(undefined);
     setPriorRoundComparison([]);
     setSecondRoundAssessmentJobId(undefined);
+    setSecondRoundAssessmentSourceHash(undefined);
     setSourceTemplateId(seed.sourceTemplateId);
     setTemplateModified(false);
     setOutlineVersion(
@@ -3118,67 +3389,87 @@ export default function Home({
                           </div>
                           <span className="badge">45–60 分钟</span>
                         </div>
-                        <div className="panel-body">
-                          <div className="second-round-material-summary">
-                            <span>
-                              {priorRoundSource === 'bole-markdown'
-                                ? '伯乐 AI 初试记录'
-                                : '外部初试记录'}
-                            </span>
-                            <strong>{priorRoundName || '初试资料'}</strong>
-                            <small>
-                              简历已提取 {resumeText.length.toLocaleString()}{' '}
-                              字符
-                            </small>
+                        <div className="panel-body second-round-preparation-body">
+                          <div className="second-round-material-grid">
+                            <article className="second-round-material-card">
+                              <span>
+                                {priorRoundSource === 'bole-markdown'
+                                  ? '伯乐 AI 初试记录'
+                                  : '外部初试记录'}
+                              </span>
+                              <strong>{priorRoundName || '初试资料'}</strong>
+                              <small>
+                                {priorRoundText.length.toLocaleString()} 字符
+                              </small>
+                              {!secondRoundOutline && (
+                                <div className="second-round-material-actions">
+                                  <label className="secondary-button">
+                                    <FileText size={15} />
+                                    {busy === 'import'
+                                      ? '正在读取资料…'
+                                      : '重新导入初试资料'}
+                                    <input
+                                      type="file"
+                                      accept=".md,.txt"
+                                      disabled={
+                                        !!busy || !!secondRoundOutlineJobId
+                                      }
+                                      onChange={(event) => {
+                                        const file = event.target.files?.[0];
+                                        event.target.value = '';
+                                        if (file)
+                                          void replaceSecondRoundPrior(file);
+                                      }}
+                                    />
+                                  </label>
+                                </div>
+                              )}
+                            </article>
+                            <article className="second-round-material-card">
+                              <span>候选人简历</span>
+                              <strong>
+                                {resumeName || '已从初试记录提取'}
+                              </strong>
+                              <small>
+                                已提取 {resumeText.length.toLocaleString()} 字符
+                              </small>
+                              {!secondRoundOutline && (
+                                <div className="second-round-material-actions">
+                                  <label className="secondary-button">
+                                    <Upload size={15} />
+                                    {busy === 'import'
+                                      ? '正在提取简历…'
+                                      : '重新上传候选人简历'}
+                                    <input
+                                      type="file"
+                                      accept=".doc,.docx,.pdf"
+                                      disabled={
+                                        !!busy || !!secondRoundOutlineJobId
+                                      }
+                                      onChange={(event) => {
+                                        const file = event.target.files?.[0];
+                                        event.target.value = '';
+                                        if (file)
+                                          void replaceSecondRoundResume(file);
+                                      }}
+                                    />
+                                  </label>
+                                </div>
+                              )}
+                            </article>
                           </div>
-                          {!secondRoundOutline && (
-                            <div className="second-round-material-actions">
-                              <label className="secondary-button">
-                                <FileText size={15} />
-                                {busy === 'import'
-                                  ? '正在读取资料…'
-                                  : '重新导入初试资料'}
-                                <input
-                                  type="file"
-                                  accept=".md,.txt"
-                                  disabled={!!busy}
-                                  onChange={(event) => {
-                                    const file = event.target.files?.[0];
-                                    event.target.value = '';
-                                    if (file)
-                                      void replaceSecondRoundPrior(file);
-                                  }}
-                                />
-                              </label>
-                              <label className="secondary-button">
-                                <Upload size={15} />
-                                {busy === 'import'
-                                  ? '正在提取简历…'
-                                  : '重新上传候选人简历'}
-                                <input
-                                  type="file"
-                                  accept=".doc,.docx,.pdf"
-                                  disabled={!!busy}
-                                  onChange={(event) => {
-                                    const file = event.target.files?.[0];
-                                    event.target.value = '';
-                                    if (file)
-                                      void replaceSecondRoundResume(file);
-                                  }}
-                                />
-                              </label>
-                            </div>
-                          )}
-                          <details>
-                            <summary>查看初试资料原文</summary>
-                            <pre>{priorRoundText}</pre>
-                          </details>
-                          <details>
-                            <summary>查看候选人简历正文</summary>
-                            <pre>{resumeText}</pre>
-                          </details>
+                          <div className="second-round-source-details">
+                            <details>
+                              <summary>查看初试资料原文</summary>
+                              <pre>{priorRoundText}</pre>
+                            </details>
+                            <details>
+                              <summary>查看候选人简历正文</summary>
+                              <pre>{resumeText}</pre>
+                            </details>
+                          </div>
                           {!secondRoundOutline ? (
-                            <div className="action-footer">
+                            <div className="second-round-preparation-actions">
                               <span>
                                 生成成功后，初试资料、简历和岗位标准将锁定。
                               </span>

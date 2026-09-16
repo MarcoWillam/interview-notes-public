@@ -4036,6 +4036,81 @@ fieldset label:last-of-type {
   display: none;
 }
 
+.second-round-preparation-body {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+}
+
+.second-round-material-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.second-round-material-card {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #b8d8cf;
+  border-radius: 12px;
+  background: #f0f8f5;
+}
+
+.second-round-material-card > span,
+.second-round-material-card > small {
+  color: var(--muted-foreground);
+}
+
+.second-round-material-card > strong {
+  overflow-wrap: anywhere;
+}
+
+.second-round-material-card .second-round-material-actions {
+  margin-top: 7px;
+}
+
+.second-round-source-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.second-round-source-details details {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fbfcfc;
+}
+
+.second-round-source-details summary {
+  cursor: pointer;
+  color: #506466;
+  font-weight: 600;
+}
+
+.second-round-preparation-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #edf1f1;
+}
+
+.second-round-preparation-actions > span {
+  max-width: 520px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.second-round-preparation-actions > button {
+  flex: 0 0 auto;
+}
+
 .second-round-confirmation {
   display: grid;
   gap: 10px;
@@ -4191,6 +4266,20 @@ fieldset label:last-of-type {
   }
   .second-round-outline {
     padding: 11px;
+  }
+}
+
+@media (max-width: 760px) {
+  .second-round-material-grid,
+  .second-round-source-details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .second-round-preparation-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .second-round-preparation-actions > button {
+    width: 100%;
   }
 }
 .interview-status-badge[data-status='needs-confirmation'] {

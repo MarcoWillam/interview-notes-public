@@ -104,3 +104,23 @@ void test('cloud records accept legacy and follow-up fields with strict group va
   ])
     assert.equal(validateCloudVersionReason(reason), reason);
 });
+
+void test('cloud records accept strict second-round task source hashes', () => {
+  const hash = 'a'.repeat(64);
+  const next = {
+    ...record,
+    secondRoundOutlineSourceHash: hash,
+    secondRoundAssessmentSourceHash: hash,
+  };
+  assert.deepEqual(validateCloudInterview(next), next);
+  for (const invalid of ['short', 'A'.repeat(64), 'g'.repeat(64)]) {
+    assert.throws(
+      () =>
+        validateCloudInterview({
+          ...record,
+          secondRoundOutlineSourceHash: invalid,
+        }),
+      /复试提纲任务来源/,
+    );
+  }
+});

@@ -40,8 +40,9 @@ void test('second-round creation requires external resumes and accepts Bole expo
 });
 
 void test('second-round workbench exposes preparation, transcript and independent report', async () => {
-  const [page, outline, comparison] = await Promise.all([
+  const [page, styles, outline, comparison] = await Promise.all([
     readFile(new URL('app/page.tsx', root), 'utf8'),
+    readFile(new URL('app/globals.css', root), 'utf8'),
     readFile(
       new URL('components/interview/second-round-outline-view.tsx', root),
       'utf8',
@@ -57,9 +58,48 @@ void test('second-round workbench exposes preparation, transcript and independen
   assert.match(page, /重新导入初试资料/);
   assert.match(page, /重新上传候选人简历/);
   assert.match(page, /!secondRoundOutline/);
+  assert.match(page, /second-round-preparation-body/);
+  assert.match(page, /second-round-material-grid/);
+  assert.match(page, /second-round-preparation-actions/);
+  assert.match(
+    styles,
+    /\.second-round-preparation-body\s*\{[\s\S]*min-height:\s*0/,
+  );
+  assert.match(
+    styles,
+    /\.second-round-material-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+  );
+  assert.match(styles, /@media \(max-width:\s*760px\)/);
   assert.match(outline, /复试提纲 · 45–60 分钟/);
   assert.match(outline, /候选题/);
   assert.match(comparison, /引用仅来自本轮复试对话/);
+});
+
+void test('second-round tasks submit independent snapshots and recover into their originating record', async () => {
+  const [page, taskCenter] = await Promise.all([
+    readFile(new URL('app/page.tsx', root), 'utf8'),
+    readFile(new URL('components/interview/task-center.tsx', root), 'utf8'),
+  ]);
+  const outlineHandler = page.slice(
+    page.indexOf('async function runSecondRoundOutline'),
+    page.indexOf('async function analyzeSecondRound'),
+  );
+  const assessmentHandler = page.slice(
+    page.indexOf('async function analyzeSecondRound'),
+    page.indexOf('async function analyze()'),
+  );
+  for (const handler of [outlineHandler, assessmentHandler]) {
+    assert.doesNotMatch(handler, /flushForTask/);
+    assert.doesNotMatch(handler, /interviewId|interviewRevision|recordBinding/);
+    assert.match(handler, /secondRoundTaskSourceHash/);
+    assert.match(handler, /library\.flush\(/);
+  }
+  assert.match(page, /secondRoundOutlineSourceHash/);
+  assert.match(page, /secondRoundAssessmentSourceHash/);
+  assert.match(page, /recoverSecondRoundTaskResult/);
+  assert.match(page, /secondRoundOutlineJobId \|\| busyRef\.current/);
+  assert.match(page, /!!busy \|\| !!secondRoundOutlineJobId/);
+  assert.match(taskCenter, /独立复试任务/);
 });
 
 void test('navigation surfaces initial and second-round badges', async () => {

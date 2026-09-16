@@ -555,12 +555,6 @@ export class QueueStore {
     if (kind === 'follow-up-outline' && (!scope || !binding))
       throw new QueueError('补充追问需要绑定面试记录。');
     if (
-      (kind === 'second-round-outline' ||
-        kind === 'second-round-assessment') &&
-      (!scope || !binding)
-    )
-      throw new QueueError('复试任务需要绑定面试记录。');
-    if (
       scope &&
       kind !== 'resume' &&
       kind !== 'written-test' &&

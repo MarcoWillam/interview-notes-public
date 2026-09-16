@@ -680,8 +680,10 @@ function lifecycleEnvironment() {
     'PriorRoundDigest',
     'SecondRoundOutline',
     'SecondRoundOutlineJobId',
+    'SecondRoundOutlineSourceHash',
     'PriorRoundComparison',
     'SecondRoundAssessmentJobId',
+    'SecondRoundAssessmentSourceHash',
   ]) {
     environment[`set${name}`] = (value: unknown) => {
       state[name[0].toLowerCase() + name.slice(1)] = value;

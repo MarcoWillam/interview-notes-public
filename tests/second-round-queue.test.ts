@@ -61,6 +61,98 @@ const outlineResult = {
   },
 };
 
+function secondRoundRecord(now: number): CloudInterview {
+  return {
+    id: 'standalone-second-round-123',
+    createdAt: now,
+    updatedAt: now,
+    interviewStage: 'second',
+    priorRoundSource: 'bole-markdown',
+    priorRoundText,
+    priorRoundName: '初试.md',
+    priorRoundDigest: null,
+    secondRoundOutline: null,
+    candidate: '林小满',
+    role: standards.role,
+    requirements: standards.requirements,
+    dimensionText: standards.dimensionText,
+    focus: standards.focus,
+    scoringGuidance: standards.scoringGuidance,
+    reportRequirements: standards.reportRequirements,
+    resumeText,
+    resumeName: '初试.md',
+    resumeReading: null,
+    transcript: '候选人：我重新访谈了三位用户，并主动否定了原方案。',
+    reviewed: true,
+    report: null,
+    conclusion: '',
+    confirmed: false,
+  };
+}
+
+void test('protocol five connector runs standalone second-round tasks without interview binding', () => {
+  const store = new QueueStore(':memory:', () => 1_000_000);
+  try {
+    const user = store.createUser('standalone', 'password-standalone-123').id;
+    const record = secondRoundRecord(1_000_000);
+    const outlineJob = store.submit(
+      user,
+      'standalone-outline-client-123',
+      '林小满 · 生成复试提纲',
+      interviewJobSource(record, 'second-round-outline'),
+      'second-round-outline',
+    );
+    const assessmentJob = store.submit(
+      user,
+      'standalone-assess-client-123',
+      '林小满 · 复试结论评估',
+      interviewJobSource(record, 'second-round-assessment'),
+      'second-round-assessment',
+    );
+
+    assert.equal(outlineJob.interviewId, null);
+    assert.equal(assessmentJob.interviewId, null);
+    assert.equal(outlineJob.resultDisposition, null);
+    assert.equal(assessmentJob.resultDisposition, null);
+
+    const device = store.redeem(store.pairing(user).code, '独立复试电脑', {
+      version: CONNECTOR_VERSION,
+      protocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
+    });
+    const claim = store.claim(
+      device.token,
+      true,
+      ['interview', 'outline'],
+      {
+        version: CONNECTOR_VERSION,
+        protocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
+      },
+    )! as {
+      id: string;
+      lease: string;
+      execution: { attempt: number };
+    };
+    assert.equal(claim.id, outlineJob.id);
+    assert.equal(
+      store.finish(
+        device.token,
+        claim.id,
+        claim.lease,
+        outlineResult,
+        false,
+        undefined,
+        claim.execution.attempt,
+      ).accepted,
+      true,
+    );
+    const completed = store.get(user, outlineJob.id);
+    assert.deepEqual(completed.report, outlineResult);
+    assert.equal(completed.resultDisposition, null);
+  } finally {
+    store.close();
+  }
+});
+
 void test('existing protocol five connector completes bound second-round outline and assessment', () => {
   let now = 1_000_000;
   const store = new QueueStore(':memory:', () => now);

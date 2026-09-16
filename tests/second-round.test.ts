@@ -6,6 +6,10 @@ import {
   validateSecondRoundOutlineInput,
   validateSecondRoundOutlineResult,
 } from '../lib/second-round.ts';
+import {
+  recoverSecondRoundTaskResult,
+  secondRoundTaskSourceHash,
+} from '../lib/second-round-task.ts';
 
 const priorRoundText = `# 面试评估记录
 
@@ -45,15 +49,29 @@ const baseInput = {
   priorRoundSource: 'bole-markdown' as const,
   priorRoundText,
   priorRoundName: '林小满-面试记录.md',
-  resumeText:
-    '林小满在校园项目中组织五位同学访谈，并主动完成两轮原型验证。',
+  resumeText: '林小满在校园项目中组织五位同学访谈，并主动完成两轮原型验证。',
 };
 
-void test('recognizes Bole exports and extracts the embedded resume', () => {
-  const parsed = parsePriorRoundDocument(
-    priorRoundText,
-    '林小满-面试记录.md',
+void test('second-round task source hashes are stable and input-sensitive', async () => {
+  const first = await secondRoundTaskSourceHash(
+    'second-round-outline',
+    baseInput,
   );
+  const second = await secondRoundTaskSourceHash('second-round-outline', {
+    ...baseInput,
+  });
+  const changed = await secondRoundTaskSourceHash('second-round-outline', {
+    ...baseInput,
+    focus: '重点核实候选人的学习迁移能力。',
+  });
+
+  assert.match(first, /^[a-f0-9]{64}$/);
+  assert.equal(second, first);
+  assert.notEqual(changed, first);
+});
+
+void test('recognizes Bole exports and extracts the embedded resume', () => {
+  const parsed = parsePriorRoundDocument(priorRoundText, '林小满-面试记录.md');
   assert.equal(parsed.source, 'bole-markdown');
   assert.equal(parsed.candidate, '林小满');
   assert.equal(parsed.role, 'AI 产品经理（校招）');
@@ -139,6 +157,43 @@ void test('validates a six-plus-three second-round outline with grounded evidenc
   assert.equal(result.outline.requiredQuestions.length, 6);
   assert.equal(result.outline.reserveQuestions.length, 1);
   assert.deepEqual(result.outline.recommendedMinutes, { min: 45, max: 60 });
+});
+
+void test('standalone second-round results apply only to the unchanged source snapshot', async () => {
+  const input = validateSecondRoundOutlineInput(baseInput);
+  const report = {
+    digest,
+    outline: {
+      version: 1,
+      recommendedMinutes: { min: 45, max: 60 },
+      summary: '围绕初试缺口继续核实判断、取舍和迁移能力。',
+      requiredQuestions: Array.from({ length: 6 }, (_, index) =>
+        question(index),
+      ),
+      reserveQuestions: [],
+    },
+  };
+  const sourceHash = await secondRoundTaskSourceHash(
+    'second-round-outline',
+    input,
+  );
+  const ready = await recoverSecondRoundTaskResult(
+    'second-round-outline',
+    input,
+    sourceHash,
+    report,
+  );
+  assert.equal(ready.status, 'ready');
+  if (ready.status === 'ready')
+    assert.equal(ready.result.outline.requiredQuestions.length, 6);
+
+  const stale = await recoverSecondRoundTaskResult(
+    'second-round-outline',
+    { ...input, focus: '已经改变的关注重点' },
+    sourceHash,
+    report,
+  );
+  assert.deepEqual(stale, { status: 'stale' });
 });
 
 void test('rejects repeated first-round questions and invented evidence', () => {

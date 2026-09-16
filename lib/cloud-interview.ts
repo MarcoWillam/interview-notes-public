@@ -76,8 +76,10 @@ export type CloudInterview = {
   priorRoundDigest?: SecondRoundDigest | null;
   secondRoundOutline?: SecondRoundOutline | null;
   secondRoundOutlineJobId?: string;
+  secondRoundOutlineSourceHash?: string;
   priorRoundComparison?: PriorRoundComparison[];
   secondRoundAssessmentJobId?: string;
+  secondRoundAssessmentSourceHash?: string;
 };
 
 export type CloudInterviewSummary = {
@@ -135,8 +137,10 @@ const allowedKeys = new Set<keyof CloudInterview>([
   'priorRoundDigest',
   'secondRoundOutline',
   'secondRoundOutlineJobId',
+  'secondRoundOutlineSourceHash',
   'priorRoundComparison',
   'secondRoundAssessmentJobId',
+  'secondRoundAssessmentSourceHash',
 ]);
 
 const reasons = new Set<CloudVersionReason>([
@@ -164,6 +168,14 @@ function string(value: unknown, maximum: number, label: string) {
 
 function optionalString(value: unknown, maximum: number, label: string) {
   if (value !== undefined && value !== null) string(value, maximum, label);
+}
+
+function optionalSourceHash(value: unknown, label: string) {
+  if (
+    value !== undefined &&
+    (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value))
+  )
+    throw new Error(`${label}格式无效。`);
 }
 
 function timestamp(value: unknown, optional = false) {
@@ -240,6 +252,11 @@ export function validateCloudInterview(value: unknown): CloudInterview {
   optionalString(record.priorRoundName, 300, '初试资料名称');
   optionalString(record.secondRoundOutlineJobId, 100, '复试提纲任务');
   optionalString(record.secondRoundAssessmentJobId, 100, '复试评估任务');
+  optionalSourceHash(record.secondRoundOutlineSourceHash, '复试提纲任务来源');
+  optionalSourceHash(
+    record.secondRoundAssessmentSourceHash,
+    '复试评估任务来源',
+  );
   if (
     record.interviewStage !== undefined &&
     record.interviewStage !== 'initial' &&
