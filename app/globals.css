@@ -4073,24 +4073,66 @@ fieldset label:last-of-type {
   margin-top: 7px;
 }
 
-.second-round-source-details {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.second-round-source-details details {
+.second-round-material-card details {
   min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #fbfcfc;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #cce0da;
 }
 
-.second-round-source-details summary {
+.second-round-material-card summary {
   cursor: pointer;
   color: #506466;
   font-weight: 600;
+}
+
+.second-round-review-points {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid #e8d8b4;
+  border-radius: 12px;
+  background: #fffbf2;
+}
+
+.second-round-review-points-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.second-round-review-points-heading strong {
+  color: #35443d;
+  font-size: 15px;
+}
+
+.second-round-review-points-heading span {
+  color: #8c632a;
+  font-size: 12px;
+}
+
+.second-round-review-point-group h3 {
+  margin: 0 0 6px;
+  color: #725225;
+  font-size: 13px;
+}
+
+.second-round-review-point-group ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.second-round-review-points > p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
 }
 
 .second-round-preparation-actions {
@@ -4301,8 +4343,7 @@ fieldset label:last-of-type {
 }
 
 @media (max-width: 760px) {
-  .second-round-material-grid,
-  .second-round-source-details {
+  .second-round-material-grid {
     grid-template-columns: minmax(0, 1fr);
   }
   .second-round-preparation-actions {

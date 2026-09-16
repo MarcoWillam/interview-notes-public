@@ -106,6 +106,29 @@ void test('second-round workbench exposes preparation, transcript and independen
   assert.match(comparison, /引用仅来自本轮复试对话/);
 });
 
+void test('second-round preparation shows review points and nests each original inside its material card', async () => {
+  const [page, styles] = await Promise.all([
+    readFile(new URL('app/page.tsx', root), 'utf8'),
+    readFile(new URL('app/globals.css', root), 'utf8'),
+  ]);
+  const cards = [
+    ...page.matchAll(
+      /<article className="second-round-material-card">([\s\S]*?)<\/article>/g,
+    ),
+  ];
+  assert.equal(cards.length, 2);
+  assert.match(cards[0][1], /<details[^>]*>[\s\S]*查看初试资料原文/);
+  assert.match(cards[1][1], /<details[^>]*>[\s\S]*查看候选人简历正文/);
+  assert.match(page, /extractPriorRoundReviewPoints/);
+  assert.match(page, /second-round-review-points/);
+  assert.match(page, /初试待核实与考察重点/);
+  assert.match(page, /初试明确记录/);
+  assert.match(page, /Codex 整理/);
+  assert.doesNotMatch(page, /second-round-source-details/);
+  assert.match(styles, /\.second-round-material-card details/);
+  assert.match(styles, /\.second-round-review-points/);
+});
+
 void test('second-round tasks submit independent snapshots and recover into their originating record', async () => {
   const [page, taskCenter] = await Promise.all([
     readFile(new URL('app/page.tsx', root), 'utf8'),

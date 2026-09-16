@@ -36,7 +36,7 @@ import {
   createPreparationWorkSampleInput,
   createPreparationWrittenTestInput,
 } from '@/lib/preparation-analysis-inputs';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FileText,
   ClipboardCheck,
@@ -161,6 +161,7 @@ import {
   recoverSecondRoundTaskResult,
   secondRoundTaskSourceHash,
 } from '@/lib/second-round-task';
+import { extractPriorRoundReviewPoints } from '@/lib/prior-round-review-points';
 
 const defaultDimensions = defaultStandards.dimensionText;
 const MANUAL_TRANSCRIPT_SOURCE = '手动粘贴 / 输入';
@@ -3021,6 +3022,10 @@ export default function Home({
     setView('workbench');
     setNotice('复试资料已导入，请确认后生成复试提纲。');
   }
+  const priorRoundReviewPoints = useMemo(
+    () => extractPriorRoundReviewPoints(priorRoundText, priorRoundDigest),
+    [priorRoundText, priorRoundDigest],
+  );
   return (
     <div className="workbench-root">
       <header className="topbar">
@@ -3476,6 +3481,10 @@ export default function Home({
                                   </label>
                                 </div>
                               )}
+                              <details className="second-round-material-details">
+                                <summary>查看初试资料原文</summary>
+                                <pre>{priorRoundText}</pre>
+                              </details>
                             </article>
                             <article className="second-round-material-card">
                               <span>候选人简历</span>
@@ -3508,18 +3517,52 @@ export default function Home({
                                   </label>
                                 </div>
                               )}
+                              <details className="second-round-material-details">
+                                <summary>查看候选人简历正文</summary>
+                                <pre>{resumeText}</pre>
+                              </details>
                             </article>
                           </div>
-                          <div className="second-round-source-details">
-                            <details>
-                              <summary>查看初试资料原文</summary>
-                              <pre>{priorRoundText}</pre>
-                            </details>
-                            <details>
-                              <summary>查看候选人简历正文</summary>
-                              <pre>{resumeText}</pre>
-                            </details>
-                          </div>
+                          <section
+                            className="second-round-review-points"
+                            aria-label="初试待核实与考察重点"
+                          >
+                            <div className="second-round-review-points-heading">
+                              <strong>初试待核实与考察重点</strong>
+                              {priorRoundReviewPoints.source !== 'none' && (
+                                <span>
+                                  {priorRoundReviewPoints.source === 'document'
+                                    ? '初试明确记录'
+                                    : 'Codex 整理'}
+                                </span>
+                              )}
+                            </div>
+                            {priorRoundReviewPoints.pending.length > 0 && (
+                              <div className="second-round-review-point-group">
+                                <h3>待核实事项</h3>
+                                <ul>
+                                  {priorRoundReviewPoints.pending.map((item) => (
+                                    <li key={item}>{item}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {priorRoundReviewPoints.focus.length > 0 && (
+                              <div className="second-round-review-point-group">
+                                <h3>重点考察事项</h3>
+                                <ul>
+                                  {priorRoundReviewPoints.focus.map((item) => (
+                                    <li key={item}>{item}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {priorRoundReviewPoints.source === 'none' && (
+                              <p>
+                                初试资料未明确列出，生成提纲后可查看整理结果。
+                              </p>
+                            )}
+                          </section>
                           {!secondRoundOutline ? (
                             <div className="second-round-preparation-actions">
                               <span>
