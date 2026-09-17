@@ -34,6 +34,7 @@ import {
   type InterviewOutlineV3,
 } from './interview-outline-v3.ts';
 import { resumeOutlineV3Instructions } from './interview-outline-v3-prompt.ts';
+import { resolveResumeEvidence } from './resume-evidence.ts';
 import { builtInRoleTemplates } from './default-role-templates.ts';
 
 export type {
@@ -189,9 +190,12 @@ export function validateResumeReading(
       if (!item || typeof item !== 'object')
         throw new Error('简历要点格式错误。');
       const i = item as Record<string, unknown>;
-      const evidence = text(i.evidence, 2000);
-      if (!normalizedInput.resumeText.includes(evidence))
-        throw new Error('简历引用无法在原文中找到。');
+      const submittedEvidence = text(i.evidence, 2000);
+      const evidence = resolveResumeEvidence(
+        normalizedInput.resumeText,
+        submittedEvidence,
+      );
+      if (!evidence) throw new Error('简历引用无法在原文中找到。');
       return { text: text(i.text, 1000), evidence };
     });
     return { name, items };

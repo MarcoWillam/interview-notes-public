@@ -112,6 +112,33 @@ void test('简历阅读入口接受 V3 并返回六加二潜力提纲', () => {
   assert.equal(validated.outline?.reserveQuestions.length, 2);
 });
 
+void test('简历引用仅空白格式不同时定位回原文', () => {
+  const source = '姓名：林小满。主动组织校园用户访谈\n并完成两轮验证。';
+  const result = validateResumeReading(
+    {
+      ...reading,
+      sections: reading.sections.map((section) =>
+        section.name === '项目经验'
+          ? {
+              ...section,
+              items: [
+                {
+                  text: '组织用户访谈',
+                  evidence: '主动组织校园用户访谈 并完成两轮验证',
+                },
+              ],
+            }
+          : section,
+      ),
+    },
+    { ...input, resumeText: source },
+  );
+  assert.equal(
+    result.sections[2].items[0].evidence,
+    '主动组织校园用户访谈\n并完成两轮验证',
+  );
+});
+
 void test('V3 简历阅读使用潜力提纲指令和严格输出结构', () => {
   assert.match(resumeInstructionsFor(3), /V3 校招潜力/);
   const schema = resumeOutputSchema(3);

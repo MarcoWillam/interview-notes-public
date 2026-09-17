@@ -2,6 +2,7 @@ import type {
   InterviewOutlineCoverage,
   InterviewQuestionV2,
 } from './interview-outline-v2.ts';
+import { resolveResumeEvidence } from './resume-evidence.ts';
 
 export const INTERVIEW_OUTLINE_V3 = 3 as const;
 export const V3_REQUIRED_QUESTIONS = 6;
@@ -63,7 +64,6 @@ function mainQuestion(value: unknown) {
   if (/请(?:举例说明|系统阐述|详细介绍|全面分析)|证明你|谈谈你的/.test(result))
     throw new Error('面试主问题需要使用自然、亲和的表达。');
   const evidenceChain = result.match(/背景|过程|行动|结果|复盘|反思|收获/g);
-  const enumerationSeparators = result.match(/[、，,与和及]/g);
   const interrogativeClauses = result
     .split(/[，,；;]/)
     .filter((clause) =>
@@ -71,7 +71,6 @@ function mainQuestion(value: unknown) {
     );
   if (
     (evidenceChain && new Set(evidenceChain).size >= 3) ||
-    (enumerationSeparators && enumerationSeparators.length >= 2) ||
     interrogativeClauses.length >= 2 ||
     /(?:并|且)(?:说明|分析|介绍|复盘|验证|评估|比较|提出|给出)|以及(?:结果|复盘|反思|验证|评估)|分别(?:说明|介绍|分析|验证|评估)/.test(
       result,
@@ -132,9 +131,12 @@ export function validateInterviewQuestionV3(
   const source = raw.source as InterviewQuestionV3['source'];
   let resumeEvidence: string | null = null;
   if (source === 'resume') {
-    resumeEvidence = boundedText(raw.resumeEvidence, 2000, '简历依据');
-    if (!context.resumeText.includes(resumeEvidence))
-      throw new Error('面试问题引用无法在简历原文中找到。');
+    const submittedEvidence = boundedText(raw.resumeEvidence, 2000, '简历依据');
+    resumeEvidence = resolveResumeEvidence(
+      context.resumeText,
+      submittedEvidence,
+    );
+    if (!resumeEvidence) throw new Error('面试问题引用无法在简历原文中找到。');
   } else if (raw.resumeEvidence !== null) {
     throw new Error('非简历题不能引用简历原文。');
   }

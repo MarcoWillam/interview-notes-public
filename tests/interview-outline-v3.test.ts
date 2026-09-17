@@ -206,6 +206,20 @@ void test('V3 主问题允许 12–30 字并拒绝生硬面试腔', () => {
   );
 });
 
+void test('V3 单一取舍问题可以列出多个选项', () => {
+  const outline = validOutline();
+  const requiredQuestions = outline.requiredQuestions.map((item, index) =>
+    index === 0
+      ? { ...item, question: '你如何在用户、业务与技术之间做取舍？' }
+      : item,
+  );
+  assert.equal(
+    validateInterviewOutlineV3({ ...outline, requiredQuestions }, context)
+      .requiredQuestions[0].question,
+    '你如何在用户、业务与技术之间做取舍？',
+  );
+});
+
 void test('V3 生成指令明确潜力导向和亲和表达', () => {
   assert.match(resumeOutlineV3Instructions, /六道必问题/);
   assert.match(resumeOutlineV3Instructions, /两道候选题/);
