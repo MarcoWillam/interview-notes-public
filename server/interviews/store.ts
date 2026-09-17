@@ -99,9 +99,13 @@ function validateWorkspace(value: unknown): InterviewWorkspace {
     !['newest', 'oldest', 'manual'].includes(String(item.sortMode))
   )
     throw new InterviewStoreError('工作台设置格式无效。');
-  const identifiers = (values: unknown[], maximum: number) =>
+  const identifiers = (values: unknown[], maximum: number, allowUngrouped = false) =>
     values.map((entry) => {
-      if (typeof entry !== 'string' || !/^[a-zA-Z0-9-]{1,100}$/.test(entry))
+      if (
+        typeof entry !== 'string' ||
+        !(allowUngrouped && entry === '__ungrouped__') &&
+          !/^[a-zA-Z0-9-]{1,100}$/.test(entry)
+      )
         throw new InterviewStoreError('工作台记录编号无效。');
       return entry.slice(0, maximum);
     });
@@ -138,7 +142,7 @@ function validateWorkspace(value: unknown): InterviewWorkspace {
     groups,
     sortMode: item.sortMode as InterviewWorkspace['sortMode'],
     manualOrder: identifiers(item.manualOrder, 100),
-    collapsedGroupIds: identifiers(item.collapsedGroupIds, 100),
+    collapsedGroupIds: identifiers(item.collapsedGroupIds, 100, true),
   };
 }
 

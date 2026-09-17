@@ -529,3 +529,40 @@ void test('workspace and pending result APIs stay account scoped', async () => {
     store.close();
   }
 });
+
+void test('workspace accepts the sidebar ungrouped section when it is collapsed', async () => {
+  const { store, alice, call } = setup();
+  try {
+    const response = await call(alice, '/api/interview-workspace', 'PUT', {
+      baseRevision: 0,
+      mutationId: 'mutation-ungrouped-collapse',
+      workspace: {
+        groups: [{ id: 'group-api-12345', name: '已分组', createdAt: 1, order: 0 }],
+        sortMode: 'newest',
+        manualOrder: [],
+        collapsedGroupIds: ['__ungrouped__'],
+      },
+    });
+    assert.equal(response.status, 200, JSON.stringify(await responseJson(response)));
+    for (const [field, value] of [
+      ['manualOrder', ['__ungrouped__']],
+      ['collapsedGroupIds', ['__invalid__']],
+    ] as const) {
+      const rejected = await call(alice, '/api/interview-workspace', 'PUT', {
+        baseRevision: 1,
+        mutationId: `mutation-invalid-${field}`,
+        workspace: {
+          groups: [],
+          sortMode: 'newest',
+          manualOrder: [],
+          collapsedGroupIds: [],
+          [field]: value,
+        },
+      });
+      assert.equal(rejected.status, 400);
+      assert.deepEqual(await responseJson(rejected), { error: '工作台记录编号无效。' });
+    }
+  } finally {
+    store.close();
+  }
+});
