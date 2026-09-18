@@ -44,6 +44,8 @@ export async function createOutlineRegenerationInput(value: {
   standards: InterviewStandards;
   reading: ResumeReading;
 }): Promise<OutlineRegenerationInput> {
+  if (!value.resumeText.trim())
+    throw new Error('请重新上传或粘贴候选人简历后再生成提纲。');
   const revision = await outlineRevision(value);
   if (
     value.reading.outline?.version === 2 ||
@@ -56,6 +58,9 @@ export async function createOutlineRegenerationInput(value: {
       outlineVersion: value.reading.outline.version,
       outline: value.reading.outline,
       workSample: value.reading.workSample || null,
+      ...(value.reading.outline.version === 3 && value.reading.experienceMap
+        ? { experienceMap: value.reading.experienceMap }
+        : {}),
     });
   return validateOutlineRegenerationInput({
     ...value.standards,

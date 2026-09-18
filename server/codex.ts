@@ -96,8 +96,24 @@ export async function regenerateOutlineWithCodex(
   value: OutlineRegenerationInput,
   signal: AbortSignal,
 ): Promise<unknown> {
-  const input = validateOutlineRegenerationInput(value);
+  let input = validateOutlineRegenerationInput(value);
   const version = input.outlineVersion ?? 1;
+  if (version === 3 && !('experienceMap' in input)) {
+    const dimensions = input.dimensionText.split('、');
+    const rawMap = await runStructuredCodex(
+      { resumeText: input.resumeText, dimensions },
+      signal,
+      resumeExperienceMapInstructions,
+      resumeExperienceMapSchema,
+    );
+    input = validateOutlineRegenerationInput({
+      ...input,
+      experienceMap: validateResumeExperienceMap(rawMap, {
+        resumeText: input.resumeText,
+        dimensions,
+      }),
+    });
+  }
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     const raw = await runStructuredCodex(
@@ -108,7 +124,10 @@ export async function regenerateOutlineWithCodex(
           ? `\n上一次结果的主问题未满足短句结构。本次必须逐题检查 ${version === 2 ? '8–24' : '12–30'} 字、最多一个问号，并把所有细节移入观察点和追问。`
           : ''
       }`,
-      outlineRegenerationOutputSchema(version),
+      outlineRegenerationOutputSchema(
+        version,
+        version === 3 && 'experienceMap' in input,
+      ),
     );
     try {
       return validateOutlineRegenerationResult(raw, input);

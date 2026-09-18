@@ -528,6 +528,87 @@ void test('outline regeneration requires a current connector and reports its ver
   }
 });
 
+void test('historical V3 outline regeneration rebuilds its experience map first', () => {
+  const { s, a } = setup();
+  const template = builtInRoleTemplates[0];
+  const dimensions = template.dimensionText.split('、');
+  const resumeText = '姓名：林小满。组织校园用户访谈并完成两轮验证。';
+  const order = [4, 5, 6, 7, 0, 2, 1, 3];
+  const all = order.map((dimensionIndex, index) => ({
+    id: `historical-v3-${index + 1}`,
+    question: `可以聊聊你处理第${index + 1}个问题的经过吗？`,
+    required: index < 6,
+    estimatedMinutes: index < 6 ? 5 : 4,
+    primaryDimension: dimensions[dimensionIndex],
+    secondaryDimensions:
+      index === 4 ? [dimensions[1]] : index === 5 ? [dimensions[3]] : [],
+    source: 'role' as const,
+    goal: '了解候选人的实际行动',
+    resumeEvidence: null,
+    workSampleEvidence: null,
+    listenFor: ['候选人自己的行动'],
+    riskSignals: ['无法说明自己的行动'],
+    probes: [{ condition: '回答笼统', question: '当时你先做了哪一步？' }],
+  }));
+  const outline = {
+    version: 3 as const,
+    estimatedMinutes: 30,
+    requiredQuestions: all.slice(0, 6),
+    reserveQuestions: all.slice(6),
+    archivedReserveQuestions: [],
+    coverage: dimensions.map((dimension) => ({
+      dimension,
+      primaryQuestionIds: all.filter(({ primaryDimension }) => primaryDimension === dimension).map(({ id }) => id),
+      secondaryQuestionIds: all.filter(({ secondaryDimensions }) => secondaryDimensions.includes(dimension)).map(({ id }) => id),
+      status: 'covered' as const,
+    })),
+  };
+  const map = {
+    version: 1 as const,
+    summary: '识别到一段校园项目。',
+    experiences: [{
+      id: 'campus-1', sourceOrder: 1, type: 'campus' as const,
+      name: '校园用户访谈', nameEvidence: '校园用户访谈',
+      organization: null, period: null, role: null, context: null,
+      actions: [{ text: '组织用户访谈', evidence: '组织校园用户访谈' }],
+      decisions: [], collaboration: [], outcomes: [], reflection: [],
+      evidence: ['校园用户访谈', '组织校园用户访谈'],
+      dimensionSignals: [dimensions[0]], missingInformation: [],
+    }],
+    coverage: [{ source: '组织校园用户访谈', experienceId: 'campus-1', status: 'mapped' as const }],
+    unresolvedItems: [],
+  };
+  try {
+    const device = s.redeem(s.pairing(a).code, '新版电脑', connectorRelease);
+    const job = s.submit(a, 'historical-v3-outline', '重新生成提纲', {
+      ...template, resumeText, revision: 'outline-historical-v3',
+      outlineVersion: 3, outline, workSample: null,
+    }, 'outline', 'record-historical-v3');
+    const mapping = s.claim(device.token, true, ['outline'], connectorRelease)!;
+    const advanced = s.finish(device.token, mapping.id, mapping.lease, map, false, undefined, 1);
+    assert.equal(advanced.advanced, true);
+    assert.equal(s.get(a, job.id).state, 'queued');
+    const regeneration = s.claim(device.token, true, ['outline'], connectorRelease)!;
+    assert.equal(regeneration.id, job.id);
+    if (!('execution' in regeneration)) throw new Error('execution contract expected');
+    assert.deepEqual(
+      (regeneration.execution?.payload as { experienceMap?: unknown }).experienceMap,
+      map,
+    );
+    const nextOutline = {
+      ...outline,
+      requiredQuestions: outline.requiredQuestions.map((question) => ({ ...question, experienceId: null })),
+      reserveQuestions: outline.reserveQuestions.map((question) => ({ ...question, experienceId: null })),
+    };
+    s.finish(device.token, regeneration.id, regeneration.lease, {
+      outlineVersion: 3, revision: 'outline-historical-v3', outline: nextOutline,
+    }, false, undefined, 1);
+    assert.equal(s.get(a, job.id).state, 'completed');
+  } finally {
+    s.close();
+  }
+});
+
 void test('two-stage resume preparation requires a protocol-five connector', () => {
   const { s, a } = setup();
   try {

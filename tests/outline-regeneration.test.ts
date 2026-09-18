@@ -237,6 +237,61 @@ void test('V3 regeneration keeps verified resume evidence and recalculates deriv
   );
 });
 
+void test('V3 regeneration can reselect a validated mapped experience', () => {
+  const template = builtInRoleTemplates[0];
+  const dimensionNames = template.dimensionText.split('、');
+  const source = '实习经历\n星云科技\n客服 AI 项目\n负责访谈用户并搭建监测看板。';
+  const experienceMap = {
+    version: 1 as const,
+    summary: '识别到一段实习项目经历。',
+    experiences: [{
+      id: 'internship-1', sourceOrder: 1, type: 'internship' as const,
+      name: '客服 AI 项目', nameEvidence: '客服 AI 项目',
+      organization: { text: '星云科技', evidence: '星云科技' },
+      period: null, role: null, context: null,
+      actions: [{ text: '访谈用户并搭建监测看板', evidence: '负责访谈用户并搭建监测看板' }],
+      decisions: [], collaboration: [], outcomes: [], reflection: [],
+      evidence: ['客服 AI 项目', '负责访谈用户并搭建监测看板'],
+      dimensionSignals: [dimensionNames[0]], missingInformation: ['结果数据未说明'],
+    }],
+    coverage: [{ source: '负责访谈用户并搭建监测看板', experienceId: 'internship-1', status: 'mapped' as const }],
+    unresolvedItems: [],
+  };
+  const makeQuestion = (index: number) => ({
+    id: `mapped-v3-${index + 1}`,
+    question: `可以聊聊你处理第${index + 1}个问题的经过吗？`,
+    required: index < 6,
+    estimatedMinutes: index < 6 ? 5 : 4,
+    primaryDimension: index < 4 ? dimensionNames[index + 4] : dimensionNames[index - 4],
+    secondaryDimensions: index === 4 || index === 5 ? [dimensionNames[index - 2]] : [],
+    source: index === 0 ? ('resume' as const) : ('role' as const),
+    goal: '核实候选人的实际行动',
+    resumeEvidence: index === 0 ? '负责访谈用户并搭建监测看板' : null,
+    workSampleEvidence: null,
+    listenFor: ['本人行动'], riskSignals: ['只有笼统结论'],
+    probes: [{ condition: '回答笼统', question: '你当时先做了什么？' }],
+    experienceId: index === 0 ? 'internship-1' : null,
+  });
+  const questions = Array.from({ length: 8 }, (_, index) => makeQuestion(index));
+  const outline = {
+    version: 3 as const, estimatedMinutes: 30,
+    requiredQuestions: questions.slice(0, 6), reserveQuestions: questions.slice(6),
+    archivedReserveQuestions: [], coverage: calculateOutlineCoverageV3(questions, dimensionNames),
+  };
+  const existing = validateOutlineRegenerationInput({
+    ...template, resumeText: source, revision: 'outline-v3-map',
+    outlineVersion: 3, outline, workSample: null, experienceMap,
+  });
+  const result = validateOutlineRegenerationResult(
+    { outlineVersion: 3, revision: existing.revision, outline },
+    existing,
+  );
+  if (!('outline' in result) || result.outline.version !== 3)
+    throw new Error('V3 result expected');
+  assert.equal(result.outline.requiredQuestions[0].experienceId, 'internship-1');
+  assert.equal(result.outline.requiredQuestions[0].contextLabel, '客服 AI 项目');
+});
+
 void test('initially embedded work-sample questions stay identical in both views', async () => {
   const workSampleEvidence = {
     path: 'brief.md',

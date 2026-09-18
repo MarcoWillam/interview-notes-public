@@ -67,6 +67,7 @@ const inputFields = [
 const resumeReadingFields = [
   'candidateName',
   'candidateNameEvidence',
+  'experienceMap',
   'interviewQuestions',
   'outline',
   'writtenTestSupplement',
@@ -217,6 +218,8 @@ const legacyQuestionFields = [
   'listenFor',
   'riskSignals',
   'probes',
+  'experienceId',
+  'contextLabel',
 ] as const;
 
 const outlineQuestionFields = [
@@ -233,6 +236,8 @@ const outlineQuestionFields = [
   'listenFor',
   'riskSignals',
   'probes',
+  'experienceId',
+  'contextLabel',
 ] as const;
 
 function strictQuestionShape(

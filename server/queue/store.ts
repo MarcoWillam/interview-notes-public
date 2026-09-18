@@ -1179,10 +1179,16 @@ export class QueueStore {
               : job.kind === 'work-sample'
                 ? validateStoredWorkSampleResult(result, storedInput)
                 : job.kind === 'outline'
-                  ? validateOutlineRegenerationResult(
-                      result,
-                      validateOutlineRegenerationInput(storedInput),
-                    )
+                  ? (() => {
+                      const input = validateOutlineRegenerationInput(storedInput);
+                      return input.outlineVersion === 3 &&
+                        !('experienceMap' in input)
+                        ? validateResumeExperienceMap(result, {
+                            resumeText: input.resumeText,
+                            dimensions: input.dimensionText.split('、'),
+                          })
+                        : validateOutlineRegenerationResult(result, input);
+                    })()
                   : job.kind === 'follow-up-outline'
                     ? validateFollowUpOutlineResult(
                         result,
@@ -1251,6 +1257,34 @@ export class QueueStore {
           id,
         );
       return { accepted: true, advanced: true };
+    }
+    if (!error && report && job.kind === 'outline') {
+      const outlineInput = validateOutlineRegenerationInput(
+        JSON.parse(String(job.input)),
+      );
+      if (
+        outlineInput.outlineVersion === 3 &&
+        !('experienceMap' in outlineInput)
+      ) {
+        const input = JSON.stringify(
+          validateOutlineRegenerationInput({
+            ...outlineInput,
+            experienceMap: JSON.parse(report),
+          }),
+        );
+        this.db
+          .prepare(
+            "UPDATE jobs SET state='queued',input=?,report=NULL,error=NULL,device=NULL,lease=NULL,until=NULL,leaseProtocol=NULL,requiredProtocol=?,attempt=1,feedback=NULL,queued=?,started=NULL,updated=? WHERE id=?",
+          )
+          .run(
+            input,
+            SERVER_DRIVEN_EXECUTION_PROTOCOL,
+            this.now(),
+            this.now(),
+            id,
+          );
+        return { accepted: true, advanced: true };
+      }
     }
     if (!error && job.kind === 'outline' && !job.scope) {
       report = null;

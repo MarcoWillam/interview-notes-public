@@ -215,10 +215,24 @@ function modelDefinition(kind: CodexExecutionKind, value: unknown) {
   if (kind === 'outline') {
     const input = validateOutlineRegenerationInput(value);
     const version = input.outlineVersion ?? 1;
+    if (version === 3 && !('experienceMap' in input)) {
+      return {
+        runner: 'structured-text' as const,
+        instructions: resumeExperienceMapInstructions,
+        schema: resumeExperienceMapSchema,
+        payload: {
+          resumeText: input.resumeText,
+          dimensions: input.dimensionText.split('、'),
+        },
+      };
+    }
     return {
       runner: 'structured-text' as const,
       instructions: outlineRegenerationInstructionsFor(version),
-      schema: outlineRegenerationOutputSchema(version),
+      schema: outlineRegenerationOutputSchema(
+        version,
+        version === 3 && 'experienceMap' in input,
+      ),
       payload: input,
     };
   }

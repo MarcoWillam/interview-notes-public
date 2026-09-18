@@ -77,7 +77,7 @@ export function initialOutlineOutputSchema(version: 1 | 2 | 3) {
 }
 
 export function initialOutlineInstructionsFor(version: 1 | 2 | 3) {
-  return `${resumeInstructionsFor(version)}\n输入 experienceMap 已经完成全量简历阅读。生成提纲前先建立“经历 × 考核维度”候选矩阵；优先使用实习、项目和个人项目，其他个人经历只用于补足维度。不得删除、改写或补造 experienceMap 中的经历。`;
+  return `${resumeInstructionsFor(version)}\n输入 experienceMap 已经完成全量简历阅读。生成提纲前先建立“经历 × 考核维度”候选矩阵；优先使用实习、项目和个人项目，其他个人经历只用于补足维度。不得删除、改写或补造 experienceMap 中的经历。V3 中每道 resume 题必须返回对应 experienceId，其他来源的题必须返回 experienceId=null。`;
 }
 
 export function validateInitialOutlineResult(

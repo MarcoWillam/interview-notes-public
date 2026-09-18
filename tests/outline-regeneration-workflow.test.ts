@@ -93,6 +93,13 @@ void test('regeneration input reuses persisted resume and current outline', asyn
   assert.equal(input.writtenTestSupplement, null);
 });
 
+void test('regeneration gives a specific recovery message when saved resume text is missing', async () => {
+  await assert.rejects(
+    () => createOutlineRegenerationInput({ resumeText: ' ', standards, reading }),
+    /重新上传或粘贴/,
+  );
+});
+
 void test('completed outline only applies to the unchanged active record', async () => {
   const input = await createOutlineRegenerationInput({
     resumeText: '负责用户访谈并整理需求。',
@@ -209,7 +216,27 @@ void test('V3 potential outline is eligible and keeps its six-plus-two snapshot'
     archivedReserveQuestions: [],
     coverage: calculateOutlineCoverageV3(all, dimensions),
   };
-  const v3Reading = { ...reading, interviewQuestions: undefined, outline };
+  const experienceMap = {
+    version: 1 as const,
+    summary: '识别到用户访谈经历。',
+    experiences: [{
+      id: 'project-1', sourceOrder: 1, type: 'project' as const,
+      name: '简历中未明确具体项目', nameEvidence: null,
+      organization: null, period: null, role: null, context: null,
+      actions: [{ text: '用户访谈与需求整理', evidence: '负责用户访谈并整理需求' }],
+      decisions: [], collaboration: [], outcomes: [], reflection: [],
+      evidence: ['负责用户访谈并整理需求'],
+      dimensionSignals: [dimensions[0]], missingInformation: [],
+    }],
+    coverage: [{ source: '负责用户访谈并整理需求', experienceId: 'project-1', status: 'mapped' as const }],
+    unresolvedItems: [],
+  };
+  const v3Reading = {
+    ...reading,
+    interviewQuestions: undefined,
+    outline,
+    experienceMap,
+  };
   const state = {
     resumeText: '负责用户访谈并整理需求。',
     reading: v3Reading,
@@ -225,4 +252,8 @@ void test('V3 potential outline is eligible and keeps its six-plus-two snapshot'
   });
   assert.equal(input.outlineVersion, 3);
   assert.deepEqual('outline' in input ? input.outline : null, outline);
+  assert.deepEqual(
+    'experienceMap' in input ? input.experienceMap : null,
+    experienceMap,
+  );
 });
