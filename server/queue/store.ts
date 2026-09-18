@@ -7,9 +7,7 @@ import {
   scryptSync,
   timingSafeEqual,
 } from 'node:crypto';
-import {
-  validateResumeInput,
-} from '../../lib/resume-reading.ts';
+import { validateResumeInput } from '../../lib/resume-reading.ts';
 import { validateResumeExperienceMap } from '../../lib/resume-experience-map.ts';
 import {
   validateInitialOutlineInput,
@@ -76,6 +74,7 @@ const hash = (value: string) =>
 type Row = Record<string, string | number | null>;
 const PREPARATION_PRIORITY =
   "CASE WHEN kind IN ('resume','initial-outline','written-test','work-sample','outline','follow-up-outline','second-round-outline') THEN 0 ELSE 1 END";
+export const CONNECTOR_LEASE_MS = 300000;
 function validateStoredWorkSampleResult(result: unknown, storedInput: unknown) {
   const input = validateWorkSampleInput(storedInput);
   return validateWorkSampleAnalysisResult(result, input, {
@@ -1022,7 +1021,7 @@ export class QueueStore {
       .get(
         device.id,
         lease,
-        this.now() + 60000,
+        this.now() + CONNECTOR_LEASE_MS,
         connectorProtocol,
         this.now(),
         this.now(),
@@ -1070,7 +1069,14 @@ export class QueueStore {
       .prepare(
         "UPDATE jobs SET until=?,updated=? WHERE id=? AND device=? AND user=? AND lease=? AND state='running'",
       )
-      .run(this.now() + 60000, this.now(), id, device.id, device.user, lease);
+      .run(
+        this.now() + CONNECTOR_LEASE_MS,
+        this.now(),
+        id,
+        device.id,
+        device.user,
+        lease,
+      );
     return { active: result.changes === 1 };
   }
   finish(
@@ -1173,44 +1179,45 @@ export class QueueStore {
                   result,
                   validateInitialOutlineInput(storedInput),
                 )
-            : job.kind === 'written-test'
-              ? validateWrittenTestSupplement(
-                  result,
-                  validateWrittenTestSupplementInput(storedInput),
-                  { conciseQuestions: true },
-                )
-              : job.kind === 'work-sample'
-                ? validateStoredWorkSampleResult(result, storedInput)
-                : job.kind === 'outline'
-                  ? (() => {
-                      const input = validateOutlineRegenerationInput(storedInput);
-                      return input.outlineVersion === 3 &&
-                        !('experienceMap' in input)
-                        ? validateResumeExperienceMap(result, {
-                            resumeText: input.resumeText,
-                            dimensions: input.dimensionText.split('、'),
-                          })
-                        : validateOutlineRegenerationResult(result, input);
-                    })()
-                  : job.kind === 'follow-up-outline'
-                    ? validateFollowUpOutlineResult(
-                        result,
-                        validateFollowUpOutlineInput(storedInput),
-                      )
-                    : job.kind === 'second-round-outline'
-                      ? validateSecondRoundOutlineResult(
+              : job.kind === 'written-test'
+                ? validateWrittenTestSupplement(
+                    result,
+                    validateWrittenTestSupplementInput(storedInput),
+                    { conciseQuestions: true },
+                  )
+                : job.kind === 'work-sample'
+                  ? validateStoredWorkSampleResult(result, storedInput)
+                  : job.kind === 'outline'
+                    ? (() => {
+                        const input =
+                          validateOutlineRegenerationInput(storedInput);
+                        return input.outlineVersion === 3 &&
+                          !('experienceMap' in input)
+                          ? validateResumeExperienceMap(result, {
+                              resumeText: input.resumeText,
+                              dimensions: input.dimensionText.split('、'),
+                            })
+                          : validateOutlineRegenerationResult(result, input);
+                      })()
+                    : job.kind === 'follow-up-outline'
+                      ? validateFollowUpOutlineResult(
                           result,
-                          validateSecondRoundOutlineInput(storedInput),
+                          validateFollowUpOutlineInput(storedInput),
                         )
-                      : job.kind === 'second-round-assessment'
-                        ? validateSecondRoundAssessmentResult(
+                      : job.kind === 'second-round-outline'
+                        ? validateSecondRoundOutlineResult(
                             result,
-                            validateSecondRoundAssessmentInput(storedInput),
+                            validateSecondRoundOutlineInput(storedInput),
                           )
-                        : validateAssessmentResult(
-                            result,
-                            validateInput(storedInput),
-                          ),
+                        : job.kind === 'second-round-assessment'
+                          ? validateSecondRoundAssessmentResult(
+                              result,
+                              validateSecondRoundAssessmentInput(storedInput),
+                            )
+                          : validateAssessmentResult(
+                              result,
+                              validateInput(storedInput),
+                            ),
         );
       } catch (validationError) {
         validationFeedback =
@@ -1232,7 +1239,13 @@ export class QueueStore {
         .prepare(
           'UPDATE jobs SET attempt=?,feedback=?,until=?,updated=? WHERE id=?',
         )
-        .run(attempt, validationFeedback, this.now() + 60000, this.now(), id);
+        .run(
+          attempt,
+          validationFeedback,
+          this.now() + CONNECTOR_LEASE_MS,
+          this.now(),
+          id,
+        );
       return {
         accepted: false,
         retry: {
@@ -1318,9 +1331,7 @@ export class QueueStore {
         JSON.stringify(
           interviewJobSource(
             current.record,
-            job.kind === 'initial-outline'
-              ? 'resume'
-              : (job.kind as JobKind),
+            job.kind === 'initial-outline' ? 'resume' : (job.kind as JobKind),
           ),
         ),
       );

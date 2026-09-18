@@ -7,6 +7,14 @@ import { executeCodexContract } from '../contract-executor.ts';
 import { connectorRelease } from '../../lib/connector-release.ts';
 import type { LocalWorkSampleReference } from '../work-samples/inventory.ts';
 export type Credentials = { server: string; token: string; id: string };
+export const CONNECTOR_HEARTBEAT_GRACE_MS = 240000;
+export const CONNECTOR_FINISH_ATTEMPTS = 12;
+export function heartbeatConnectionExpired(
+  lastHeartbeat: number,
+  now = Date.now(),
+) {
+  return now - lastHeartbeat > CONNECTOR_HEARTBEAT_GRACE_MS;
+}
 export function validateServer(value: string) {
   const url = new URL(value);
   if (
@@ -202,7 +210,7 @@ export async function runConnector(
               if (result.active !== true) task.abort();
             })
             .catch(() => {
-              if (Date.now() - lastHeartbeat > 40000) task.abort();
+              if (heartbeatConnectionExpired(lastHeartbeat)) task.abort();
             })
             .finally(() => {
               checking = false;
@@ -230,7 +238,7 @@ export async function runConnector(
             let finished: Record<string, unknown> | undefined;
             for (
               let attempt = 0;
-              attempt < 4 && !taskSignal.aborted;
+              attempt < CONNECTOR_FINISH_ATTEMPTS && !taskSignal.aborted;
               attempt++
             ) {
               try {
@@ -250,7 +258,7 @@ export async function runConnector(
                 );
                 break;
               } catch {
-                if (attempt === 3)
+                if (attempt === CONNECTOR_FINISH_ATTEMPTS - 1)
                   console.error('结果回传未确认，请在网页查看任务状态。');
                 else await delay(3000, taskSignal);
               }

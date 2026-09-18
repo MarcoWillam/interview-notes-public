@@ -77,9 +77,7 @@ const experienceMap = {
       period: null,
       role: null,
       context: null,
-      actions: [
-        { text: '访谈五位用户', evidence: '我访谈了五位用户' },
-      ],
+      actions: [{ text: '访谈五位用户', evidence: '我访谈了五位用户' }],
       decisions: [],
       collaboration: [],
       outcomes: [],
@@ -558,51 +556,117 @@ void test('historical V3 outline regeneration rebuilds its experience map first'
     archivedReserveQuestions: [],
     coverage: dimensions.map((dimension) => ({
       dimension,
-      primaryQuestionIds: all.filter(({ primaryDimension }) => primaryDimension === dimension).map(({ id }) => id),
-      secondaryQuestionIds: all.filter(({ secondaryDimensions }) => secondaryDimensions.includes(dimension)).map(({ id }) => id),
+      primaryQuestionIds: all
+        .filter(({ primaryDimension }) => primaryDimension === dimension)
+        .map(({ id }) => id),
+      secondaryQuestionIds: all
+        .filter(({ secondaryDimensions }) =>
+          secondaryDimensions.includes(dimension),
+        )
+        .map(({ id }) => id),
       status: 'covered' as const,
     })),
   };
   const map = {
     version: 1 as const,
     summary: '识别到一段校园项目。',
-    experiences: [{
-      id: 'campus-1', sourceOrder: 1, type: 'campus' as const,
-      name: '校园用户访谈', nameEvidence: '校园用户访谈',
-      organization: null, period: null, role: null, context: null,
-      actions: [{ text: '组织用户访谈', evidence: '组织校园用户访谈' }],
-      decisions: [], collaboration: [], outcomes: [], reflection: [],
-      evidence: ['校园用户访谈', '组织校园用户访谈'],
-      dimensionSignals: [dimensions[0]], missingInformation: [],
-    }],
-    coverage: [{ source: '组织校园用户访谈', experienceId: 'campus-1', status: 'mapped' as const }],
+    experiences: [
+      {
+        id: 'campus-1',
+        sourceOrder: 1,
+        type: 'campus' as const,
+        name: '校园用户访谈',
+        nameEvidence: '校园用户访谈',
+        organization: null,
+        period: null,
+        role: null,
+        context: null,
+        actions: [{ text: '组织用户访谈', evidence: '组织校园用户访谈' }],
+        decisions: [],
+        collaboration: [],
+        outcomes: [],
+        reflection: [],
+        evidence: ['校园用户访谈', '组织校园用户访谈'],
+        dimensionSignals: [dimensions[0]],
+        missingInformation: [],
+      },
+    ],
+    coverage: [
+      {
+        source: '组织校园用户访谈',
+        experienceId: 'campus-1',
+        status: 'mapped' as const,
+      },
+    ],
     unresolvedItems: [],
   };
   try {
     const device = s.redeem(s.pairing(a).code, '新版电脑', connectorRelease);
-    const job = s.submit(a, 'historical-v3-outline', '重新生成提纲', {
-      ...template, resumeText, revision: 'outline-historical-v3',
-      outlineVersion: 3, outline, workSample: null,
-    }, 'outline', 'record-historical-v3');
+    const job = s.submit(
+      a,
+      'historical-v3-outline',
+      '重新生成提纲',
+      {
+        ...template,
+        resumeText,
+        revision: 'outline-historical-v3',
+        outlineVersion: 3,
+        outline,
+        workSample: null,
+      },
+      'outline',
+      'record-historical-v3',
+    );
     const mapping = s.claim(device.token, true, ['outline'], connectorRelease)!;
-    const advanced = s.finish(device.token, mapping.id, mapping.lease, map, false, undefined, 1);
+    const advanced = s.finish(
+      device.token,
+      mapping.id,
+      mapping.lease,
+      map,
+      false,
+      undefined,
+      1,
+    );
     assert.equal(advanced.advanced, true);
     assert.equal(s.get(a, job.id).state, 'queued');
-    const regeneration = s.claim(device.token, true, ['outline'], connectorRelease)!;
+    const regeneration = s.claim(
+      device.token,
+      true,
+      ['outline'],
+      connectorRelease,
+    )!;
     assert.equal(regeneration.id, job.id);
-    if (!('execution' in regeneration)) throw new Error('execution contract expected');
+    if (!('execution' in regeneration))
+      throw new Error('execution contract expected');
     assert.deepEqual(
-      (regeneration.execution.payload as { experienceMap?: unknown }).experienceMap,
+      (regeneration.execution.payload as { experienceMap?: unknown })
+        .experienceMap,
       map,
     );
     const nextOutline = {
       ...outline,
-      requiredQuestions: outline.requiredQuestions.map((question) => ({ ...question, experienceId: null })),
-      reserveQuestions: outline.reserveQuestions.map((question) => ({ ...question, experienceId: null })),
+      requiredQuestions: outline.requiredQuestions.map((question) => ({
+        ...question,
+        experienceId: null,
+      })),
+      reserveQuestions: outline.reserveQuestions.map((question) => ({
+        ...question,
+        experienceId: null,
+      })),
     };
-    s.finish(device.token, regeneration.id, regeneration.lease, {
-      outlineVersion: 3, revision: 'outline-historical-v3', outline: nextOutline,
-    }, false, undefined, 1);
+    s.finish(
+      device.token,
+      regeneration.id,
+      regeneration.lease,
+      {
+        outlineVersion: 3,
+        revision: 'outline-historical-v3',
+        outline: nextOutline,
+      },
+      false,
+      undefined,
+      1,
+    );
     assert.equal(s.get(a, job.id).state, 'completed');
   } finally {
     s.close();
@@ -1231,6 +1295,20 @@ void test('heartbeats extend ownership and queued material expires after 24 hour
     s.close();
   }
 });
+void test('a running connector lease tolerates a four minute network interruption', () => {
+  const { s, a, tick } = setup();
+  try {
+    const d = s.redeem(s.pairing(a).code, '电脑', connectorRelease);
+    const job = s.submit(a, 'lease-network-gap-123', '面试', input);
+    s.claim(d.token, true)!;
+    tick(240000);
+    assert.equal(s.get(a, job.id).state, 'running');
+    tick(60001);
+    assert.equal(s.get(a, job.id).state, 'failed');
+  } finally {
+    s.close();
+  }
+});
 void test('pairing is single-use, expiring, revocable and bound to an account', () => {
   const { s, a, b, tick } = setup();
   try {
@@ -1407,7 +1485,7 @@ void test('cancelled and expired leases cannot overwrite a result or run twice a
     assert.equal(s.finish(d.token, c.id, c.lease, report).accepted, false);
     s.submit(a, 'request-456', '面试', input);
     const next = s.claim(d.token, true)!;
-    tick(60001);
+    tick(300001);
     assert.equal(s.heartbeat(d.token, next.id, next.lease).active, false);
     assert.equal(s.get(a, next.id).state, 'failed');
     assert.equal(s.claim(d.token, true), null);
@@ -1583,15 +1661,7 @@ void test('resume jobs require an upgraded connector and validate against resume
       connectorRelease,
     )!;
     assert.equal(outline.kind, 'initial-outline');
-    s.finish(
-      d.token,
-      outline.id,
-      outline.lease,
-      reading,
-      false,
-      undefined,
-      1,
-    );
+    s.finish(d.token, outline.id, outline.lease, reading, false, undefined, 1);
     assert.deepEqual(s.get(a, job.id).report, {
       ...reading,
       experienceMap,
@@ -1625,9 +1695,25 @@ void test('completed resume work is reused only inside the same interview record
       'interview-record-a',
     );
     const claimed = s.claim(device.token, true, ['resume'], connectorRelease)!;
-    s.finish(device.token, claimed.id, claimed.lease, experienceMap, false, undefined, 1);
+    s.finish(
+      device.token,
+      claimed.id,
+      claimed.lease,
+      experienceMap,
+      false,
+      undefined,
+      1,
+    );
     const outline = s.claim(device.token, true, ['resume'], connectorRelease)!;
-    s.finish(device.token, outline.id, outline.lease, reading, false, undefined, 1);
+    s.finish(
+      device.token,
+      outline.id,
+      outline.lease,
+      reading,
+      false,
+      undefined,
+      1,
+    );
 
     const sameRecord = s.submit(
       a,
@@ -1678,7 +1764,15 @@ void test('resume finish rejects fabricated question evidence against stored inp
       'resume',
     );
     const claimed = s.claim(d.token, true, ['resume'], connectorRelease)!;
-    s.finish(d.token, claimed.id, claimed.lease, experienceMap, false, undefined, 1);
+    s.finish(
+      d.token,
+      claimed.id,
+      claimed.lease,
+      experienceMap,
+      false,
+      undefined,
+      1,
+    );
     const outline = s.claim(d.token, true, ['resume'], connectorRelease)!;
     const invalid = structuredClone(reading);
     invalid.interviewQuestions[0].resumeEvidence = '简历中不存在的项目成果';

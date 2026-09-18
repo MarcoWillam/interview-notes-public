@@ -8,6 +8,7 @@ import { QueueStore } from '../server/queue/store.ts';
 import { queueHttp } from '../server/queue/http.ts';
 import {
   connectorRequest,
+  heartbeatConnectionExpired,
   runConnector,
   validateServer,
 } from '../server/queue/connector-client.ts';
@@ -57,16 +58,34 @@ const reading = {
 const experienceMap = {
   version: 1 as const,
   summary: '识别到一段用户访谈经历。',
-  experiences: [{
-    id: 'experience-1', sourceOrder: 1, type: 'project' as const,
-    name: '简历中未明确具体项目', nameEvidence: null,
-    organization: null, period: null, role: null, context: null,
-    actions: [{ text: '访谈五位用户', evidence: '我访谈了五位用户' }],
-    decisions: [], collaboration: [], outcomes: [], reflection: [],
-    evidence: ['我访谈了五位用户'],
-    dimensionSignals: ['需求分析'], missingInformation: ['项目名称未明确'],
-  }],
-  coverage: [{ source: '我访谈了五位用户', experienceId: 'experience-1', status: 'mapped' as const }],
+  experiences: [
+    {
+      id: 'experience-1',
+      sourceOrder: 1,
+      type: 'project' as const,
+      name: '简历中未明确具体项目',
+      nameEvidence: null,
+      organization: null,
+      period: null,
+      role: null,
+      context: null,
+      actions: [{ text: '访谈五位用户', evidence: '我访谈了五位用户' }],
+      decisions: [],
+      collaboration: [],
+      outcomes: [],
+      reflection: [],
+      evidence: ['我访谈了五位用户'],
+      dimensionSignals: ['需求分析'],
+      missingInformation: ['项目名称未明确'],
+    },
+  ],
+  coverage: [
+    {
+      source: '我访谈了五位用户',
+      experienceId: 'experience-1',
+      status: 'mapped' as const,
+    },
+  ],
   unresolvedItems: [],
 };
 const writtenTestInput = {
@@ -364,10 +383,14 @@ void test('HTTP queue accepts only bound follow-up outline tasks', async () => {
     };
     assert.equal(job.kind, 'follow-up-outline');
     assert.equal(job.requiredProtocol, SERVER_DRIVEN_EXECUTION_PROTOCOL);
-    const protocol4 = f.store.redeem(f.store.pairing(f.user).code, '协议四电脑', {
-      version: '2026.9.13-1',
-      protocol: 4,
-    });
+    const protocol4 = f.store.redeem(
+      f.store.pairing(f.user).code,
+      '协议四电脑',
+      {
+        version: '2026.9.13-1',
+        protocol: 4,
+      },
+    );
     const oldClaim = await connectorRequest(
       f.origin,
       '/api/worker/claim',
@@ -379,10 +402,14 @@ void test('HTTP queue accepts only bound follow-up outline tasks', async () => {
       protocol4.token,
     );
     assert.equal(oldClaim.job, null);
-    const protocol5 = f.store.redeem(f.store.pairing(f.user).code, '协议五电脑', {
-      version: CONNECTOR_VERSION,
-      protocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
-    });
+    const protocol5 = f.store.redeem(
+      f.store.pairing(f.user).code,
+      '协议五电脑',
+      {
+        version: CONNECTOR_VERSION,
+        protocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
+      },
+    );
     const currentClaim = await connectorRequest(
       f.origin,
       '/api/worker/claim',
@@ -640,6 +667,17 @@ void test('connector allows only HTTPS or loopback roots', () => {
   ])
     assert.throws(() => validateServer(url));
 });
+void test('connector keeps analysis alive through a four minute heartbeat gap', () => {
+  const lastHeartbeat = 1_000_000;
+  assert.equal(
+    heartbeatConnectionExpired(lastHeartbeat, lastHeartbeat + 240000),
+    false,
+  );
+  assert.equal(
+    heartbeatConnectionExpired(lastHeartbeat, lastHeartbeat + 240001),
+    true,
+  );
+});
 void test('connector routes resume work to the reading runner and stores its cited output', async () => {
   const f = await fixture();
   const controller = new AbortController();
@@ -720,7 +758,12 @@ void test('resume task scope crosses the HTTP boundary without reusing another r
     };
 
     const first = await submit('scope-http-a-1', 'interview-record-a');
-    const claimed = f.store.claim(device.token, true, ['resume'], connectorRelease)!;
+    const claimed = f.store.claim(
+      device.token,
+      true,
+      ['resume'],
+      connectorRelease,
+    )!;
     f.store.finish(
       device.token,
       claimed.id,
@@ -730,7 +773,12 @@ void test('resume task scope crosses the HTTP boundary without reusing another r
       undefined,
       1,
     );
-    const outline = f.store.claim(device.token, true, ['resume'], connectorRelease)!;
+    const outline = f.store.claim(
+      device.token,
+      true,
+      ['resume'],
+      connectorRelease,
+    )!;
     f.store.finish(
       device.token,
       outline.id,
