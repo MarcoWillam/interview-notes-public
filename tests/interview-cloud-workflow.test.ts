@@ -118,6 +118,59 @@ void test('explicit draft saves and cloud refresh are scoped to the live record'
   assert.match(refresh, /await syncs\.current/);
 });
 
+void test('task flush queues the authoritative draft without dropping its group', async () => {
+  const [{ IDBFactory }, { createLocalStore }, hook] = await Promise.all([
+    import('fake-indexeddb'),
+    import('../lib/local/store.ts'),
+    readFile(
+      new URL('../hooks/use-interview-library.ts', import.meta.url),
+      'utf8',
+    ),
+  ]);
+  const store = createLocalStore(new IDBFactory(), 'grouped-task-flush');
+  const grouped = {
+    id: 'grouped-task-record',
+    groupId: 'campus-candidates',
+    createdAt: 1,
+    updatedAt: 1,
+    candidate: '分组候选人',
+    role: 'AI 产品经理',
+    requirements: '岗位要求',
+    dimensionText: '自驱力',
+    focus: '',
+    resumeText: '简历正文',
+    resumeName: '简历.docx',
+    resumeReading: null,
+    transcript: '',
+    reviewed: false,
+    report: null,
+    conclusion: '',
+    confirmed: false,
+  };
+  await store.saveInterview(grouped);
+  const { groupId: _groupId, ...editableDraft } = grouped;
+  const authoritative = await store.saveInterviewDraft({
+    ...editableDraft,
+    candidate: '重新生成前保存',
+    updatedAt: 2,
+  });
+  await store.queueInterviewSync(authoritative, 'outline-regenerated');
+  assert.equal(
+    (await store.listPendingSync())[0]?.record?.groupId,
+    'campus-candidates',
+  );
+
+  const write = hook.slice(
+    hook.indexOf('function write(currentId: string, value: Draft)'),
+    hook.indexOf('const writeEvent'),
+  );
+  assert.match(
+    write,
+    /const persisted = await store\.saveInterviewDraft\(saved\)/,
+  );
+  assert.match(write, /store\.queueInterviewSync\(\s*persisted,/);
+});
+
 void test('cloud refresh cannot restore a record after the user has selected another one', async () => {
   const ts = await import('typescript');
   const source = await readFile(

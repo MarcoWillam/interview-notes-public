@@ -315,12 +315,13 @@ export function useInterviewLibrary(
         }
         const store = localStore();
         const previous = await store.getInterview(currentId);
-        await store.saveInterviewDraft(saved);
-        visibleDraftBase.current.set(currentId, saved);
+        const persisted = await store.saveInterviewDraft(saved);
+        saved = persisted;
+        visibleDraftBase.current.set(currentId, persisted);
         if (options.cloud) {
           await store.queueInterviewSync(
-            saved,
-            cloudVersionReason(previous, saved),
+            persisted,
+            cloudVersionReason(previous, persisted),
           );
           setSyncStatus('pending');
           void synchronize().catch(() => {});

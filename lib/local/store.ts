@@ -341,13 +341,17 @@ export function createLocalStore(
     },
     saveInterview: (value: SavedInterview) => put('interviews', value),
     saveInterviewDraft: (value: SavedInterview) =>
-      run<void>(['interviews'], 'readwrite', (tx) => {
+      run<SavedInterview>(['interviews'], 'readwrite', (tx, result) => {
         const interviews = tx.objectStore('interviews');
         const current = interviews.get(value.id);
         current.onsuccess = () => {
-          const groupId = (current.result as SavedInterview | undefined)
-            ?.groupId;
-          interviews.put(groupId === undefined ? value : { ...value, groupId });
+          const previous = current.result as SavedInterview | undefined;
+          const saved =
+            !Object.hasOwn(value, 'groupId') && previous?.groupId !== undefined
+              ? { ...value, groupId: previous.groupId }
+              : value;
+          interviews.put(saved);
+          result(saved);
         };
       }),
     getInterview: (id: string) => read<SavedInterview>('interviews', id),

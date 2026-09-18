@@ -80,11 +80,12 @@ void test('version 4 adds local groups and group deletion preserves interviews',
 
   await store.moveInterviewToGroup(session.id, first.id);
   assert.equal((await store.getInterview(session.id))?.groupId, first.id);
-  await store.saveInterviewDraft({
+  const autosaved = await store.saveInterviewDraft({
     ...session,
     candidate: '自动保存后的候选人',
     updatedAt: 2,
   });
+  assert.equal(autosaved.groupId, first.id);
   assert.equal((await store.getInterview(session.id))?.groupId, first.id);
   await assert.rejects(
     store.moveInterviewToGroup(session.id, 'missing'),
