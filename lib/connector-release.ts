@@ -1,4 +1,4 @@
-export const CONNECTOR_VERSION = '2026.9.18-2';
+export const CONNECTOR_VERSION = '2026.9.18-3';
 export const CONNECTOR_PROTOCOL = 5;
 export const MINIMUM_CONNECTOR_PROTOCOL = 1;
 export const OUTLINE_CONNECTOR_PROTOCOL = 2;
@@ -6,7 +6,7 @@ export const OUTLINE_V2_CONNECTOR_PROTOCOL = 3;
 export const OUTLINE_V3_CONNECTOR_PROTOCOL = 4;
 export const SERVER_DRIVEN_EXECUTION_PROTOCOL = 5;
 export const CONNECTOR_RELEASE_NOTES =
-  '初试简历先建立完整经历地图，再结合岗位维度生成提纲；覆盖旧连接器程序文件时保留配对配置和作品目录';
+  '连接包新增“连接云端面试工作台.command”，首次输入配对码，后续双击即可连接；升级时保留配对配置和作品目录';
 
 export const connectorRelease = {
   version: CONNECTOR_VERSION,

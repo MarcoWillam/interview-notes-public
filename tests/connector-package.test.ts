@@ -8,6 +8,35 @@ import { unzipSync } from 'fflate';
 
 const root = resolve(import.meta.dirname, '..');
 
+function zipUnixMode(archive: Uint8Array, target: string) {
+  const view = new DataView(
+    archive.buffer,
+    archive.byteOffset,
+    archive.byteLength,
+  );
+  let eocd = archive.byteLength - 22;
+  while (eocd >= 0 && view.getUint32(eocd, true) !== 0x06054b50) eocd -= 1;
+  assert.ok(eocd >= 0, 'ZIP end-of-central-directory record is missing');
+  const entries = view.getUint16(eocd + 10, true);
+  let offset = view.getUint32(eocd + 16, true);
+  const decoder = new TextDecoder();
+  for (let index = 0; index < entries; index += 1) {
+    assert.equal(view.getUint32(offset, true), 0x02014b50);
+    const filenameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    const filename = decoder.decode(
+      archive.subarray(offset + 46, offset + 46 + filenameLength),
+    );
+    if (filename === target) {
+      assert.equal(view.getUint16(offset + 4, true) >> 8, 3);
+      return (view.getUint32(offset + 38, true) >>> 16) & 0xffff;
+    }
+    offset += 46 + filenameLength + extraLength + commentLength;
+  }
+  assert.fail(`ZIP entry is missing: ${target}`);
+}
+
 void test('connector package keeps interview prompts and validators on the server', () => {
   for (const file of [
     'server/codex.ts',
@@ -72,6 +101,19 @@ void test('connector package carries the ZIP reader and its license without inst
   assert.match(instructions, /\.local\/connector\.json/);
   assert.match(instructions, /无需重新配对/);
   assert.match(instructions, /规则更新无需再次替换连接器/);
+});
+
+void test('connector package includes a safe executable macOS launcher', async () => {
+  const archive = new Uint8Array(
+    await readFile('public/downloads/interview-connector.zip'),
+  );
+  const launcherName = 'interview-connector/连接云端面试工作台.command';
+  const files = unzipSync(archive);
+  const launcher = new TextDecoder().decode(files[launcherName]);
+  assert.match(launcher, /\$\{0:A:h\}/);
+  assert.match(launcher, /https:\/\/47\.119\.135\.138/);
+  assert.doesNotMatch(launcher, /\/Users\//);
+  assert.equal(zipUnixMode(archive, launcherName), 0o755);
 });
 
 void test('connector archive excludes private files and unsafe paths', async () => {
