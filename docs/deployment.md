@@ -5,7 +5,7 @@
 ## 当前云服务器
 
 - 网站：`https://your-server-ip`，初始账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。其他面试官账号通过下述服务器命令创建。
-- 代码：当前版本为 `/opt/interview-notes/releases/20260918-1`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一版本 `20260917-2` 保留用于回滚；更早版本继续保留但不作为首选回滚目标。
+- 代码：当前版本为 `/opt/interview-notes/releases/20260918-2`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一版本 `20260918-1` 保留用于回滚；更早版本继续保留但不作为首选回滚目标。
 - 数据：`/var/lib/interview-notes/queue.sqlite`；环境配置：`/etc/interview-notes/server.env`；运行时：`/opt/node-v24.13.0-linux-x64/bin/node`。服务器只需已构建的 `dist/web` 和队列服务源码，无需安装模型或上传电脑上的 Codex 登录信息。
 - Nginx：`/etc/nginx/conf.d/interview-notes.conf`，对应仓库 `deploy/nginx-ip.conf`，HTTP 自动跳转 HTTPS，80 端口保留 ACME 验证路径。
 - 证书：Let's Encrypt IP 证书，由 acme.sh 3.1.2 的 `shortlived` profile 签发。使用 `--days 3`，`interview-cert-renew.timer` 每天两次检查续期；续期成功自动安装到 `/etc/nginx/ssl/interview/` 并检查、重载 Nginx。不要关闭公网 80 端口，否则续期验证会失败。
@@ -22,6 +22,8 @@
 `20260917-2` 修复简历阅读／生成提纲中两种校验误判：单一取舍题列出多个选项时不再仅凭连接词判成多个问点；引用只因换行或空格不同而无法逐字命中时，定位并保存简历中的原始连续片段。真正的多问点和编造引用仍拒绝。针对两类失败的回归测试先红后绿，全量 569 项测试、类型检查、代码检查与构建通过。发布前队列为空且已做 SQLite 备份；发布后服务、会话接口和数据库 quick_check 正常，原环境与数据目录不变。发布包 SHA-256 为 `fdb690cef2919a3b15781ad5a868985f9301052b1d45e672fcee5eb235c04277`。
 
 `20260918-1` 修复 V3“重新生成提纲”的两种校验失败：沿用原题已核实的简历引用，并根据新问题确定性重算能力覆盖矩阵；题目来源顺序、作品依据和问题结构仍严格校验。服务端提示词也要求保留原引用。线上另有两次二次生成时连接器心跳停止、租约过期；服务器在故障窗口未重启，系统仍不自动重跑可能已在本机执行的 Codex 分析。两类失败的回归测试先红后绿，全量 570 项测试、类型检查、代码检查和构建通过。发布前队列为空并已备份 SQLite；发布后 HTTPS、服务状态和数据库 quick_check 正常，环境及数据目录未变。发布包 SHA-256 为 `bf383c92bfa3ab77a423787fda13d01cb7fd3b13bfdf04c7efac150e90b383a3`。
+
+`20260918-2` 将本机连接器的文本分析时限从 4 分钟延至 10 分钟，并将提纲超时错误从“作品分析超时”改为准确提示。版本为 `2026.9.18-1`；旧连接器需关闭并重新从当前项目启动，或覆盖原目录程序文件并保留 `.local/connector.json`，无需重新配对。变更来自对 owner 同一份记录的定向验证：服务器心跳正常，但旧连接器在 4 分钟处主动终止。全量 571 项测试、类型检查、代码检查和构建通过；发布前队列为空且已备份 SQLite，发布后公网 HTTPS、会话、服务、数据库 quick_check 和连接器 ZIP 版本均通过验收，环境及数据目录未变。发布包 SHA-256 为 `a4d01a1d55d8a57c87ebc53b212973dece4497bfea2ef8bbf2bde990b1749922`。
 
 运维检查命令（在云服务器执行）：
 
