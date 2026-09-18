@@ -1,4 +1,4 @@
-export const CONNECTOR_VERSION = '2026.9.18-5';
+export const CONNECTOR_VERSION = '2026.9.18-6';
 export const CONNECTOR_PROTOCOL = 5;
 export const MINIMUM_CONNECTOR_PROTOCOL = 1;
 export const OUTLINE_CONNECTOR_PROTOCOL = 2;
@@ -6,7 +6,7 @@ export const OUTLINE_V2_CONNECTOR_PROTOCOL = 3;
 export const OUTLINE_V3_CONNECTOR_PROTOCOL = 4;
 export const SERVER_DRIVEN_EXECUTION_PROTOCOL = 5;
 export const CONNECTOR_RELEASE_NOTES =
-  '提升长时间简历、提纲与笔试作品分析的连接稳定性；短时网络波动会继续分析并自动回传结果，升级时保留配对配置和作品目录';
+  '网络中断时继续完成本地简历、提纲与笔试作品分析，并在恢复后持续回传结果；升级时保留配对配置和作品目录';
 
 export const connectorRelease = {
   version: CONNECTOR_VERSION,

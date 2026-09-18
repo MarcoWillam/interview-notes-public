@@ -7,14 +7,7 @@ import { executeCodexContract } from '../contract-executor.ts';
 import { connectorRelease } from '../../lib/connector-release.ts';
 import type { LocalWorkSampleReference } from '../work-samples/inventory.ts';
 export type Credentials = { server: string; token: string; id: string };
-export const CONNECTOR_HEARTBEAT_GRACE_MS = 720000;
-export const CONNECTOR_FINISH_ATTEMPTS = 12;
-export function heartbeatConnectionExpired(
-  lastHeartbeat: number,
-  now = Date.now(),
-) {
-  return now - lastHeartbeat > CONNECTOR_HEARTBEAT_GRACE_MS;
-}
+export const CONNECTOR_FINISH_GRACE_MS = 45 * 60 * 1000;
 export function validateServer(value: string) {
   const url = new URL(value);
   if (
@@ -124,6 +117,7 @@ export async function runConnector(
   signal: AbortSignal,
   dependencies: {
     status: typeof codexStatus;
+    request?: typeof connectorRequest;
     execute?: (
       contract: CodexExecutionContract,
       signal: AbortSignal,
@@ -134,9 +128,17 @@ export async function runConnector(
       files: Map<string, string>;
     }>;
   } = { status: codexStatus },
-  timings = { pollMs: 3000, heartbeatMs: 5000 },
+  timings: {
+    pollMs: number;
+    heartbeatMs: number;
+    finishRetryMs?: number;
+    finishGraceMs?: number;
+  } = { pollMs: 3000, heartbeatMs: 5000 },
 ) {
   const server = validateServer(credentials.server);
+  const request = dependencies.request || connectorRequest;
+  const finishRetryMs = timings.finishRetryMs ?? 3000;
+  const finishGraceMs = timings.finishGraceMs ?? CONNECTOR_FINISH_GRACE_MS;
   let ready = false,
     lastCheck = 0,
     reportedOffline = false,
@@ -156,7 +158,7 @@ export async function runConnector(
           // Keep the prior server inventory when a local scan is interrupted.
         }
       }
-      const response = await connectorRequest(
+      const response = await request(
         server,
         '/api/worker/claim',
         {
@@ -193,12 +195,11 @@ export async function runConnector(
           cancel = () => task.abort();
         signal.addEventListener('abort', cancel, { once: true });
         const taskSignal = AbortSignal.any([signal, task.signal]);
-        let lastHeartbeat = Date.now(),
-          checking = false;
+        let checking = false;
         const timer = setInterval(() => {
           if (checking) return;
           checking = true;
-          void connectorRequest(
+          void request(
             server,
             '/api/worker/heartbeat',
             { id: job.id, lease: job.lease, connector: connectorRelease },
@@ -206,11 +207,11 @@ export async function runConnector(
             taskSignal,
           )
             .then((result) => {
-              lastHeartbeat = Date.now();
               if (result.active !== true) task.abort();
             })
             .catch(() => {
-              if (heartbeatConnectionExpired(lastHeartbeat)) task.abort();
+              // The analysis runs locally. A cloud outage must not discard it;
+              // keep working and let result delivery reconcile after recovery.
             })
             .finally(() => {
               checking = false;
@@ -236,13 +237,11 @@ export async function runConnector(
               failure = workFailure(error);
             }
             let finished: Record<string, unknown> | undefined;
-            for (
-              let attempt = 0;
-              attempt < CONNECTOR_FINISH_ATTEMPTS && !taskSignal.aborted;
-              attempt++
-            ) {
+            const finishDeadline = Date.now() + finishGraceMs;
+            let waitingForRecovery = false;
+            while (!taskSignal.aborted && Date.now() <= finishDeadline) {
               try {
-                finished = await connectorRequest(
+                finished = await request(
                   server,
                   '/api/worker/finish',
                   {
@@ -256,13 +255,19 @@ export async function runConnector(
                   credentials.token,
                   taskSignal,
                 );
+                if (waitingForRecovery)
+                  console.log('网络已恢复，分析结果已回传。');
                 break;
               } catch {
-                if (attempt === CONNECTOR_FINISH_ATTEMPTS - 1)
-                  console.error('结果回传未确认，请在网页查看任务状态。');
-                else await delay(3000, taskSignal);
+                if (!waitingForRecovery) {
+                  console.error('结果暂未回传，正在等待网络恢复。');
+                  waitingForRecovery = true;
+                }
+                await delay(finishRetryMs, taskSignal);
               }
             }
+            if (!finished && !taskSignal.aborted)
+              console.error('结果回传等待超时，请在网页查看任务状态。');
             if (!finished || failed) break;
             const retry = finished.retry;
             if (!retry || typeof retry !== 'object') break;

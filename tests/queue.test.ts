@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { QueueStore } from '../server/queue/store.ts';
+import { CONNECTOR_LEASE_MS, QueueStore } from '../server/queue/store.ts';
 import { queueApi } from '../server/queue/api.ts';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -1296,15 +1296,15 @@ void test('heartbeats extend ownership and queued material expires after 24 hour
     s.close();
   }
 });
-void test('a running connector lease covers a full ten minute analysis gap', () => {
+void test('a running connector lease preserves offline results for one hour', () => {
   const { s, a, tick } = setup();
   try {
     const d = s.redeem(s.pairing(a).code, '电脑', connectorRelease);
     const job = s.submit(a, 'lease-network-gap-123', '面试', input);
     s.claim(d.token, true)!;
-    tick(600000);
+    tick(30 * 60 * 1000);
     assert.equal(s.get(a, job.id).state, 'running');
-    tick(300001);
+    tick(30 * 60 * 1000 + 1);
     assert.equal(s.get(a, job.id).state, 'failed');
   } finally {
     s.close();
@@ -1486,7 +1486,7 @@ void test('cancelled and expired leases cannot overwrite a result or run twice a
     assert.equal(s.finish(d.token, c.id, c.lease, report).accepted, false);
     s.submit(a, 'request-456', '面试', input);
     const next = s.claim(d.token, true)!;
-    tick(900001);
+    tick(CONNECTOR_LEASE_MS + 1);
     assert.equal(s.heartbeat(d.token, next.id, next.lease).active, false);
     assert.equal(s.get(a, next.id).state, 'failed');
     assert.equal(s.claim(d.token, true), null);

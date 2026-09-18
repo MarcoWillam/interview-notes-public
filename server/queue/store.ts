@@ -74,7 +74,7 @@ const hash = (value: string) =>
 type Row = Record<string, string | number | null>;
 const PREPARATION_PRIORITY =
   "CASE WHEN kind IN ('resume','initial-outline','written-test','work-sample','outline','follow-up-outline','second-round-outline') THEN 0 ELSE 1 END";
-export const CONNECTOR_LEASE_MS = 900000;
+export const CONNECTOR_LEASE_MS = 60 * 60 * 1000;
 function validateStoredWorkSampleResult(result: unknown, storedInput: unknown) {
   const input = validateWorkSampleInput(storedInput);
   return validateWorkSampleAnalysisResult(result, input, {

@@ -8,7 +8,6 @@ import { QueueStore } from '../server/queue/store.ts';
 import { queueHttp } from '../server/queue/http.ts';
 import {
   connectorRequest,
-  heartbeatConnectionExpired,
   runConnector,
   validateServer,
 } from '../server/queue/connector-client.ts';
@@ -667,16 +666,66 @@ void test('connector allows only HTTPS or loopback roots', () => {
   ])
     assert.throws(() => validateServer(url));
 });
-void test('connector keeps analysis alive through a full ten minute analysis gap', () => {
-  const lastHeartbeat = 1_000_000;
-  assert.equal(
-    heartbeatConnectionExpired(lastHeartbeat, lastHeartbeat + 600000),
-    false,
+void test('connector finishes local analysis during an outage and uploads after recovery', async () => {
+  const controller = new AbortController();
+  let claimAttempts = 0,
+    heartbeatAttempts = 0,
+    finishAttempts = 0,
+    executionWasAborted = false;
+  await runConnector(
+    { server: 'https://interview.example', token: 'token', id: 'device' },
+    controller.signal,
+    {
+      status,
+      request: async (_server, path) => {
+        if (path === '/api/worker/claim') {
+          claimAttempts += 1;
+          return claimAttempts === 1
+            ? {
+                job: {
+                  id: 'offline-work-sample',
+                  lease: 'lease',
+                  execution: {
+                    contractVersion: 1,
+                    runner: 'structured-text',
+                    instructions: '完成本地分析。',
+                    schema: { type: 'object' },
+                    payload: {},
+                    attempt: 1,
+                    maxAttempts: 1,
+                  },
+                },
+              }
+            : { job: null };
+        }
+        if (path === '/api/worker/heartbeat') {
+          heartbeatAttempts += 1;
+          throw new Error('offline');
+        }
+        if (path === '/api/worker/finish') {
+          finishAttempts += 1;
+          if (finishAttempts <= 12) throw new Error('offline');
+          controller.abort();
+          return { accepted: true };
+        }
+        throw new Error(`unexpected request ${path}`);
+      },
+      execute: async (_contract, signal) => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        executionWasAborted = signal.aborted;
+        return { ok: true };
+      },
+    },
+    {
+      pollMs: 1,
+      heartbeatMs: 2,
+      finishRetryMs: 1,
+      finishGraceMs: 1000,
+    },
   );
-  assert.equal(
-    heartbeatConnectionExpired(lastHeartbeat, lastHeartbeat + 720001),
-    true,
-  );
+  assert.ok(heartbeatAttempts > 0);
+  assert.equal(executionWasAborted, false);
+  assert.equal(finishAttempts, 13);
 });
 void test('connector routes resume work to the reading runner and stores its cited output', async () => {
   const f = await fixture();
