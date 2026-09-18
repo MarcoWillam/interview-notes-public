@@ -531,12 +531,49 @@ export const workSampleAnalysisV3Schema = {
   },
 } as const;
 
-export function workSampleOutputSchema(version: 1 | 2 | 3) {
-  return version === 3
-    ? workSampleAnalysisV3Schema
-    : version === 2
-      ? workSampleAnalysisV2Schema
-      : workSampleSchema;
+type MutableQuestionSchema = {
+  properties: {
+    dimensions: { items: { enum?: string[] } };
+    primaryDimension?: { enum?: string[] };
+    secondaryDimensions?: { items: { enum?: string[] } };
+  };
+};
+
+type MutableWorkSampleOutputSchema = {
+  properties: {
+    questions?: { items: MutableQuestionSchema };
+    workSample?: {
+      properties: { questions: { items: MutableQuestionSchema } };
+    };
+    outlineSupplement?: {
+      properties: { questions: { items: MutableQuestionSchema } };
+    };
+  };
+};
+
+export function workSampleOutputSchema(
+  version: 1 | 2 | 3,
+  allowedDimensions?: string[],
+) {
+  const base =
+    version === 3
+      ? workSampleAnalysisV3Schema
+      : version === 2
+        ? workSampleAnalysisV2Schema
+        : workSampleSchema;
+  if (!allowedDimensions?.length) return base;
+  const schema = structuredClone(base) as MutableWorkSampleOutputSchema;
+  const assessment = schema.properties.workSample || schema;
+  assessment.properties.questions!.items.properties.dimensions.items.enum = [
+    ...allowedDimensions,
+  ];
+  const supplement = schema.properties.outlineSupplement;
+  if (supplement) {
+    const properties = supplement.properties.questions.items.properties;
+    properties.primaryDimension!.enum = [...allowedDimensions];
+    properties.secondaryDimensions!.items.enum = [...allowedDimensions];
+  }
+  return schema;
 }
 
 export function validateWorkSampleAnalysisResult(

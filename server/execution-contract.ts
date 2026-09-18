@@ -19,9 +19,7 @@ import {
   outlineRegenerationOutputSchema,
   validateOutlineRegenerationInput,
 } from '../lib/outline-regeneration.ts';
-import {
-  validateResumeInput,
-} from '../lib/resume-reading.ts';
+import { validateResumeInput } from '../lib/resume-reading.ts';
 import {
   resumeExperienceMapInstructions,
   resumeExperienceMapSchema,
@@ -286,7 +284,10 @@ function modelDefinition(kind: CodexExecutionKind, value: unknown) {
   return {
     runner: 'structured-work-sample' as const,
     instructions: workSampleInstructionsFor(version),
-    schema: workSampleOutputSchema(version),
+    schema: workSampleOutputSchema(
+      version,
+      input.dimensionText.split('、').map((dimension) => dimension.trim()),
+    ),
     payload: {
       ...input,
       workSampleRubric: aiPmWorkSampleRubricContext,

@@ -109,6 +109,47 @@ void test('V3 work sample contract returns two friendly review questions', () =>
   assert.doesNotMatch(workSampleEmbeddedInstructionsFor(3), /恰好三道/);
 });
 
+void test('work sample output schema restricts every interview question to role dimensions', () => {
+  const allowedDimensions = ['用户洞察与问题定义', '产品方案与范围取舍'];
+  const schema = workSampleOutputSchema(3, allowedDimensions) as {
+    properties: {
+      workSample: {
+        properties: {
+          questions: {
+            items: {
+              properties: {
+                dimensions: { items: { enum: string[] } };
+              };
+            };
+          };
+        };
+      };
+      outlineSupplement: {
+        properties: {
+          questions: {
+            items: {
+              properties: {
+                primaryDimension: { enum: string[] };
+                secondaryDimensions: { items: { enum: string[] } };
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+  const assessmentQuestion =
+    schema.properties.workSample.properties.questions.items.properties;
+  const outlineQuestion =
+    schema.properties.outlineSupplement.properties.questions.items.properties;
+  assert.deepEqual(assessmentQuestion.dimensions.items.enum, allowedDimensions);
+  assert.deepEqual(outlineQuestion.primaryDimension.enum, allowedDimensions);
+  assert.deepEqual(
+    outlineQuestion.secondaryDimensions.items.enum,
+    allowedDimensions,
+  );
+});
+
 function v3Outline(): InterviewOutlineV3 {
   const roleDimensions = builtInRoleTemplates[0].dimensionText.split('、');
   const stems = [

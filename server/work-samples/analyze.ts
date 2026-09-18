@@ -256,7 +256,10 @@ export async function analyzeWorkSampleWithCodex(
         },
         signal,
         workSampleInstructionsFor(version),
-        workSampleOutputSchema(version),
+        workSampleOutputSchema(
+          version,
+          input.dimensionText.split('、').map((dimension) => dimension.trim()),
+        ),
         { root: directory, readable: manifest.readable },
       );
       const result = validateWorkSampleAnalysisResult(
