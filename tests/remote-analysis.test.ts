@@ -7,7 +7,6 @@ import {
   submitRemoteAnalysis,
   submitRemoteFollowUpOutline,
   submitRemoteWorkSample,
-  submitRemoteWrittenTest,
   type RemoteJob,
 } from '../lib/remote-analysis.ts';
 import {
@@ -64,30 +63,6 @@ void test('resume reading is scoped to the current local interview record', asyn
   );
   assert.match(page, /submitRemoteResume\([\s\S]*scope: recordId/);
 });
-const writtenTestInput = {
-  role: resumeInput.role,
-  requirements: resumeInput.requirements,
-  dimensionText: resumeInput.dimensionText,
-  focus: resumeInput.focus,
-  scoringGuidance: resumeInput.scoringGuidance,
-  reportRequirements: resumeInput.reportRequirements,
-  resumeText: resumeInput.resumeText,
-  existingQuestions: reading.interviewQuestions.map((question) => ({
-    ...question,
-    questionSource: question.questionSource as 'resume' | 'role',
-  })),
-};
-const writtenTestResult = {
-  questions: Array.from({ length: 3 }, (_, index) => ({
-    question: `请复述笔试方案中的第 ${index + 1} 个关键判断与取舍。`,
-    questionSource: 'written-test' as const,
-    dimensions: [index % 2 === 0 ? '需求分析' : '沟通协作'],
-    reason: '核实候选人自己的判断。',
-    resumeEvidence: null,
-    listenFor: ['判断依据'],
-    probes: ['如果假设不成立，你会如何调整？'],
-  })),
-};
 const artifact = {
   id: 'artifact-12345678',
   deviceId: 'device-12345678',
@@ -394,35 +369,6 @@ void test('V2 resume submission keeps the version in its fingerprinted payload',
   );
 });
 
-void test('written-test supplement uses its own kind and validates the completed result', async () => {
-  const fetcher: typeof fetch = async (_url, options) => {
-    const body = JSON.parse(options?.body as string) as {
-      kind: string;
-      input: unknown;
-      scope?: string;
-    };
-    assert.equal(body.kind, 'written-test');
-    assert.deepEqual(body.input, writtenTestInput);
-    assert.equal(body.scope, 'interview-record-123');
-    return Response.json({
-      id: 'written-test-job',
-      kind: 'written-test',
-      state: 'completed',
-      report: writtenTestResult,
-    });
-  };
-  assert.deepEqual(
-    await submitRemoteWrittenTest(
-      writtenTestInput,
-      '张三 · 笔试复盘补充',
-      new AbortController().signal,
-      () => {},
-      { fetcher, pollMs: 0, scope: 'interview-record-123' },
-    ),
-    writtenTestResult,
-  );
-});
-
 void test('follow-up outline submission sends its kind, input, binding revision, and generated label', async () => {
   const input = followUpInputFixture();
   const requests: Array<Record<string, unknown>> = [];
@@ -541,57 +487,6 @@ void test('aborting follow-up outline polling does not cancel the server task', 
     { name: 'AbortError' },
   );
   assert.deepEqual(methods, ['POST']);
-});
-
-void test('V2 written-test submission preserves its outline discriminant and validates the reserve result', async () => {
-  const template = builtInRoleTemplates[0];
-  const outline = v2Outline();
-  const dimensions = template.dimensionText.split('、');
-  const result = {
-    version: 2 as const,
-    kind: 'written-test' as const,
-    questions: dimensions.slice(5).map((primaryDimension, index) => ({
-      id: `remote-written-${index + 1}`,
-      question: `请复述笔试${index + 1}的关键取舍`,
-      required: false,
-      estimatedMinutes: 4,
-      primaryDimension,
-      secondaryDimensions: [],
-      source: 'written-test' as const,
-      goal: '核实候选人自己的判断',
-      resumeEvidence: null,
-      workSampleEvidence: null,
-      listenFor: ['判断依据'],
-      riskSignals: ['无法说明取舍'],
-      probes: [{ condition: '依据不清楚', question: '你为何这样选择？' }],
-    })),
-  };
-  const fetcher: typeof fetch = async (_url, options) => {
-    const body = JSON.parse(options?.body as string) as {
-      input: { outlineVersion: number };
-    };
-    assert.equal(body.input.outlineVersion, 2);
-    return Response.json({
-      id: 'written-v2',
-      state: 'completed',
-      report: result,
-    });
-  };
-  assert.deepEqual(
-    await submitRemoteWrittenTest(
-      {
-        ...template,
-        resumeText: resumeInput.resumeText,
-        outlineVersion: 2,
-        outline,
-      },
-      'V2 笔试补充',
-      new AbortController().signal,
-      () => {},
-      { fetcher, pollMs: 0 },
-    ),
-    result,
-  );
 });
 
 void test('artifact listing accepts only public metadata', async () => {

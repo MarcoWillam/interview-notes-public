@@ -222,14 +222,15 @@ void test('resume outline confirmation uses the styled select and fixed-size rad
     /\.resume-outline-confirmation-form input\[type='radio'\][\s\S]*?width:\s*16px;[\s\S]*?padding:\s*0;/,
   );
 });
-void test('written-test supplement has a dedicated confirmation and remote task path', async () => {
+void test('written-test supplement creation is absent while legacy recovery remains', async () => {
   const page = await readFile(
     new URL('../app/page.tsx', import.meta.url),
     'utf8',
   );
-  assert.match(page, /function runWrittenTestSupplement\(/);
-  assert.match(page, /submitRemoteWrittenTest\(/);
-  assert.match(page, /补充笔试复盘题/);
+  assert.doesNotMatch(page, /function runWrittenTestSupplement\(/);
+  assert.doesNotMatch(page, /submitRemoteWrittenTest\(/);
+  assert.match(page, /!writtenTestJobId/);
+  assert.match(page, /validateWrittenTestSupplement/);
   assert.match(page, /setHasWrittenTest\(true\)/);
   assert.match(page, /setWrittenTestConfirmed\(true\)/);
 });

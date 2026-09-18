@@ -12,12 +12,6 @@ import {
   type Report,
 } from './interview.ts';
 import {
-  validateWrittenTestSupplement,
-  validateWrittenTestSupplementInput,
-  type WrittenTestSupplementInput,
-  type WrittenTestSupplementResult,
-} from './written-test-supplement.ts';
-import {
   validateWorkSampleAnalysisResult,
   validateWorkSampleInput,
   validateWorkSampleReference,
@@ -150,7 +144,6 @@ async function submitRemoteTask<T>(
   input:
     | InterviewInput
     | ResumeInput
-    | WrittenTestSupplementInput
     | WorkSampleInput
     | OutlineRegenerationInput
     | FollowUpOutlineInput
@@ -356,28 +349,6 @@ export function submitRemoteResume(
     'resume',
     (value) =>
       validateResumeReading(value, normalized, { conciseQuestions: true }),
-    label,
-    signal,
-    onProgress,
-    dependencies,
-  );
-}
-
-export function submitRemoteWrittenTest(
-  input: WrittenTestSupplementInput,
-  label: string,
-  signal: AbortSignal,
-  onProgress: (job: RemoteJob<WrittenTestSupplementResult>) => void,
-  dependencies: RemoteTaskDependencies = { fetcher: fetch, pollMs: 2000 },
-): Promise<WrittenTestSupplementResult> {
-  const normalized = validateWrittenTestSupplementInput(input);
-  return submitRemoteTask(
-    normalized,
-    'written-test',
-    (value) =>
-      validateWrittenTestSupplement(value, normalized, {
-        conciseQuestions: true,
-      }),
     label,
     signal,
     onProgress,

@@ -104,7 +104,9 @@ function ExperienceMapView({ value }: { value: ResumeExperienceMap }) {
                   <span>{resumeExperienceTypeLabels[experience.type]}</span>
                   <h5>{experience.name}</h5>
                 </header>
-                {!!meta.length && <p className="resume-experience-meta">{meta.join(' · ')}</p>}
+                {!!meta.length && (
+                  <p className="resume-experience-meta">{meta.join(' · ')}</p>
+                )}
                 {!!keyActions.length && (
                   <ul>
                     {keyActions.map((fact, index) => (
@@ -120,7 +122,9 @@ function ExperienceMapView({ value }: { value: ResumeExperienceMap }) {
                 <details>
                   <summary>查看简历原文依据</summary>
                   {experience.evidence.map((evidence, index) => (
-                    <blockquote key={`${evidence}-${index}`}>{evidence}</blockquote>
+                    <blockquote key={`${evidence}-${index}`}>
+                      {evidence}
+                    </blockquote>
                   ))}
                 </details>
               </article>
@@ -160,9 +164,6 @@ export function WrittenTestSupplementView({
 
 export function ResumeReadingView({
   value,
-  canSupplement = false,
-  supplementBusy = false,
-  onSupplement,
   canSubmitWork = false,
   workBusy = false,
   onSubmitWork,
@@ -177,9 +178,6 @@ export function ResumeReadingView({
   onDelete,
 }: {
   value: ResumeReading;
-  canSupplement?: boolean;
-  supplementBusy?: boolean;
-  onSupplement?: () => void;
   canSubmitWork?: boolean;
   workBusy?: boolean;
   onSubmitWork?: () => void;
@@ -276,29 +274,8 @@ export function ResumeReadingView({
           onDelete={onDelete}
         />
       )}
-      {value.writtenTestSupplement?.length ? (
+      {!!value.writtenTestSupplement?.length && (
         <WrittenTestSupplementView questions={value.writtenTestSupplement} />
-      ) : (
-        canSupplement && (
-          <section className="written-test-supplement-action">
-            <div>
-              <strong>需要补充笔试复盘？</strong>
-              <p>
-                {value.outline
-                  ? `保留 ${value.outline.requiredQuestions.length} 道必问题，由 Codex 更新候选题并归档当前候选题。`
-                  : '保留原 6 道提纲，由 Codex 额外生成 3 道复盘题。'}
-              </p>
-            </div>
-            <button
-              type="button"
-              className="secondary-button"
-              disabled={supplementBusy}
-              onClick={onSupplement}
-            >
-              {supplementBusy ? '正在生成…' : '一键补充笔试复盘题'}
-            </button>
-          </section>
-        )
       )}
       {value.workSample ? (
         <WorkSampleView

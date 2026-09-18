@@ -1253,8 +1253,7 @@ void test('analysis completions bind refreshes to record identity and navigation
   );
   const handlers = [
     ['runResumeReading', 'confirmResumeOutlineGeneration'],
-    ['runOutlineRegeneration', 'runWrittenTestSupplement'],
-    ['runWrittenTestSupplement', 'openLateWorkSample'],
+    ['runOutlineRegeneration', 'openLateWorkSample'],
     ['runLateWorkSample', 'const hasContent'],
     ['analyze', 'cancelAnalysis'],
   ] as const;
@@ -1288,7 +1287,7 @@ void test('analysis completions bind refreshes to record identity and navigation
   assert.match(resume, /reconcileCandidateName[\s\S]*setPendingCandidateName/);
   const outline = source.slice(
     source.indexOf('async function runOutlineRegeneration'),
-    source.indexOf('async function runWrittenTestSupplement'),
+    source.indexOf('function openLateWorkSample'),
   );
   assert.match(outline, /setNotice\('面试提纲已重新生成/);
 });

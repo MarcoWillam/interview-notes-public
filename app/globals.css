@@ -2892,11 +2892,6 @@ fieldset label:last-of-type {
 .written-test-supplement-action button {
   flex: 0 0 auto;
 }
-.written-test-supplement-dialog {
-  width: min(calc(100vw - 32px), 520px) !important;
-  max-width: 520px !important;
-}
-
 .interview-question-list {
   display: grid;
   gap: 12px;
@@ -3295,12 +3290,8 @@ fieldset label:last-of-type {
     align-items: stretch;
     flex-direction: column;
   }
-  .written-test-supplement-action button,
-  .written-test-supplement-dialog [data-slot='alert-dialog-footer'] > button {
+  .written-test-supplement-action button {
     width: 100%;
-  }
-  .written-test-supplement-dialog [data-slot='alert-dialog-footer'] {
-    flex-direction: column-reverse;
   }
 }
 

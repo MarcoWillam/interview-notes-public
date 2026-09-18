@@ -13,7 +13,6 @@ import {
 } from '@/lib/resume-reading';
 import {
   submitRemoteResume,
-  submitRemoteWrittenTest,
   submitRemoteWorkSample,
   submitRemoteOutline,
   submitRemoteFollowUpOutline,
@@ -88,7 +87,6 @@ import type { NewInterviewSeed, SavedInterview } from '@/lib/local/store';
 import {
   applyWrittenTestSupplement,
   appliedTemplateState,
-  canGenerateWrittenTestSupplement,
   outlineVersionForStandards,
   resolveResumeOutlinePreflight,
   resolveResumeOutlineSetup,
@@ -192,7 +190,6 @@ type BusyKind =
   | 'import'
   | 'analyze'
   | 'resume-read'
-  | 'written-test'
   | 'work-sample'
   | 'outline'
   | 'follow-up-outline'
@@ -203,7 +200,6 @@ type RemoteWaitKind = Extract<
   BusyKind,
   | 'analyze'
   | 'resume-read'
-  | 'written-test'
   | 'work-sample'
   | 'outline'
   | 'second-round-outline'
@@ -312,8 +308,6 @@ export default function Home({
     writtenTest: boolean | null;
     artifact: RemoteArtifact | null;
   } | null>(null);
-  const [pendingWrittenTestSupplement, setPendingWrittenTestSupplement] =
-    useState(false);
   const [writtenTestJobId, setWrittenTestJobId] = useState<
     string | undefined
   >();
@@ -381,15 +375,6 @@ export default function Home({
       (question) => question.source === 'written-test',
     )
   );
-  const writtenTestSupplementEligible = canGenerateWrittenTestSupplement({
-    sourceTemplateId,
-    writtenTestConfirmed: effectiveWrittenTestConfirmed,
-    hasWrittenTest: effectiveHasWrittenTest,
-    hasResumeReading: !!(
-      resumeReading?.interviewQuestions || resumeReading?.outline
-    ),
-    hasSupplement: writtenTestSupplemented,
-  });
   const workSampleEligible = canSubmitWorkSample({
     sourceTemplateId,
     hasWrittenTest: effectiveHasWrittenTest,
@@ -405,11 +390,7 @@ export default function Home({
     confirmed,
     regeneratedAt: outlineRegeneratedAt,
     activeJobId: outlineRegenerationJobId,
-    preparationJobIds: [
-      writtenTestJobId,
-      workSampleJobId,
-      followUpOutlineJobId,
-    ],
+    preparationJobIds: [workSampleJobId, followUpOutlineJobId],
     busy: !!busy,
   });
   const outlineTaskActive = !!outlineRegenerationJobId;
@@ -418,7 +399,6 @@ export default function Home({
     !!busy ||
     followUpTaskActive ||
     outlineTaskActive ||
-    !!writtenTestJobId ||
     !!workSampleJobId;
   // Imports and queue responses may finish after the render that started them.
   const resumeContext = useRef({
@@ -608,7 +588,6 @@ export default function Home({
     setPendingCandidateName(null);
     setPendingResume(null);
     setPendingResumeOutline(null);
-    setPendingWrittenTestSupplement(false);
     setPendingOutlineRegeneration(false);
     setInterviewStage(saved.interviewStage || 'initial');
     setPriorRoundSource(saved.priorRoundSource);
@@ -1182,7 +1161,10 @@ export default function Home({
         }
         if (job.state === 'failed' || job.state === 'cancelled') {
           setWrittenTestJobId(undefined);
-          setError(job.error || '笔试复盘补充未完成，可以再次提交。');
+          setError(
+            job.error ||
+              '历史笔试复盘任务未完成，请使用补充追问或补交笔试作品。',
+          );
           return;
         }
         setRemoteJob({ ...job, report: null });
@@ -1191,7 +1173,9 @@ export default function Home({
         if (disposed) return;
         if ((reason as { status?: number }).status === 404) {
           setWrittenTestJobId(undefined);
-          setError('笔试复盘任务已过期，可以再次提交。');
+          setError(
+            '历史笔试复盘任务已过期，请使用补充追问或补交笔试作品。',
+          );
           return;
         }
         setError('暂时无法获取笔试复盘任务进度，系统会继续重试。');
@@ -2031,116 +2015,6 @@ export default function Home({
       finishAnalysisWait(controller);
     }
   }
-  async function runWrittenTestSupplement() {
-    const reading = resumeReading;
-    const recordId = library.id;
-    const navigationEpoch = recordNavigationEpoch.current;
-    let submittedJobId: string | undefined;
-    if (
-      busyRef.current ||
-      followUpTaskActive ||
-      (!reading?.interviewQuestions && !reading?.outline) ||
-      !canGenerateWrittenTestSupplement({
-        sourceTemplateId,
-        writtenTestConfirmed: effectiveWrittenTestConfirmed,
-        hasWrittenTest: effectiveHasWrittenTest,
-        hasResumeReading: true,
-        hasSupplement: !!reading.writtenTestSupplement?.length,
-      })
-    ) {
-      setPendingWrittenTestSupplement(false);
-      setError('当前记录不能生成笔试复盘补充题。');
-      return;
-    }
-    setPendingWrittenTestSupplement(false);
-    analysisController.current?.abort();
-    const controller = new AbortController();
-    analysisController.current = controller;
-    busyRef.current = true;
-    setBusy('written-test');
-    setError('');
-    setNotice('');
-    clearRemoteTaskDisplay();
-    try {
-      const context = resumeContext.current;
-      if (!context.queuedCodex)
-        throw new Error('请使用当前队列版工作台连接 Codex 后生成补充题。');
-      const supplementInput = createPreparationWrittenTestInput(
-        context,
-        reading,
-      );
-      const recordBinding = await library.flushForTask();
-      const value = await submitRemoteWrittenTest(
-        supplementInput,
-        `${context.candidate || resumeName || '未命名候选人'} · 笔试复盘补充`.slice(
-          0,
-          100,
-        ),
-        controller.signal,
-        (job) => {
-          if (
-            analysisController.current === controller &&
-            !controller.signal.aborted
-          ) {
-            submittedJobId = job.id;
-            setWrittenTestJobId(job.id);
-            trackRemoteWait(controller, job, 'written-test', recordId);
-          }
-        },
-        {
-          fetcher: fetch,
-          pollMs: 2000,
-          scope: recordId,
-          ...recordBinding,
-        },
-      );
-      if (analysisController.current !== controller) return;
-      controller.signal.throwIfAborted();
-      if (
-        !(await refreshCurrentAnalysisRecord(
-          controller,
-          recordId,
-          navigationEpoch,
-        ))
-      )
-        return;
-      const result: WrittenTestSupplementResult = value;
-      setResumeReading(applyWrittenTestSupplement(reading, result));
-      setHasWrittenTest(true);
-      setWrittenTestConfirmed(true);
-      setWrittenTestJobId(undefined);
-      resumeContext.current = {
-        ...resumeContext.current,
-        hasWrittenTest: true,
-        writtenTestConfirmed: true,
-      };
-      setNotice(
-        'version' in result
-          ? `已将 ${result.version === 3 ? 2 : 3} 道笔试复盘题更新到候选题，笔试情况已同步为“有笔试”。`
-          : '已追加 3 道笔试复盘题，笔试情况已同步为“有笔试”。',
-      );
-      setTab('resume');
-    } catch (e) {
-      if (analysisController.current !== controller) return;
-      const message =
-        e instanceof Error ? e.message : '笔试复盘补充题生成失败。';
-      const stillRemote =
-        !!submittedJobId &&
-        !cancelledRemotely.current &&
-        (/任务已提交|无法获取进度/.test(message) ||
-          (controller.signal.aborted && !cancelledRemotely.current));
-      if (!stillRemote) setWrittenTestJobId(undefined);
-      setError(
-        controller.signal.aborted
-          ? cancelledRemotely.current
-            ? '笔试复盘补充任务已取消，原提纲保留。'
-            : '已停止等待，可在任务中心查看结果。'
-          : message,
-      );
-    } finally {
-      finishAnalysisWait(controller);
-    }
-  }
   function openLateWorkSample() {
     if (!workSampleEligible || busyRef.current || followUpTaskActive) return;
     setLateWorkSampleArtifact(null);
@@ -2853,7 +2727,6 @@ export default function Home({
     setPendingCandidateName(null);
     setPendingResume(null);
     setPendingResumeOutline(null);
-    setPendingWrittenTestSupplement(false);
     setPendingOutlineRegeneration(false);
     setTranscript('');
     setTranscriptName('');
@@ -2976,7 +2849,6 @@ export default function Home({
     const detachableKind =
       busy === 'analyze' ||
       busy === 'resume-read' ||
-      busy === 'written-test' ||
       busy === 'work-sample' ||
       busy === 'outline';
     const activeRemoteJob =
@@ -3392,7 +3264,6 @@ export default function Home({
             )}
             {(busy === 'analyze' ||
               busy === 'resume-read' ||
-              busy === 'written-test' ||
               busy === 'work-sample' ||
               busy === 'outline' ||
               busy === 'second-round-outline' ||
@@ -3404,9 +3275,7 @@ export default function Home({
                     ? remoteJob?.state === 'running'
                       ? busy === 'resume-read'
                         ? 'Codex 正在阅读简历。可以关闭网页，稍后从评估任务查看结果。'
-                        : busy === 'written-test'
-                          ? `Codex 正在生成 ${outlineVersion === 3 ? 2 : 3} 道笔试复盘补充题。可以关闭网页，稍后从任务中心查看结果。`
-                          : busy === 'work-sample'
+                        : busy === 'work-sample'
                             ? 'Codex 正在只读分析笔试作品。可以关闭网页，稍后从任务中心查看结果。'
                             : busy === 'outline'
                               ? 'Codex 正在重新生成短问题提纲，旧提纲会保留到新结果完成。'
@@ -3791,14 +3660,6 @@ export default function Home({
                             draft={followUpOutlineDraft}
                             onGenerate={runFollowUpOutline}
                             onDelete={deleteFollowUpOutline}
-                            canSupplement={
-                              writtenTestSupplementEligible &&
-                              !followUpTaskActive
-                            }
-                            supplementBusy={busy === 'written-test'}
-                            onSupplement={() =>
-                              setPendingWrittenTestSupplement(true)
-                            }
                             canSubmitWork={
                               workSampleEligible && !followUpTaskActive
                             }
@@ -4317,29 +4178,6 @@ export default function Home({
                   onClick={() => void runOutlineRegeneration()}
                 >
                   确认并重新生成
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-          <AlertDialog
-            open={pendingWrittenTestSupplement}
-            onOpenChange={setPendingWrittenTestSupplement}
-          >
-            <AlertDialogContent className="written-test-supplement-dialog">
-              <AlertDialogTitle>补充笔试复盘题</AlertDialogTitle>
-              <AlertDialogDescription>
-                {outlineVersion === 3
-                  ? 'Codex 将生成 2 道笔试复盘候选题，替换当前候选区并归档此前候选题。6 道必问题保持不变；成功后笔试情况会同步为“有笔试”，且不能再次生成。'
-                  : outlineVersion === 2
-                    ? 'Codex 将生成 3 道笔试复盘候选题，替换当前候选区并归档此前候选题。5 道必问题保持不变；成功后笔试情况会同步为“有笔试”，且不能再次生成。'
-                    : 'Codex 将额外生成 3 道笔试复盘题，追加在原有 6 道提纲下方，不修改原提纲。成功后笔试情况会同步为“有笔试”，且不能再次生成。'}
-              </AlertDialogDescription>
-              <AlertDialogFooter>
-                <AlertDialogCancel>取消</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => void runWrittenTestSupplement()}
-                >
-                  确认并生成 {outlineVersion === 3 ? 2 : 3} 道题
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

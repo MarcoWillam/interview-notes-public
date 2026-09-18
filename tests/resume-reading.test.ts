@@ -921,12 +921,9 @@ void test('written-test reading labels the guide and review questions explicitly
   assert.equal((html.match(/笔试复盘/g) || []).length, 4);
 });
 
-void test('reading view offers one supplement action then appends questions seven through nine', async () => {
-  const action = await renderReading(structuredResult, {
-    canSupplement: true,
-    onSupplement() {},
-  });
-  assert.ok(action.includes('一键补充笔试复盘题'));
+void test('reading view keeps historical supplement questions without offering a new action', async () => {
+  const action = await renderReading(structuredResult);
+  assert.ok(!action.includes('一键补充笔试复盘题'));
   const html = await renderReading({
     ...structuredResult,
     writtenTestSupplement: supplementQuestions,
