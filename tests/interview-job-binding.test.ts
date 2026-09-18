@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { QueueStore } from '../server/queue/store.ts';
 import type { CloudInterview } from '../lib/cloud-interview.ts';
+import { connectorRelease } from '../lib/connector-release.ts';
 
 const input = {
   role: '产品经理',
@@ -45,6 +46,24 @@ const reading = {
   followUps: ['请补充项目时间范围。'],
 };
 
+const experienceMap = {
+  version: 1 as const,
+  summary: '识别到一段用户访谈经历。',
+  experiences: [
+    {
+      id: 'experience-1', sourceOrder: 1, type: 'project' as const,
+      name: '简历中未明确具体项目', nameEvidence: null,
+      organization: null, period: null, role: null, context: null,
+      actions: [{ text: '访谈五位用户', evidence: '我访谈了五位用户' }],
+      decisions: [], collaboration: [], outcomes: [], reflection: [],
+      evidence: ['我访谈了五位用户'], dimensionSignals: ['需求分析'],
+      missingInformation: ['项目名称未明确'],
+    },
+  ],
+  coverage: [{ source: '我访谈了五位用户', experienceId: 'experience-1', status: 'mapped' as const }],
+  unresolvedItems: [],
+};
+
 function cloudRecord(id: string): CloudInterview {
   return {
     id,
@@ -68,10 +87,11 @@ function setup() {
   let now = 1_000_000;
   const store = new QueueStore(':memory:', () => ++now);
   const user = store.createUser('alice', 'password-alice-123').id;
-  const device = store.redeem(store.pairing(user).code, '测试电脑', {
-    version: '0.1.16',
-    protocol: 4,
-  });
+  const device = store.redeem(
+    store.pairing(user).code,
+    '测试电脑',
+    connectorRelease,
+  );
   return {
     store,
     user,
@@ -80,6 +100,35 @@ function setup() {
       now += duration;
     },
   };
+}
+
+function finishResume(
+  store: QueueStore,
+  secret: string,
+  beforeFinal?: (jobId: string) => void,
+) {
+  const mapping = store.claim(secret, true, ['resume'], connectorRelease)!;
+  store.finish(
+    secret,
+    mapping.id,
+    mapping.lease,
+    experienceMap,
+    false,
+    undefined,
+    1,
+  );
+  const outline = store.claim(secret, true, ['resume'], connectorRelease)!;
+  beforeFinal?.(outline.id);
+  store.finish(
+    secret,
+    outline.id,
+    outline.lease,
+    reading,
+    false,
+    undefined,
+    1,
+  );
+  return outline;
 }
 
 void test('bound Codex result is applied when relevant record sources are unchanged', () => {
@@ -96,8 +145,7 @@ void test('bound Codex result is applied when relevant record sources are unchan
       record.id,
       { interviewId: record.id, interviewRevision: 1 },
     );
-    const claimed = store.claim(secret, true, ['resume'], { version: '0.1.16', protocol: 4 })!;
-    assert.equal(store.finish(secret, claimed.id, claimed.lease, reading).accepted, true);
+    const claimed = finishResume(store, secret);
     const saved = store.interviews.get(user, record.id);
     assert.equal(saved.revision, 2);
     assert.equal(saved.record.candidate, '张三');
@@ -247,15 +295,15 @@ void test('relevant edits retain a completed result for confirmation', () => {
       record.id,
       { interviewId: record.id, interviewRevision: 1 },
     );
-    const claimed = store.claim(secret, true, ['resume'], { version: '0.1.16', protocol: 4 })!;
-    store.interviews.put(
-      user,
-      record.id,
-      1,
-      'mutation-change-resume',
-      { ...record, resumeText: record.resumeText + '新增经历。', updatedAt: 2 },
-    );
-    store.finish(secret, claimed.id, claimed.lease, reading);
+    const claimed = finishResume(store, secret, () => {
+      store.interviews.put(
+        user,
+        record.id,
+        1,
+        'mutation-change-resume',
+        { ...record, resumeText: record.resumeText + '新增经历。', updatedAt: 2 },
+      );
+    });
     assert.equal(store.interviews.get(user, record.id).record.resumeReading, null);
     assert.equal(store.interviews.pendingResults(user, record.id)[0].state, 'pending');
     assert.equal(store.get(user, claimed.id).resultDisposition, 'pending');
@@ -287,15 +335,15 @@ void test('pending result survives the short-lived task queue', () => {
       record.id,
       { interviewId: record.id, interviewRevision: 1 },
     );
-    const claimed = store.claim(secret, true, ['resume'], { version: '0.1.16', protocol: 4 })!;
-    store.interviews.put(
-      user,
-      record.id,
-      1,
-      'mutation-change-retained',
-      { ...record, resumeText: record.resumeText + '后来新增。', updatedAt: 3 },
-    );
-    store.finish(secret, claimed.id, claimed.lease, reading);
+    const claimed = finishResume(store, secret, () => {
+      store.interviews.put(
+        user,
+        record.id,
+        1,
+        'mutation-change-retained',
+        { ...record, resumeText: record.resumeText + '后来新增。', updatedAt: 3 },
+      );
+    });
     tick(8 * 86_400_000);
     store.sweep();
     assert.throws(() => store.get(user, claimed.id), /任务不存在/);
@@ -319,9 +367,9 @@ void test('deleting a record during analysis retains the result without restorin
       record.id,
       { interviewId: record.id, interviewRevision: 1 },
     );
-    const claimed = store.claim(secret, true, ['resume'], { version: '0.1.16', protocol: 4 })!;
-    store.interviews.remove(user, record.id, 1, 'mutation-delete-running');
-    store.finish(secret, claimed.id, claimed.lease, reading);
+    const claimed = finishResume(store, secret, () => {
+      store.interviews.remove(user, record.id, 1, 'mutation-delete-running');
+    });
     assert.notEqual(store.interviews.get(user, record.id, true).deletedAt, null);
     assert.equal(store.interviews.pendingResults(user, record.id)[0].state, 'pending');
   } finally {
@@ -343,15 +391,15 @@ void test('unrelated conclusion edits still allow the bound result to apply', ()
       record.id,
       { interviewId: record.id, interviewRevision: 1 },
     );
-    const claimed = store.claim(secret, true, ['resume'], { version: '0.1.16', protocol: 4 })!;
-    store.interviews.put(
-      user,
-      record.id,
-      1,
-      'mutation-change-conclusion',
-      { ...record, conclusion: '面试官备注', updatedAt: 2 },
-    );
-    store.finish(secret, claimed.id, claimed.lease, reading);
+    finishResume(store, secret, () => {
+      store.interviews.put(
+        user,
+        record.id,
+        1,
+        'mutation-change-conclusion',
+        { ...record, conclusion: '面试官备注', updatedAt: 2 },
+      );
+    });
     const saved = store.interviews.get(user, record.id);
     assert.equal(saved.record.conclusion, '面试官备注');
     assert.equal(saved.record.resumeReading?.summary, reading.summary);

@@ -770,7 +770,7 @@ export class InterviewStore {
       .get(user, interview, jobId) as Row | undefined;
     if (!row) throw new InterviewStoreError('待确认结果不存在。', 404);
     const kind = String(row.kind) as CodexExecutionKind;
-    if (!['resume', 'written-test', 'work-sample', 'outline', 'follow-up-outline', 'second-round-outline', 'second-round-assessment', 'interview'].includes(kind))
+    if (!['resume', 'initial-outline', 'written-test', 'work-sample', 'outline', 'follow-up-outline', 'second-round-outline', 'second-round-assessment', 'interview'].includes(kind))
       throw new InterviewStoreError('待确认结果类型无效。');
     const current = this.get(user, interview);
     if (current.revision !== baseRevision)

@@ -9,8 +9,12 @@ import {
 } from 'node:crypto';
 import {
   validateResumeInput,
-  validateResumeReading,
 } from '../../lib/resume-reading.ts';
+import { validateResumeExperienceMap } from '../../lib/resume-experience-map.ts';
+import {
+  validateInitialOutlineInput,
+  validateInitialOutlineResult,
+} from '../../lib/initial-outline.ts';
 import { validateInput, validateReport } from '../../lib/interview.ts';
 import {
   validateWrittenTestSupplement,
@@ -68,7 +72,7 @@ const hash = (value: string) =>
   createHash('sha256').update(value).digest('hex');
 type Row = Record<string, string | number | null>;
 const PREPARATION_PRIORITY =
-  "CASE WHEN kind IN ('resume','written-test','work-sample','outline','follow-up-outline','second-round-outline') THEN 0 ELSE 1 END";
+  "CASE WHEN kind IN ('resume','initial-outline','written-test','work-sample','outline','follow-up-outline','second-round-outline') THEN 0 ELSE 1 END";
 function validateStoredWorkSampleResult(result: unknown, storedInput: unknown) {
   const input = validateWorkSampleInput(storedInput);
   return validateWorkSampleAnalysisResult(result, input, {
@@ -581,6 +585,8 @@ export class QueueStore {
     binding?: { interviewId: string; interviewRevision: number },
   ) {
     this.sweep();
+    if (kind === 'initial-outline')
+      throw new QueueError('初试提纲阶段只能由简历阅读任务自动创建。');
     if (!/^[a-zA-Z0-9-]{8,100}$/.test(client))
       throw new QueueError('任务标识无效。');
     if (scope && !/^[a-zA-Z0-9-]{8,100}$/.test(scope))
@@ -654,6 +660,7 @@ export class QueueStore {
       ),
       safeLabel = label.slice(0, 100) || '未命名面试',
       requiredProtocol =
+        kind === 'resume' ||
         kind === 'follow-up-outline' ||
         kind === 'second-round-outline' ||
         kind === 'second-round-assessment'
@@ -707,7 +714,7 @@ export class QueueStore {
     if (scope) {
       const conflicting = this.db
         .prepare(
-          "SELECT kind FROM jobs WHERE user=? AND scope=? AND kind<>? AND kind IN ('resume','written-test','work-sample','outline','follow-up-outline','second-round-outline','second-round-assessment') AND state IN ('queued','running','paused') LIMIT 1",
+          "SELECT kind FROM jobs WHERE user=? AND scope=? AND kind<>? AND kind IN ('resume','initial-outline','written-test','work-sample','outline','follow-up-outline','second-round-outline','second-round-assessment') AND state IN ('queued','running','paused') LIMIT 1",
         )
         .get(user, scope, kind) as Row | undefined;
       if (conflicting)
@@ -756,13 +763,20 @@ export class QueueStore {
         throw new QueueError('任务标识已用于其他材料。', 409);
       return this.get(user, String(previous.id));
     }
-    const reusable = this.db
-      .prepare(
-        kind !== 'interview'
-          ? "SELECT id FROM jobs WHERE user=? AND kind=? AND inputHash=? AND label=? AND state IN ('queued','running','paused','completed') ORDER BY created LIMIT 1"
-          : "SELECT id FROM jobs WHERE user=? AND kind=? AND inputHash=? AND label=? AND state IN ('queued','running','paused') ORDER BY created LIMIT 1",
-      )
-      .get(user, kind, digest, safeLabel) as Row | undefined;
+    const reusable =
+      kind === 'resume'
+        ? (this.db
+            .prepare(
+              "SELECT id FROM jobs WHERE user=? AND kind IN ('resume','initial-outline') AND inputHash=? AND label=? AND state IN ('queued','running','paused','completed') ORDER BY created LIMIT 1",
+            )
+            .get(user, digest, safeLabel) as Row | undefined)
+        : (this.db
+            .prepare(
+              kind !== 'interview'
+                ? "SELECT id FROM jobs WHERE user=? AND kind=? AND inputHash=? AND label=? AND state IN ('queued','running','paused','completed') ORDER BY created LIMIT 1"
+                : "SELECT id FROM jobs WHERE user=? AND kind=? AND inputHash=? AND label=? AND state IN ('queued','running','paused') ORDER BY created LIMIT 1",
+            )
+            .get(user, kind, digest, safeLabel) as Row | undefined);
     if (reusable) return this.get(user, String(reusable.id));
     const count = this.db
       .prepare(
@@ -990,6 +1004,9 @@ export class QueueStore {
       connectorProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
       (kinds.includes('second-round-assessment') ||
         kinds.includes('interview'));
+    const supportsInitialOutline =
+      connectorProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
+      kinds.includes('resume');
     this.db
       .prepare('UPDATE devices SET seen=?,ready=? WHERE id=?')
       .run(this.now(), ready ? 1 : 0, device.id);
@@ -997,7 +1014,7 @@ export class QueueStore {
     const lease = token();
     const row = this.db
       .prepare(
-        `UPDATE jobs SET state='running',device=?,lease=?,until=?,leaseProtocol=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND requiredProtocol<=? AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1) OR (kind='outline' AND ?=1) OR (kind='follow-up-outline' AND ?=1) OR (kind='second-round-outline' AND ?=1) OR (kind='second-round-assessment' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY ${PREPARATION_PRIORITY},queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId,attempt,feedback`,
+        `UPDATE jobs SET state='running',device=?,lease=?,until=?,leaseProtocol=?,updated=?,started=? WHERE id=(SELECT id FROM jobs WHERE user=? AND state='queued' AND requiredProtocol<=? AND (targetDevice IS NULL OR targetDevice=?) AND (kind='interview' OR (kind='resume' AND ?=1) OR (kind='initial-outline' AND ?=1) OR (kind='written-test' AND ?=1) OR (kind='work-sample' AND ?=1) OR (kind='outline' AND ?=1) OR (kind='follow-up-outline' AND ?=1) OR (kind='second-round-outline' AND ?=1) OR (kind='second-round-assessment' AND ?=1)) AND NOT EXISTS(SELECT 1 FROM jobs WHERE device=? AND state='running') ORDER BY ${PREPARATION_PRIORITY},queued,created,rowid LIMIT 1) RETURNING id,input,kind,artifactId,attempt,feedback`,
       )
       .get(
         device.id,
@@ -1010,6 +1027,7 @@ export class QueueStore {
         connectorProtocol,
         device.id,
         kinds.includes('resume') ? 1 : 0,
+        supportsInitialOutline ? 1 : 0,
         kinds.includes('written-test') ? 1 : 0,
         kinds.includes('work-sample') ? 1 : 0,
         kinds.includes('outline') && connectorSupportsOutline(release?.protocol)
@@ -1137,9 +1155,21 @@ export class QueueStore {
         const storedInput = JSON.parse(String(job.input)) as unknown;
         report = JSON.stringify(
           job.kind === 'resume'
-            ? validateResumeReading(result, validateResumeInput(storedInput), {
-                conciseQuestions: true,
-              })
+            ? (() => {
+                const input = validateResumeInput(storedInput);
+                return validateResumeExperienceMap(result, {
+                  resumeText: input.resumeText,
+                  dimensions: input.dimensionText
+                    .split(/[、,，\n]/)
+                    .map((dimension) => dimension.trim())
+                    .filter(Boolean),
+                });
+              })()
+            : job.kind === 'initial-outline'
+              ? validateInitialOutlineResult(
+                  result,
+                  validateInitialOutlineInput(storedInput),
+                )
             : job.kind === 'written-test'
               ? validateWrittenTestSupplement(
                   result,
@@ -1202,6 +1232,26 @@ export class QueueStore {
         },
       };
     }
+    if (!error && report && job.kind === 'resume') {
+      const resume = validateResumeInput(JSON.parse(String(job.input)));
+      const initialInput = validateInitialOutlineInput({
+        ...resume,
+        experienceMap: JSON.parse(report),
+      });
+      const input = JSON.stringify(initialInput);
+      this.db
+        .prepare(
+          "UPDATE jobs SET kind='initial-outline',state='queued',input=?,report=NULL,error=NULL,device=NULL,lease=NULL,until=NULL,leaseProtocol=NULL,requiredProtocol=?,attempt=1,feedback=NULL,queued=?,started=NULL,updated=? WHERE id=?",
+        )
+        .run(
+          input,
+          SERVER_DRIVEN_EXECUTION_PROTOCOL,
+          this.now(),
+          this.now(),
+          id,
+        );
+      return { accepted: true, advanced: true };
+    }
     if (!error && job.kind === 'outline' && !job.scope) {
       report = null;
       error = '旧版提纲任务缺少面试记录范围，请重新提交。';
@@ -1225,7 +1275,14 @@ export class QueueStore {
         true,
       );
       const currentSourceHash = hash(
-        JSON.stringify(interviewJobSource(current.record, job.kind as JobKind)),
+        JSON.stringify(
+          interviewJobSource(
+            current.record,
+            job.kind === 'initial-outline'
+              ? 'resume'
+              : (job.kind as JobKind),
+          ),
+        ),
       );
       if (current.deletedAt === null && currentSourceHash === job.sourceHash) {
         this.interviews.applyJobResult(

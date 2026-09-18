@@ -3,6 +3,7 @@ export type TaskCenterJob = {
   kind?:
     | 'interview'
     | 'resume'
+    | 'initial-outline'
     | 'written-test'
     | 'work-sample'
     | 'outline'
@@ -129,7 +130,9 @@ export function TaskCenterView({
                     <strong>{job.label}</strong>
                     <span>
                       {job.kind === 'resume'
-                        ? '简历阅读'
+                        ? '正在建立经历地图'
+                        : job.kind === 'initial-outline'
+                          ? '正在生成面试提纲'
                         : job.kind === 'written-test'
                           ? '笔试复盘补充'
                           : job.kind === 'work-sample'
@@ -152,6 +155,7 @@ export function TaskCenterView({
                 <div className="task-meta">
                   <span>{timing(job, now)}</span>
                   {(job.kind === 'resume' ||
+                    job.kind === 'initial-outline' ||
                     job.kind === 'written-test' ||
                     job.kind === 'work-sample' ||
                     job.kind === 'outline' ||

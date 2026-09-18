@@ -69,6 +69,7 @@ export type RemoteJob<T = Report> = {
   kind?:
     | 'interview'
     | 'resume'
+    | 'initial-outline'
     | 'written-test'
     | 'work-sample'
     | 'outline'
@@ -157,6 +158,7 @@ async function submitRemoteTask<T>(
   kind:
     | 'interview'
     | 'resume'
+    | 'initial-outline'
     | 'written-test'
     | 'work-sample'
     | 'outline'

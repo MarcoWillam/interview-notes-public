@@ -189,7 +189,7 @@ export function resultVersionReason(
       : 'second-round-outline-generated';
   if (kind === 'second-round-assessment')
     return 'second-round-assessment-generated';
-  return kind === 'resume'
+  return kind === 'resume' || kind === 'initial-outline'
     ? 'outline-generated'
     : kind === 'written-test'
       ? 'written-test-supplemented'
@@ -247,7 +247,7 @@ export function applyInterviewJobResult(
       delete next.followUpOutlineJobId;
     return next;
   }
-  if (kind === 'resume') {
+  if (kind === 'resume' || kind === 'initial-outline') {
     const reading = result as ResumeReading;
     return {
       ...record,

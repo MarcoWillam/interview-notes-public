@@ -15,6 +15,7 @@ import {
   CONNECTOR_PROTOCOL,
   CONNECTOR_VERSION,
   SERVER_DRIVEN_EXECUTION_PROTOCOL,
+  connectorRelease,
 } from '../lib/connector-release.ts';
 import { builtInRoleTemplates } from '../lib/default-role-templates.ts';
 import {
@@ -61,6 +62,41 @@ const reading = {
     probes: ['你如何验证效果？'],
   })),
   followUps: ['请补充项目时间范围。'],
+};
+const experienceMap = {
+  version: 1 as const,
+  summary: '识别到一段用户访谈经历。',
+  experiences: [
+    {
+      id: 'experience-1',
+      sourceOrder: 1,
+      type: 'project' as const,
+      name: '简历中未明确具体项目',
+      nameEvidence: null,
+      organization: null,
+      period: null,
+      role: null,
+      context: null,
+      actions: [
+        { text: '访谈五位用户', evidence: '我访谈了五位用户' },
+      ],
+      decisions: [],
+      collaboration: [],
+      outcomes: [],
+      reflection: [],
+      evidence: ['我访谈了五位用户'],
+      dimensionSignals: ['需求分析'],
+      missingInformation: ['项目名称未明确'],
+    },
+  ],
+  coverage: [
+    {
+      source: '我访谈了五位用户',
+      experienceId: 'experience-1',
+      status: 'mapped' as const,
+    },
+  ],
+  unresolvedItems: [],
 };
 const writtenTestInput = {
   role: resumeInput.role,
@@ -492,7 +528,7 @@ void test('outline regeneration requires a current connector and reports its ver
   }
 });
 
-void test('structured preparation waits for its connector protocol while V1 remains claimable', () => {
+void test('two-stage resume preparation requires a protocol-five connector', () => {
   const { s, a } = setup();
   try {
     const protocol2 = s.redeem(s.pairing(a).code, '协议二电脑', {
@@ -521,7 +557,7 @@ void test('structured preparation waits for its connector protocol while V1 rema
       'resume',
       'record-v2-protocol',
     );
-    assert.equal(v2.requiredProtocol, 3);
+    assert.equal(v2.requiredProtocol, SERVER_DRIVEN_EXECUTION_PROTOCOL);
     assert.equal(
       s.claim(protocol2.token, true, ['resume'], {
         version: '2026.9.11-4',
@@ -533,8 +569,8 @@ void test('structured preparation waits for its connector protocol while V1 rema
       s.claim(protocol3.token, true, ['resume'], {
         version: '2026.9.13-1',
         protocol: 3,
-      })?.id,
-      v2.id,
+      }),
+      null,
     );
     const v3 = s.submit(
       a,
@@ -549,7 +585,7 @@ void test('structured preparation waits for its connector protocol while V1 rema
       'resume',
       'record-v3-protocol',
     );
-    assert.equal(v3.requiredProtocol, 4);
+    assert.equal(v3.requiredProtocol, SERVER_DRIVEN_EXECUTION_PROTOCOL);
     assert.equal(
       s.claim(protocol3.token, true, ['resume'], {
         version: '2026.9.13-1',
@@ -562,7 +598,7 @@ void test('structured preparation waits for its connector protocol while V1 rema
         version: CONNECTOR_VERSION,
         protocol: CONNECTOR_PROTOCOL,
       })?.id,
-      v3.id,
+      v2.id,
     );
     const v1 = s.submit(
       a,
@@ -572,8 +608,9 @@ void test('structured preparation waits for its connector protocol while V1 rema
       'resume',
       'record-v1-protocol',
     );
-    assert.equal(v1.requiredProtocol, 1);
-    assert.equal(s.claim(protocol2.token, true, ['resume'])?.id, v1.id);
+    assert.equal(v1.requiredProtocol, SERVER_DRIVEN_EXECUTION_PROTOCOL);
+    assert.equal(s.get(a, v3.id).state, 'queued');
+    assert.equal(s.get(a, v1.id).state, 'queued');
   } finally {
     s.close();
   }
@@ -987,9 +1024,9 @@ void test('queued work survives a database restart and separate connections cann
 void test('work sample inventory is account isolated and binds resume work to its device', () => {
   const { s, a, b, tick } = setup();
   try {
-    const target = s.redeem(s.pairing(a).code, '作品电脑');
-    const other = s.redeem(s.pairing(a).code, '其他电脑');
-    const foreign = s.redeem(s.pairing(b).code, 'Bob 电脑');
+    const target = s.redeem(s.pairing(a).code, '作品电脑', connectorRelease);
+    const other = s.redeem(s.pairing(a).code, '其他电脑', connectorRelease);
+    const foreign = s.redeem(s.pairing(b).code, 'Bob 电脑', connectorRelease);
     const reference = { ...workSample, deviceId: target.id };
     s.syncArtifacts(target.token, [reference]);
     assert.deepEqual(s.artifacts(a), [
@@ -1094,7 +1131,7 @@ void test('legacy job databases gain artifact binding columns without losing wor
 void test('heartbeats extend ownership and queued material expires after 24 hours', () => {
   const { s, a, tick } = setup();
   try {
-    const d = s.redeem(s.pairing(a).code, '电脑');
+    const d = s.redeem(s.pairing(a).code, '电脑', connectorRelease);
     const job = s.submit(a, 'lease-123', '面试', input);
     const claim = s.claim(d.token, true)!;
     tick(50000);
@@ -1179,7 +1216,7 @@ void test('same active material and label reuse one task across page submissions
 void test('running work can pause, reject its old lease, and resume from the queue', () => {
   const { s, a, tick } = setup();
   try {
-    const d = s.redeem(s.pairing(a).code, '电脑');
+    const d = s.redeem(s.pairing(a).code, '电脑', connectorRelease);
     const job = s.submit(a, 'pause-123', '张三', input);
     const claim = s.claim(d.token, true)!;
     assert.equal(s.get(a, job.id).startedAt, 1000000);
@@ -1236,7 +1273,7 @@ void test('stop clears queued material and task ownership irreversibly', () => {
 void test('resume preparation is claimed before older unstarted assessments', () => {
   const { s, a, tick } = setup();
   try {
-    const d = s.redeem(s.pairing(a).code, '电脑');
+    const d = s.redeem(s.pairing(a).code, '电脑', connectorRelease);
     const running = s.submit(a, 'running-123', '正在评估', input);
     const first = s.claim(d.token, true, ['interview', 'resume'])!;
     assert.equal(first.id, running.id);
@@ -1246,7 +1283,7 @@ void test('resume preparation is claimed before older unstarted assessments', ()
     const resume = s.submit(a, 'resume-123', '准备面试', resumeInput, 'resume');
     assert.equal(s.get(a, resume.id).position, 1);
     assert.equal(s.get(a, assessment.id).position, 2);
-    s.finish(d.token, first.id, first.lease, report);
+    s.finish(d.token, first.id, first.lease, report, false, undefined, 1);
 
     const next = s.claim(d.token, true, ['interview', 'resume'])!;
     assert.equal(next.id, resume.id);
@@ -1432,16 +1469,53 @@ void test('resume jobs require an upgraded connector and validate against resume
       resumeText: `  ${resumeInput.resumeText}  `,
     };
     const job = s.submit(a, 'resume-123', '简历阅读', input, 'resume');
-    const d = s.redeem(s.pairing(a).code, '新电脑');
+    const d = s.redeem(s.pairing(a).code, '新电脑', connectorRelease);
     assert.equal(s.claim(d.token, true), null);
-    const claimed = s.claim(d.token, true, ['interview', 'resume'])!;
+    const claimed = s.claim(
+      d.token,
+      true,
+      ['interview', 'resume'],
+      connectorRelease,
+    )!;
     assert.equal(claimed.kind, 'resume');
-    assert.ok('input' in claimed);
-    assert.deepEqual(claimed.input, { ...resumeInput, outlineVersion: 1 });
-    const report = reading;
-    s.finish(d.token, claimed.id, claimed.lease, report);
-    assert.deepEqual(s.get(a, job.id).report, report);
-    assert.equal(s.get(a, job.id).kind, 'resume');
+    assert.ok('execution' in claimed);
+    assert.deepEqual(
+      s.finish(
+        d.token,
+        claimed.id,
+        claimed.lease,
+        experienceMap,
+        false,
+        undefined,
+        1,
+      ),
+      { accepted: true, advanced: true },
+    );
+    assert.equal(s.get(a, job.id).report, null);
+    assert.equal(s.get(a, job.id).kind, 'initial-outline');
+    assert.equal(s.get(a, job.id).state, 'queued');
+
+    const outline = s.claim(
+      d.token,
+      true,
+      ['interview', 'resume'],
+      connectorRelease,
+    )!;
+    assert.equal(outline.kind, 'initial-outline');
+    s.finish(
+      d.token,
+      outline.id,
+      outline.lease,
+      reading,
+      false,
+      undefined,
+      1,
+    );
+    assert.deepEqual(s.get(a, job.id).report, {
+      ...reading,
+      experienceMap,
+    });
+    assert.equal(s.get(a, job.id).kind, 'initial-outline');
     assert.equal(s.get(a, job.id).state, 'completed');
     const repeated = s.submit(
       a,
@@ -1460,7 +1534,7 @@ void test('resume jobs require an upgraded connector and validate against resume
 void test('completed resume work is reused only inside the same interview record', () => {
   const { s, a } = setup();
   try {
-    const device = s.redeem(s.pairing(a).code, '阅读电脑');
+    const device = s.redeem(s.pairing(a).code, '阅读电脑', connectorRelease);
     const first = s.submit(
       a,
       'resume-record-a-1',
@@ -1469,8 +1543,10 @@ void test('completed resume work is reused only inside the same interview record
       'resume',
       'interview-record-a',
     );
-    const claimed = s.claim(device.token, true, ['resume'])!;
-    s.finish(device.token, claimed.id, claimed.lease, reading);
+    const claimed = s.claim(device.token, true, ['resume'], connectorRelease)!;
+    s.finish(device.token, claimed.id, claimed.lease, experienceMap, false, undefined, 1);
+    const outline = s.claim(device.token, true, ['resume'], connectorRelease)!;
+    s.finish(device.token, outline.id, outline.lease, reading, false, undefined, 1);
 
     const sameRecord = s.submit(
       a,
@@ -1512,7 +1588,7 @@ void test('completed resume work is reused only inside the same interview record
 void test('resume finish rejects fabricated question evidence against stored input', () => {
   const { s, a } = setup();
   try {
-    const d = s.redeem(s.pairing(a).code, '阅读电脑');
+    const d = s.redeem(s.pairing(a).code, '阅读电脑', connectorRelease);
     const job = s.submit(
       a,
       'resume-invalid-123',
@@ -1520,12 +1596,34 @@ void test('resume finish rejects fabricated question evidence against stored inp
       resumeInput,
       'resume',
     );
-    const claimed = s.claim(d.token, true, ['resume'])!;
+    const claimed = s.claim(d.token, true, ['resume'], connectorRelease)!;
+    s.finish(d.token, claimed.id, claimed.lease, experienceMap, false, undefined, 1);
+    const outline = s.claim(d.token, true, ['resume'], connectorRelease)!;
     const invalid = structuredClone(reading);
     invalid.interviewQuestions[0].resumeEvidence = '简历中不存在的项目成果';
-    assert.deepEqual(s.finish(d.token, claimed.id, claimed.lease, invalid), {
-      accepted: true,
-    });
+    const retry = s.finish(
+      d.token,
+      outline.id,
+      outline.lease,
+      invalid,
+      false,
+      undefined,
+      1,
+    );
+    assert.equal(retry.accepted, false);
+    assert.ok('retry' in retry);
+    assert.deepEqual(
+      s.finish(
+        d.token,
+        outline.id,
+        outline.lease,
+        invalid,
+        false,
+        undefined,
+        2,
+      ),
+      { accepted: true },
+    );
     const result = s.get(a, job.id);
     assert.equal(result.state, 'failed');
     assert.equal(result.report, null);
