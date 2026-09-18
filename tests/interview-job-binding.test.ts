@@ -367,7 +367,7 @@ void test('deleting a record during analysis retains the result without restorin
       record.id,
       { interviewId: record.id, interviewRevision: 1 },
     );
-    const claimed = finishResume(store, secret, () => {
+    finishResume(store, secret, () => {
       store.interviews.remove(user, record.id, 1, 'mutation-delete-running');
     });
     assert.notEqual(store.interviews.get(user, record.id, true).deletedAt, null);

@@ -592,7 +592,7 @@ void test('historical V3 outline regeneration rebuilds its experience map first'
     assert.equal(regeneration.id, job.id);
     if (!('execution' in regeneration)) throw new Error('execution contract expected');
     assert.deepEqual(
-      (regeneration.execution?.payload as { experienceMap?: unknown }).experienceMap,
+      (regeneration.execution.payload as { experienceMap?: unknown }).experienceMap,
       map,
     );
     const nextOutline = {

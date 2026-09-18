@@ -646,7 +646,13 @@ void test('connector routes resume work to the reading runner and stores its cit
       {
         status,
         execute: async (contract) => {
-          if ('dimensions' in contract.payload && !('role' in contract.payload)) {
+          const payload = contract.payload;
+          if (
+            payload &&
+            typeof payload === 'object' &&
+            'dimensions' in payload &&
+            !('role' in payload)
+          ) {
             assert.deepEqual(contract.payload, {
               resumeText: input.resumeText,
               dimensions: ['需求分析', '沟通协作'],
@@ -748,7 +754,13 @@ void test('connector fails resume work whose question evidence is absent from th
       {
         status,
         execute: async (contract) => {
-          if ('dimensions' in contract.payload && !('role' in contract.payload))
+          const payload = contract.payload;
+          if (
+            payload &&
+            typeof payload === 'object' &&
+            'dimensions' in payload &&
+            !('role' in payload)
+          )
             return experienceMap;
           assert.deepEqual(contract.payload, {
             ...resumeInput,
