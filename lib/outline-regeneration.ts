@@ -486,12 +486,9 @@ export function applyOutlineRegeneration(
   result: OutlineRegenerationResult,
 ): ResumeReading {
   if ('outline' in result) return { ...reading, outline: result.outline };
-  return {
+  const next: ResumeReading = {
     ...reading,
     interviewQuestions: result.interviewQuestions,
-    ...(result.writtenTestSupplement
-      ? { writtenTestSupplement: result.writtenTestSupplement }
-      : { writtenTestSupplement: undefined }),
     ...(reading.workSample && result.workSampleQuestions
       ? {
           workSample: {
@@ -501,6 +498,10 @@ export function applyOutlineRegeneration(
         }
       : {}),
   };
+  if (result.writtenTestSupplement)
+    next.writtenTestSupplement = result.writtenTestSupplement;
+  else delete next.writtenTestSupplement;
+  return next;
 }
 
 export const outlineRegenerationInstructions =

@@ -5,6 +5,7 @@ import {
 } from './fixtures/follow-up-outline.ts';
 import { interviewJobSource, assertInterviewJobInputMatches } from '../lib/interview-job-binding.ts';
 import { validateFollowUpOutlineInput } from '../lib/follow-up-outline.ts';
+import { validateResumeReading } from '../lib/resume-reading.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { QueueStore } from '../server/queue/store.ts';
@@ -102,6 +103,68 @@ void test('bound Codex result is applied when relevant record sources are unchan
     assert.equal(saved.record.candidate, '张三');
     assert.equal(saved.record.resumeReading?.summary, reading.summary);
     assert.equal(store.get(user, claimed.id).resultDisposition, 'applied');
+  } finally {
+    store.close();
+  }
+});
+
+void test('bound outline regeneration completes and removes its transient job field', () => {
+  const { store, user, secret } = setup();
+  try {
+    const preparedReading = validateResumeReading(reading, input);
+    const record = {
+      ...cloudRecord('record-binding-outline'),
+      resumeReading: preparedReading,
+      outlineRegenerationJobId: 'previous-outline-job',
+    };
+    const saved = store.interviews.put(
+      user,
+      record.id,
+      0,
+      'mutation-create-outline',
+      record,
+    );
+    const outlineInput = {
+      role: input.role,
+      requirements: input.requirements,
+      dimensionText: input.dimensionText,
+      focus: input.focus,
+      scoringGuidance: input.scoringGuidance,
+      reportRequirements: input.reportRequirements,
+      resumeText: input.resumeText,
+      revision: 'outline-binding-revision',
+      interviewQuestions: preparedReading.interviewQuestions,
+      writtenTestSupplement: null,
+      workSample: null,
+    };
+    const job = store.submit(
+      user,
+      'client-binding-outline',
+      '重新生成提纲',
+      outlineInput,
+      'outline',
+      record.id,
+      { interviewId: record.id, interviewRevision: saved.revision },
+    );
+    const claimed = store.claim(secret, true, ['outline'], {
+      version: '0.1.16',
+      protocol: 4,
+    })!;
+    assert.equal(claimed.id, job.id);
+    assert.equal(
+      store.finish(secret, claimed.id, claimed.lease, {
+        revision: outlineInput.revision,
+        interviewQuestions: preparedReading.interviewQuestions,
+        writtenTestSupplement: null,
+        workSampleQuestions: null,
+      }).accepted,
+      true,
+    );
+    assert.equal(store.get(user, job.id).state, 'completed');
+    const result = store.interviews.get(user, record.id);
+    assert.equal(result.revision, saved.revision + 1);
+    assert.equal('outlineRegenerationJobId' in result.record, false);
+    assert.equal(result.record.resumeReading?.interviewQuestions?.length, 6);
   } finally {
     store.close();
   }

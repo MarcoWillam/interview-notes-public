@@ -178,7 +178,10 @@ export function assertInterviewJobInputMatches(
   }
 }
 
-export function resultVersionReason(kind: JobKind, record?: CloudInterview): CloudVersionReason {
+export function resultVersionReason(
+  kind: JobKind,
+  record?: CloudInterview,
+): CloudVersionReason {
   if (kind === 'follow-up-outline') return 'follow-up-outline-generated';
   if (kind === 'second-round-outline')
     return record?.secondRoundOutline
@@ -278,16 +281,17 @@ export function applyInterviewJobResult(
   }
   if (kind === 'outline') {
     if (!record.resumeReading) throw new Error('当前记录缺少面试提纲。');
-    return {
+    const next: CloudInterview = {
       ...record,
       resumeReading: applyOutlineRegeneration(
         record.resumeReading,
         result as OutlineRegenerationResult,
       ),
       outlineRegeneratedAt: now,
-      outlineRegenerationJobId: undefined,
       updatedAt: now,
     };
+    delete next.outlineRegenerationJobId;
+    return next;
   }
   return {
     ...record,

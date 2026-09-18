@@ -14,6 +14,8 @@ import {
   type InterviewQuestionV2,
 } from '../lib/interview-outline-v2.ts';
 import { calculateOutlineCoverageV3 } from '../lib/interview-outline-v3.ts';
+import { applyInterviewJobResult } from '../lib/interview-job-binding.ts';
+import { validateCloudInterview } from '../lib/cloud-interview.ts';
 import { builtInRoleTemplates } from '../lib/default-role-templates.ts';
 
 const standards = {
@@ -177,6 +179,43 @@ void test('V3 regeneration keeps verified resume evidence and recalculates deriv
     '主动组织校园用户访谈',
   );
   assert.deepEqual(result.outline.coverage, outline.coverage);
+  const cloudRecord = validateCloudInterview({
+    id: 'v3-outline-record',
+    createdAt: 1,
+    updatedAt: 1,
+    candidate: '林小满',
+    role: template.role,
+    requirements: template.requirements,
+    dimensionText: template.dimensionText,
+    focus: template.focus,
+    scoringGuidance: template.scoringGuidance,
+    reportRequirements: template.reportRequirements,
+    resumeText: source,
+    resumeName: 'resume.txt',
+    resumeReading: {
+      summary: '简历自述，待核实。',
+      sections: ['教育背景', '工作经历', '项目经验', '技能'].map((name) => ({
+        name,
+        items: [],
+      })),
+      followUps: [],
+      outline,
+    },
+    outlineVersion: 3,
+    outlineRegenerationJobId: 'current-outline-job',
+    transcript: '',
+    reviewed: false,
+    report: null,
+    conclusion: '',
+    confirmed: false,
+  });
+  const applied = validateCloudInterview(
+    applyInterviewJobResult(cloudRecord, 'outline', result, 2, {
+      jobId: 'current-outline-job',
+    }),
+  );
+  assert.equal('outlineRegenerationJobId' in applied, false);
+  assert.equal(applied.resumeReading?.outline?.version, 3);
   assert.throws(
     () =>
       validateOutlineRegenerationResult(
