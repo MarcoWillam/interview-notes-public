@@ -318,7 +318,7 @@ void test('assessment job results store candidate and interviewer findings separ
     100,
   );
   assert.equal(legacy.report?.summary, '旧任务候选人结论');
-  assert.deepEqual(legacy.interviewerReview, interviewerReview);
+  assert.equal(legacy.interviewerReview, null);
 });
 
 void test('relevant edits retain a completed result for confirmation', () => {

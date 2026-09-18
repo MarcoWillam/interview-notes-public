@@ -97,6 +97,54 @@ void test('assessment result keeps the candidate report separate from interviewe
     undefined,
   );
 });
+void test('missing speaker labels cannot make an otherwise valid candidate report fail', () => {
+  const result = validateAssessmentResult(
+    {
+      report: groundedReport,
+      interviewerReview: {
+        status: 'available',
+        reason: null,
+        summary: '模型错误生成了复盘。',
+        dimensions: [],
+        strengths: [],
+        priorities: [],
+        rewrites: [],
+        missedFollowUps: [],
+      },
+    },
+    input,
+  );
+  assert.equal(result.report.summary, groundedReport.summary);
+  assert.deepEqual(result.interviewerReview, {
+    status: 'unavailable',
+    reason: 'speaker-labels-missing',
+    summary: null,
+    dimensions: [],
+    strengths: [],
+    priorities: [],
+    rewrites: [],
+    missedFollowUps: [],
+  });
+  assert.deepEqual(
+    validateAssessmentResult({ report: groundedReport }, input)
+      .interviewerReview,
+    result.interviewerReview,
+  );
+});
+void test('current wrapped assessment results must include interviewer review', () => {
+  assert.throws(
+    () =>
+      validateAssessmentResult(
+        { report: groundedReport },
+        {
+          ...input,
+          transcript:
+            '面试官：请介绍你的用户调研。\n候选人：我负责用户调研，每周访谈五位用户。',
+        },
+      ),
+    /面试官复盘/,
+  );
+});
 void test('assessment rejects an invented quotation instead of presenting it as evidence', () => {
   assert.throws(() =>
     validateReport(

@@ -4,6 +4,8 @@ import {
 } from './work-sample.ts';
 import { groupAssessmentDimensions } from './assessment-groups.ts';
 import {
+  hasReviewableSpeakerLabels,
+  unavailableInterviewerReview,
   validateInterviewerReview,
   type InterviewerReview,
 } from './interviewer-review.ts';
@@ -196,10 +198,13 @@ export function validateAssessmentResult(
   const result = value as Record<string, unknown>;
   if (!Object.hasOwn(result, 'report'))
     return { report: validateReport(result, input) };
+  const report = validateReport(result.report, input);
+  if (!hasReviewableSpeakerLabels(input.transcript))
+    return { report, interviewerReview: unavailableInterviewerReview() };
   if (!Object.hasOwn(result, 'interviewerReview'))
-    return { report: validateReport(result.report, input) };
+    throw new Error('评估返回缺少面试官复盘。');
   return {
-    report: validateReport(result.report, input),
+    report,
     interviewerReview: validateInterviewerReview(
       result.interviewerReview,
       input.transcript,

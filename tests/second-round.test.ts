@@ -490,10 +490,22 @@ void test('second-round comparison evidence can only quote the current transcrip
   }));
   const valid = validateSecondRoundAssessmentResult(
     {
-      summary: '本轮补充了方案调整过程，其他维度仍需核实。',
-      dimensions,
-      followUps: [],
-      workSampleReview: [],
+      report: {
+        summary: '本轮补充了方案调整过程，其他维度仍需核实。',
+        dimensions,
+        followUps: [],
+        workSampleReview: [],
+      },
+      interviewerReview: {
+        status: 'unavailable',
+        reason: 'speaker-labels-missing',
+        summary: null,
+        dimensions: [],
+        strengths: [],
+        priorities: [],
+        rewrites: [],
+        missedFollowUps: [],
+      },
       priorRoundComparison: [
         {
           statement: '候选人能够主动调整方案。',

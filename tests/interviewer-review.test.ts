@@ -129,6 +129,78 @@ void test('requires deterministic unavailable output when speaker labels are inc
   );
 });
 
+void test('rejects numeric ratings while allowing ordinary counts in review prose', () => {
+  for (const rating of [
+    '岗位覆盖为 3/5，经历深挖仍可改进。',
+    '岗位覆盖 8 分（满分 10 分）。',
+    '问题表达达到 3 级水平。',
+    '证据核实为 80%。',
+    '经历深挖达到四星。',
+    '本轮提问得分约为 80。',
+    '整体表现为 4 颗星。',
+    '问题表达为两星。',
+  ]) {
+    const scored = availableReview();
+    scored.summary = rating;
+    assert.throws(
+      () => validateInterviewerReview(scored, transcript),
+      /数字评分/,
+    );
+  }
+
+  const counted = availableReview();
+  counted.summary =
+    '记录日期为 2026/9/18，覆盖了 4/5 个岗位维度，仍需继续核实。';
+  counted.rewrites[0].improvedQuestion =
+    '用户满意度只有 3 分，你会如何验证改版有效？';
+  counted.missedFollowUps[0].suggestedQuestion =
+    '覆盖率只有 80%，你当时怎样判断样本是否足够？';
+  counted.dimensions[0].assessment =
+    '本轮只有 3 分钟用于经历深挖，仍识别到关键行动。';
+  counted.rewrites[0].issue =
+    '没有追问用户满意度只有 3 分的原因。';
+  counted.rewrites[0].purpose = '评分前还需核实 3 个经历。';
+  assert.equal(
+    validateInterviewerReview(counted, transcript).status,
+    'available',
+  );
+
+  const scoredIssue = availableReview();
+  scoredIssue.rewrites[0].issue = '这个问题只能打 2 分。';
+  assert.throws(
+    () => validateInterviewerReview(scoredIssue, transcript),
+    /数字评分/,
+  );
+
+  const implicitIssueRating = availableReview();
+  implicitIssueRating.rewrites[0].issue = '这个问题达到 4/5，仍需改进。';
+  assert.throws(
+    () => validateInterviewerReview(implicitIssueRating, transcript),
+    /数字评分/,
+  );
+
+  const implicitPurposeRating = availableReview();
+  implicitPurposeRating.rewrites[0].purpose = '改写后仅有 2 分。';
+  assert.throws(
+    () => validateInterviewerReview(implicitPurposeRating, transcript),
+    /数字评分/,
+  );
+
+  const implicitDimensionRating = availableReview();
+  implicitDimensionRating.dimensions[0].assessment = '达到 80%，仍有缺口。';
+  assert.throws(
+    () => validateInterviewerReview(implicitDimensionRating, transcript),
+    /数字评分/,
+  );
+
+  const implicitPriorityRating = availableReview();
+  implicitPriorityRating.priorities = ['争取提升到 4/5。'];
+  assert.throws(
+    () => validateInterviewerReview(implicitPriorityRating, transcript),
+    /数字评分/,
+  );
+});
+
 void test('schema requires the stable fields used by structured Codex output', () => {
   assert.deepEqual(interviewerReviewSchema.required, [
     'status',

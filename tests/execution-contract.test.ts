@@ -135,6 +135,9 @@ void test('interview contracts request separate candidate and interviewer result
     true,
   );
   assert.match(contract.instructions, /问题改写/);
+  assert.match(contract.instructions, /面试官复盘[^。]*只能写入 interviewerReview/);
+  assert.match(contract.instructions, /不得写入 report/);
+  assert.match(contract.instructions, /不得使用数字评分/);
 });
 
 void test('server builds artifact-bound contracts for initial and later work', () => {

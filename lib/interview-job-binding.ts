@@ -227,9 +227,7 @@ export function applyInterviewJobResult(
     const next: CloudInterview = {
       ...record,
       report: assessment.report,
-      ...(assessment.interviewerReview === undefined
-        ? {}
-        : { interviewerReview: assessment.interviewerReview }),
+      interviewerReview: assessment.interviewerReview ?? null,
       priorRoundComparison,
       confirmed: false,
       updatedAt: now,
@@ -303,9 +301,7 @@ export function applyInterviewJobResult(
   return {
     ...record,
     report: assessment.report,
-    ...(assessment.interviewerReview === undefined
-      ? {}
-      : { interviewerReview: assessment.interviewerReview }),
+    interviewerReview: assessment.interviewerReview ?? null,
     confirmed: false,
     updatedAt: now,
   };
