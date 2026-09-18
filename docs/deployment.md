@@ -5,7 +5,7 @@
 ## 当前云服务器
 
 - 网站：`https://your-server-ip`，初始账号 `owner`。初始密码仅保存在本机被 Git 忽略的 `.local/cloud-access.txt`，权限为 `600`；服务器初始化后已删除环境配置中的明文密码。其他面试官账号通过下述服务器命令创建。
-- 代码：当前版本为 `/opt/interview-notes/releases/20260918-4c`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一稳定版本 `20260918-3` 保留用于回滚；更早版本继续保留但不作为首选回滚目标。
+- 代码：当前版本为 `/opt/interview-notes/releases/20260918-5`，`/opt/interview-notes/current` 已原子切到该目录；生产服务为 `interview-notes.service`，以专用 `interview-notes` 用户开机自启，仅监听 `127.0.0.1:8787`。上一稳定版本 `20260918-4c` 保留用于回滚；更早版本继续保留但不作为首选回滚目标。
 - 数据：`/var/lib/interview-notes/queue.sqlite`；环境配置：`/etc/interview-notes/server.env`；运行时：`/opt/node-v24.13.0-linux-x64/bin/node`。服务器只需已构建的 `dist/web` 和队列服务源码，无需安装模型或上传电脑上的 Codex 登录信息。
 - Nginx：`/etc/nginx/conf.d/interview-notes.conf`，对应仓库 `deploy/nginx-ip.conf`，HTTP 自动跳转 HTTPS，80 端口保留 ACME 验证路径。
 - 证书：Let's Encrypt IP 证书，由 acme.sh 3.1.2 的 `shortlived` profile 签发。使用 `--days 3`，`interview-cert-renew.timer` 每天两次检查续期；续期成功自动安装到 `/etc/nginx/ssl/interview/` 并检查、重载 Nginx。不要关闭公网 80 端口，否则续期验证会失败。
@@ -28,6 +28,8 @@
 `20260918-3` 修复提纲任务回传的服务端 500：原写回逻辑把已结束的任务字段设为 `undefined`，而云端档案要求普通 JSON，导致连接器四次回传失败、随后租约到期并误显示“电脑连接中断”。现在删除临时字段；旧版提纲补充笔试结果为空时也不再写入 `undefined`。线上只读重演同一记录先复现格式校验失败、修复后通过；队列回传和 V3 写回新增回归测试，全量 572 项测试、类型检查、代码检查、构建通过。发布前队列为空且已备份 SQLite，发布后 HTTPS、服务和数据库 quick_check 正常；无需再次更新连接器。发布包 SHA-256 为 `edc2adf62e27acdb98594e29221f5f28545c326d7a4576374104be44036f170a`。
 
 `20260918-4` 将初试简历准备拆为两个可恢复阶段：先完整建立实习、项目、个人实践和校园经历地图，再按“实习 > 项目 > 个人经历 > 通用岗位题”生成提纲。简历题必须绑定经历和逐字原文，页面用项目标签组成可直接念出的亲和短问题。旧 V3 记录重新生成时，会先用已保存的简历正文补建地图；没有可用正文时明确提示重新上传或粘贴。浏览器仍提交和跟踪一个任务编号，服务端在两阶段之间持久化中间结果。连接器版本升为 `2026.9.18-2`；保留原目录的 `.local/connector.json` 和 `works` 覆盖升级即可，无需重新配对。完整 584 项测试、类型检查、代码检查和生产构建通过。生产实际版本为 `/opt/interview-notes/releases/20260918-4c`，规范化发布包 SHA-256 为 `2fc4fead48a304c4253e4bf348fd9132e0fbe750b262f2d26fca2a89a307cf1e`，连接器 ZIP SHA-256 为 `6ec6859ae6fd5a125b6183d85fd2a2870e8cca38d4bf36d633067e548136c44c`。发布前备份位于 `/var/backups/interview-notes/interview-2026-09-18.sqlite`；环境配置、数据目录和一条其他账号的排队任务均保持不变。前两次切换因旧发布保护规则把持久化排队任务误判为运行任务而自动回滚到 `20260918-3`，修正规则后原子切换成功；应用、Nginx、证书续期和记录备份定时器均为 active，SQLite `quick_check`、公网 HTTPS 会话、HTTP 308、实际 JS/CSS 和连接器下载均通过检查。
+
+`20260918-5` 在公开连接包中增加可执行的 `连接云端面试工作台.command`。首次双击只需粘贴网页配对码，后续双击复用 `.local/connector.json`；脚本以自身目录启动、自动寻找 Node.js 24+，避免从用户主目录运行 npm 导致的 `package.json` ENOENT。连接器版本升为 `2026.9.18-3`，协议仍为 5。完整 588 项测试、类型检查、代码检查和生产构建通过；规范化发布包 SHA-256 为 `f98976f326008e2f0af51ad084609a61bc51d685f01a43335166c6ecdb401aa0`，线上连接器 ZIP SHA-256 为 `05972c2a749ac6e40bfbefb5d10cbf15b0bbb18149ad3d9fe5a4cb09738b0200`。发布前等待正在运行的提纲任务自然完成，并校验 `/var/backups/interview-notes/interview-2026-09-18.sqlite`；切换时没有运行任务，一条既有排队任务完整保留并在发布后由连接器正常领取。生产已原子切换到 `/opt/interview-notes/releases/20260918-5`，回滚目标为 `20260918-4c`；环境配置和数据目录未变，应用、Nginx、证书续期和记录备份定时器均为 active。SQLite `quick_check`、公网 HTTPS 会话、HTTP 308、实际 JS/CSS、连接器下载哈希、`2026.9.18-3` 版本、ZIP 内启动器 `0755` 权限和隐私排除规则均通过检查。
 
 运维检查命令（在云服务器执行）：
 
