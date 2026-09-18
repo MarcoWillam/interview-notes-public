@@ -18,6 +18,7 @@ import {
 import {
   CONNECTOR_VERSION,
   SERVER_DRIVEN_EXECUTION_PROTOCOL,
+  connectorRelease,
 } from '../lib/connector-release.ts';
 import { followUpInputFixture } from './fixtures/follow-up-outline.ts';
 import type { CloudInterview } from '../lib/cloud-interview.ts';
@@ -52,6 +53,21 @@ const reading = {
     probes: ['你如何验证效果？'],
   })),
   followUps: ['请补充项目时间范围。'],
+};
+const experienceMap = {
+  version: 1 as const,
+  summary: '识别到一段用户访谈经历。',
+  experiences: [{
+    id: 'experience-1', sourceOrder: 1, type: 'project' as const,
+    name: '简历中未明确具体项目', nameEvidence: null,
+    organization: null, period: null, role: null, context: null,
+    actions: [{ text: '访谈五位用户', evidence: '我访谈了五位用户' }],
+    decisions: [], collaboration: [], outcomes: [], reflection: [],
+    evidence: ['我访谈了五位用户'],
+    dimensionSignals: ['需求分析'], missingInformation: ['项目名称未明确'],
+  }],
+  coverage: [{ source: '我访谈了五位用户', experienceId: 'experience-1', status: 'mapped' as const }],
+  unresolvedItems: [],
 };
 const writtenTestInput = {
   role: resumeInput.role,
@@ -614,7 +630,7 @@ void test('connector routes resume work to the reading runner and stores its cit
   let worker: Promise<void> | undefined;
   try {
     const input = resumeInput;
-    const report = reading;
+    const report = { ...reading, experienceMap };
     const d = f.store.redeem(f.store.pairing(f.user).code, '阅读电脑');
     const r = await f.api('/api/jobs', 'POST', {
       client: 'resume-http-123',
@@ -630,8 +646,19 @@ void test('connector routes resume work to the reading runner and stores its cit
       {
         status,
         execute: async (contract) => {
-          assert.deepEqual(contract.payload, { ...input, outlineVersion: 1 });
-          return report;
+          if ('dimensions' in contract.payload && !('role' in contract.payload)) {
+            assert.deepEqual(contract.payload, {
+              resumeText: input.resumeText,
+              dimensions: ['需求分析', '沟通协作'],
+            });
+            return experienceMap;
+          }
+          assert.deepEqual(contract.payload, {
+            ...input,
+            outlineVersion: 1,
+            experienceMap,
+          });
+          return reading;
         },
       },
       { pollMs: 10, heartbeatMs: 20 },
@@ -653,7 +680,11 @@ void test('connector routes resume work to the reading runner and stores its cit
 void test('resume task scope crosses the HTTP boundary without reusing another record', async () => {
   const f = await fixture();
   try {
-    const device = f.store.redeem(f.store.pairing(f.user).code, '阅读电脑');
+    const device = f.store.redeem(
+      f.store.pairing(f.user).code,
+      '阅读电脑',
+      connectorRelease,
+    );
     const submit = async (client: string, scope: string) => {
       const response = await f.api('/api/jobs', 'POST', {
         client,
@@ -667,8 +698,26 @@ void test('resume task scope crosses the HTTP boundary without reusing another r
     };
 
     const first = await submit('scope-http-a-1', 'interview-record-a');
-    const claimed = f.store.claim(device.token, true, ['resume'])!;
-    f.store.finish(device.token, claimed.id, claimed.lease, reading);
+    const claimed = f.store.claim(device.token, true, ['resume'], connectorRelease)!;
+    f.store.finish(
+      device.token,
+      claimed.id,
+      claimed.lease,
+      experienceMap,
+      false,
+      undefined,
+      1,
+    );
+    const outline = f.store.claim(device.token, true, ['resume'], connectorRelease)!;
+    f.store.finish(
+      device.token,
+      outline.id,
+      outline.lease,
+      reading,
+      false,
+      undefined,
+      1,
+    );
     const sameRecord = await submit('scope-http-a-2', 'interview-record-a');
     const newRecord = await submit('scope-http-b-1', 'interview-record-b');
 
@@ -699,9 +748,12 @@ void test('connector fails resume work whose question evidence is absent from th
       {
         status,
         execute: async (contract) => {
+          if ('dimensions' in contract.payload && !('role' in contract.payload))
+            return experienceMap;
           assert.deepEqual(contract.payload, {
             ...resumeInput,
             outlineVersion: 1,
+            experienceMap,
           });
           const invalid = structuredClone(reading);
           invalid.interviewQuestions[0].resumeEvidence =
@@ -720,7 +772,7 @@ void test('connector fails resume work whose question evidence is absent from th
     assert.equal(restored.state, 'failed');
     assert.equal(restored.report, null);
     // The connector must reject invalid runner output before transmitting it.
-    assert.match(restored.error, /评估引用或结构校验失败/);
+    assert.match(restored.error, /引用或结构校验失败/);
   } finally {
     controller.abort();
     await worker;
