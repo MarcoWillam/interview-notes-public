@@ -2,7 +2,10 @@ import type {
   InterviewOutlineV2,
   InterviewQuestionV2,
 } from '../../lib/interview-outline-v2';
-import type { InterviewOutlineV3 } from '../../lib/interview-outline-v3';
+import {
+  formatAskableQuestionV3,
+  type InterviewOutlineV3,
+} from '../../lib/interview-outline-v3';
 
 const sourceLabels: Record<InterviewQuestionV2['source'], string> = {
   role: '岗位通用',
@@ -27,12 +30,17 @@ function InterviewQuestionV2Card({
   return (
     <article className="interview-question-card outline-v2-question">
       <div className="outline-v2-question-heading">
-        <span className={`question-source-badge source-${question.source}`}>
-          {sourceLabels[question.source]}
-        </span>
+        <div className="question-source-group">
+          <span className={`question-source-badge source-${question.source}`}>
+            {sourceLabels[question.source]}
+          </span>
+          {question.contextLabel && (
+            <span className="question-context-badge">{question.contextLabel}</span>
+          )}
+        </div>
         <span>预计 {question.estimatedMinutes} 分钟</span>
       </div>
-      <h5>{`${number}. ${question.question}`}</h5>
+      <h5>{`${number}. ${formatAskableQuestionV3(question)}`}</h5>
       <div className="interview-question-dimensions" aria-label="考察维度">
         <span className="dimension-badge">
           主维度 · {question.primaryDimension}

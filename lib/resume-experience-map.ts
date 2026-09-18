@@ -273,6 +273,36 @@ export function experienceContextLabel(experience: ResumeExperience) {
     : fallbackContext(experience);
 }
 
+export const resumeExperienceTypeLabels: Record<ResumeExperienceType, string> = {
+  internship: '实习经历',
+  project: '项目经历',
+  'personal-project': '个人项目',
+  campus: '校园经历',
+  club: '社团经历',
+  competition: '竞赛经历',
+  course: '课程实践',
+  other: '其他经历',
+};
+
+export function resumeExperienceCountSummary(map: ResumeExperienceMap) {
+  const count = (types: ResumeExperienceType[]) =>
+    map.experiences.filter(({ type }) => types.includes(type)).length;
+  const groups = [
+    [count(['internship']), '段实习'],
+    [count(['project', 'personal-project']), '个项目'],
+    [count(['campus']), '段校园经历'],
+    [count(['club']), '段社团经历'],
+    [count(['competition']), '段竞赛经历'],
+    [count(['course']), '段课程实践'],
+    [count(['other']), '段其他经历'],
+  ] as const;
+  const summary = groups
+    .filter(([total]) => total > 0)
+    .map(([total, label]) => `${total} ${label}`)
+    .join(' · ');
+  return summary || '未识别到明确经历';
+}
+
 export function experienceEvidence(experience: ResumeExperience) {
   const facts = [
     experience.organization,

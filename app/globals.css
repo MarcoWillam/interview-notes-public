@@ -2430,6 +2430,28 @@ fieldset label:last-of-type {
   gap: 10px;
   margin-bottom: 8px;
 }
+.question-source-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.question-context-badge {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 3px 8px;
+  overflow: hidden;
+  border: 1px solid #c9d8ed;
+  border-radius: 999px;
+  background: #f1f5fb;
+  color: #496689;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .outline-v2-question-heading .question-source-badge {
   margin: 0;
 }
@@ -2834,6 +2856,104 @@ fieldset label:last-of-type {
 }
 .resume-reading-content {
   margin-top: 16px;
+}
+.resume-experience-map {
+  margin: 14px 0 18px;
+  padding: 14px;
+  border: 1px solid #d4e3dd;
+  border-radius: 9px;
+  background: #f6faf8;
+}
+.resume-experience-map-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.resume-experience-map-heading h4 {
+  margin: 0;
+}
+.resume-experience-map-heading span {
+  color: #5e746c;
+  font-size: 12px;
+  text-align: right;
+}
+.resume-experience-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.resume-experience-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #dbe7e2;
+  border-radius: 8px;
+  background: #fff;
+}
+.resume-experience-card header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.resume-experience-card header > span {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e8f3ef;
+  color: #397064;
+  font-size: 11px;
+  font-weight: 700;
+}
+.resume-experience-card h5 {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #27483e;
+  font-size: 14px;
+}
+.resume-experience-meta {
+  margin: 7px 0;
+  color: #647870;
+  font-size: 12px;
+}
+.resume-experience-card ul {
+  margin: 8px 0;
+  padding-left: 18px;
+}
+.resume-experience-card li,
+.resume-experience-card details,
+.resume-experience-missing {
+  font-size: 12px;
+}
+.resume-experience-missing {
+  margin: 8px 0;
+  color: #8a6320;
+}
+.resume-experience-card details {
+  padding-top: 7px;
+  border-top: 1px solid #edf2ef;
+  color: #587068;
+}
+.resume-experience-card details summary {
+  cursor: pointer;
+}
+.resume-experience-card blockquote {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .resume-experience-list {
+    grid-template-columns: 1fr;
+  }
+  .resume-experience-map-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .resume-experience-map-heading span {
+    text-align: left;
+  }
 }
 .resume-body-details {
   min-width: 0;

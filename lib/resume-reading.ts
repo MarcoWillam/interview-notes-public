@@ -37,6 +37,8 @@ import { resumeOutlineV3Instructions } from './interview-outline-v3-prompt.ts';
 import { resolveResumeEvidence } from './resume-evidence.ts';
 import { builtInRoleTemplates } from './default-role-templates.ts';
 import {
+  resumeExperienceCountSummary,
+  resumeExperienceTypeLabels,
   validateResumeExperienceMap,
   type ResumeExperienceMap,
 } from './resume-experience-map.ts';
@@ -490,6 +492,35 @@ export function exportResumeReading(reading: ResumeReading): string {
     '候选人自述 · 待面试核实',
     '',
     reading.summary,
+    ...(reading.experienceMap
+      ? [
+          '',
+          '## 经历地图',
+          '',
+          resumeExperienceCountSummary(reading.experienceMap),
+          ...[...reading.experienceMap.experiences]
+            .sort((left, right) => left.sourceOrder - right.sourceOrder)
+            .flatMap((experience) => [
+              '',
+              `### ${experience.name}`,
+              '',
+              `类型：${resumeExperienceTypeLabels[experience.type]}`,
+              ...(experience.organization
+                ? ['', `组织：${experience.organization.text}`]
+                : []),
+              ...(experience.role ? ['', `角色：${experience.role.text}`] : []),
+              ...(experience.period ? ['', `时间：${experience.period.text}`] : []),
+              ...[
+                ...experience.actions,
+                ...experience.decisions,
+                ...experience.outcomes,
+              ].map((fact) => `- ${fact.text}`),
+              ...(experience.missingInformation.length
+                ? ['', `待核实：${experience.missingInformation.join('、')}`]
+                : []),
+            ]),
+        ]
+      : []),
     ...reading.sections.flatMap((s) => [
       '',
       `## ${s.name}`,

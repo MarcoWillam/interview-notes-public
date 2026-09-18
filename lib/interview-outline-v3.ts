@@ -396,9 +396,15 @@ const sourceLabels: Record<InterviewQuestionV3['source'], string> = {
   'work-sample': '笔试作品',
 };
 
+export function formatAskableQuestionV3(question: InterviewQuestionV3) {
+  const context = question.contextLabel?.trim();
+  if (!context || question.question.includes(context)) return question.question;
+  return `在${context}中，${question.question}`;
+}
+
 function exportQuestion(question: InterviewQuestionV3, number: number) {
   return [
-    `### ${number}. ${question.question}`,
+    `### ${number}. ${formatAskableQuestionV3(question)}`,
     '',
     `预计用时：${question.estimatedMinutes} 分钟`,
     '',
@@ -407,6 +413,7 @@ function exportQuestion(question: InterviewQuestionV3, number: number) {
     `辅助评估维度：${question.secondaryDimensions.join('、') || '无'}`,
     '',
     `来源：${sourceLabels[question.source]}`,
+    ...(question.contextLabel ? ['', `经历上下文：${question.contextLabel}`] : []),
     '',
     `验证目标：${question.goal}`,
     ...(question.resumeEvidence ? ['', `> ${question.resumeEvidence}`] : []),

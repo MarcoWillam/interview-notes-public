@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   calculateOutlineCoverageV3,
+  formatAskableQuestionV3,
   interviewOutlineV3Schema,
   validateInterviewOutlineV3,
   type InterviewOutlineV3,
@@ -127,6 +128,21 @@ const experienceMap = validateResumeExperienceMap(
   },
   { resumeText: context.resumeText, dimensions },
 );
+
+void test('mapped resume questions export a readable project context', () => {
+  const mapped = {
+    ...question(0, dimensions[4], true),
+    source: 'resume' as const,
+    question: '可以聊聊你怎么推进这件事吗？',
+    resumeEvidence: '主动组织校园用户访谈',
+    experienceId: 'experience-1',
+    contextLabel: '校园用户访谈项目',
+  };
+  assert.equal(
+    formatAskableQuestionV3(mapped),
+    '在校园用户访谈项目中，可以聊聊你怎么推进这件事吗？',
+  );
+});
 
 void test('V3 校招潜力提纲接受六道必问和两道候选题', () => {
   const outline = validateInterviewOutlineV3(validOutline(), context);

@@ -828,6 +828,62 @@ void test('reading view shows six core questions with evidence and native collap
   );
 });
 
+void test('reading view summarizes and expands the complete resume experience map', async () => {
+  const makeExperience = (
+    id: string,
+    sourceOrder: number,
+    type: 'internship' | 'project' | 'personal-project' | 'campus',
+    name: string,
+  ) => ({
+    id,
+    sourceOrder,
+    type,
+    name,
+    nameEvidence: name,
+    organization: sourceOrder === 1
+      ? { text: '星云科技', evidence: '星云科技' }
+      : null,
+    period: null,
+    role: sourceOrder === 1
+      ? { text: '产品实习生', evidence: '产品实习生' }
+      : null,
+    context: null,
+    actions: [{ text: `主动推进${name}`, evidence: `主动推进${name}` }],
+    decisions: [],
+    collaboration: [],
+    outcomes: [],
+    reflection: [],
+    evidence: [name, `主动推进${name}`],
+    dimensionSignals: ['用户研究'],
+    missingInformation: sourceOrder === 1 ? ['结果数据未说明'] : [],
+  });
+  const experienceMap = {
+    version: 1 as const,
+    summary: '实习和项目经历已按简历顺序整理。',
+    experiences: [
+      makeExperience('internship-1', 1, 'internship', '客服 AI 项目'),
+      makeExperience('internship-2', 2, 'internship', '增长分析实习'),
+      makeExperience('project-1', 3, 'project', '校园访谈项目'),
+      makeExperience('project-2', 4, 'project', '低代码工作台'),
+      makeExperience('project-3', 5, 'personal-project', '个人 AI 助手'),
+      makeExperience('campus-1', 6, 'campus', '社团招新活动'),
+    ],
+    coverage: [],
+    unresolvedItems: [],
+  };
+  const html = await renderReading({ ...structuredResult, experienceMap });
+  assert.match(html, /2 段实习 · 3 个项目 · 1 段校园经历/);
+  assert.ok(html.includes('经历地图'));
+  assert.ok(html.includes('客服 AI 项目'));
+  assert.ok(html.includes('产品实习生'));
+  assert.ok(html.includes('主动推进客服 AI 项目'));
+  assert.ok(html.includes('待核实：结果数据未说明'));
+  assert.match(html, /<summary>查看简历原文依据<\/summary>/);
+  const markdown = exportResumeReading({ ...structuredResult, experienceMap });
+  assert.match(markdown, /## 经历地图/);
+  assert.match(markdown, /2 段实习 · 3 个项目 · 1 段校园经历/);
+});
+
 void test('reading view exposes one outline regeneration action and its consumed state', async () => {
   const available = await renderReading(structuredResult, {
     canRegenerate: true,

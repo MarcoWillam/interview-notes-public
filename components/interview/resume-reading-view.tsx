@@ -9,6 +9,11 @@ import type { FollowUpOutlineGroup } from '../../lib/follow-up-outline';
 import { FollowUpOutlineView } from './follow-up-outline-view';
 import { InterviewOutlineV2View } from './interview-outline-v2-view';
 import { WorkSampleView } from './work-sample-view';
+import {
+  resumeExperienceCountSummary,
+  resumeExperienceTypeLabels,
+  type ResumeExperienceMap,
+} from '../../lib/resume-experience-map';
 
 const sourceLabels: Record<QuestionSource, string> = {
   resume: '简历经历',
@@ -68,6 +73,66 @@ function QuestionCard({
         </ul>
       </details>
     </article>
+  );
+}
+
+function ExperienceMapView({ value }: { value: ResumeExperienceMap }) {
+  return (
+    <section className="resume-experience-map">
+      <div className="resume-experience-map-heading">
+        <h4>经历地图</h4>
+        <span>{resumeExperienceCountSummary(value)}</span>
+      </div>
+      <p className="small-note">{value.summary}</p>
+      <div className="resume-experience-list">
+        {[...value.experiences]
+          .sort((left, right) => left.sourceOrder - right.sourceOrder)
+          .map((experience) => {
+            const meta = [
+              experience.organization?.text,
+              experience.role?.text,
+              experience.period?.text,
+            ].filter(Boolean);
+            const keyActions = [
+              ...experience.actions,
+              ...experience.decisions,
+              ...experience.outcomes,
+            ].slice(0, 4);
+            return (
+              <article className="resume-experience-card" key={experience.id}>
+                <header>
+                  <span>{resumeExperienceTypeLabels[experience.type]}</span>
+                  <h5>{experience.name}</h5>
+                </header>
+                {!!meta.length && <p className="resume-experience-meta">{meta.join(' · ')}</p>}
+                {!!keyActions.length && (
+                  <ul>
+                    {keyActions.map((fact, index) => (
+                      <li key={`${fact.evidence}-${index}`}>{fact.text}</li>
+                    ))}
+                  </ul>
+                )}
+                {!!experience.missingInformation.length && (
+                  <p className="resume-experience-missing">
+                    待核实：{experience.missingInformation.join('、')}
+                  </p>
+                )}
+                <details>
+                  <summary>查看简历原文依据</summary>
+                  {experience.evidence.map((evidence, index) => (
+                    <blockquote key={`${evidence}-${index}`}>{evidence}</blockquote>
+                  ))}
+                </details>
+              </article>
+            );
+          })}
+      </div>
+      {!!value.unresolvedItems.length && (
+        <p className="resume-experience-missing">
+          未归属信息：{value.unresolvedItems.join('、')}
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -271,11 +336,17 @@ export function ResumeReadingView({
       <details className="resume-reading-details">
         <summary>
           <span>简历阅读结果</span>
-          <span>{itemCount} 条要点</span>
+          <span>
+            {value.experienceMap
+              ? `${resumeExperienceCountSummary(value.experienceMap)} · `
+              : ''}
+            {itemCount} 条要点
+          </span>
         </summary>
         <div className="resume-reading-content">
           <span className="badge">简历自述 · 待面试核实</span>
           <p>{value.summary}</p>
+          {value.experienceMap && <ExperienceMapView value={value.experienceMap} />}
           {value.sections.map((section) => (
             <section key={section.name}>
               <h4>{section.name}</h4>
