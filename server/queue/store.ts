@@ -780,6 +780,11 @@ export class QueueStore {
             )
             .get(user, kind, digest, safeLabel) as Row | undefined);
     if (reusable) return this.get(user, String(reusable.id));
+    if (kind === 'written-test')
+      throw new QueueError(
+        '补充笔试复盘功能已下线，请使用补充追问或补交笔试作品。',
+        409,
+      );
     const count = this.db
       .prepare(
         "SELECT COUNT(*) AS n FROM jobs WHERE user=? AND state IN ('queued','running')",

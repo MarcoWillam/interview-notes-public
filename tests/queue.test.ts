@@ -6,7 +6,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
-import { scryptSync } from 'node:crypto';
+import { createHash, scryptSync } from 'node:crypto';
 import {
   AI_PM_WORK_SAMPLE_RUBRIC_VERSION,
   aiPmWorkSampleRubric,
@@ -23,6 +23,7 @@ import {
   followUpResultFixture,
 } from './fixtures/follow-up-outline.ts';
 import type { CloudInterview } from '../lib/cloud-interview.ts';
+import { validateWrittenTestSupplementInput } from '../lib/written-test-supplement.ts';
 const resumeInput = {
   role: '产品经理',
   requirements: '用户研究与需求分析',
@@ -1816,13 +1817,29 @@ void test('written-test supplements require a capable connector and reuse comple
   const { s, a } = setup();
   try {
     const device = s.redeem(s.pairing(a).code, '新版电脑');
-    const job = s.submit(
-      a,
-      'written-test-123',
-      '张三 · 笔试复盘补充',
-      writtenTestInput,
-      'written-test',
+    const serialized = JSON.stringify(
+      validateWrittenTestSupplementInput(writtenTestInput),
     );
+    const digest = createHash('sha256')
+      .update('written-test' + serialized)
+      .digest('hex');
+    s.db
+      .prepare(
+        "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued,requiredProtocol) VALUES(?,?,?,?,?,'queued',?,?,?,?,?,?)",
+      )
+      .run(
+        'legacy-written-test-compatibility',
+        a,
+        'written-test-123',
+        digest,
+        '张三 · 笔试复盘补充',
+        serialized,
+        1_000_000,
+        1_000_000,
+        'written-test',
+        1_000_000,
+        1,
+      );
     assert.equal(s.claim(device.token, true, ['interview', 'resume']), null);
     const claimed = s.claim(device.token, true, [
       'interview',
@@ -1833,7 +1850,7 @@ void test('written-test supplements require a capable connector and reuse comple
     assert.ok('input' in claimed);
     assert.deepEqual(claimed.input, writtenTestInput);
     s.finish(device.token, claimed.id, claimed.lease, writtenTestResult);
-    assert.deepEqual(s.get(a, job.id).report, writtenTestResult);
+    assert.deepEqual(s.get(a, claimed.id).report, writtenTestResult);
     const repeated = s.submit(
       a,
       'written-test-repeat-123',
@@ -1841,8 +1858,60 @@ void test('written-test supplements require a capable connector and reuse comple
       writtenTestInput,
       'written-test',
     );
-    assert.equal(repeated.id, job.id);
+    assert.equal(repeated.id, claimed.id);
     assert.equal(repeated.state, 'completed');
+  } finally {
+    s.close();
+  }
+});
+
+void test('written-test supplement creation is retired but exact existing jobs remain reachable', () => {
+  const { s, a } = setup();
+  try {
+    assert.throws(
+      () =>
+        s.submit(
+          a,
+          'written-test-retired-new',
+          '张三 · 笔试复盘补充',
+          writtenTestInput,
+          'written-test',
+        ),
+      /补充笔试复盘功能已下线.*补充追问.*补交笔试作品/,
+    );
+
+    const normalized = validateWrittenTestSupplementInput(writtenTestInput);
+    const serialized = JSON.stringify(normalized);
+    const digest = createHash('sha256')
+      .update('written-test' + serialized)
+      .digest('hex');
+    s.db
+      .prepare(
+        "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued,requiredProtocol) VALUES(?,?,?,?,?,'queued',?,?,?,?,?,?)",
+      )
+      .run(
+        'legacy-written-test-job',
+        a,
+        'written-test-retired-existing',
+        digest,
+        '张三 · 笔试复盘补充',
+        serialized,
+        1_000_000,
+        1_000_000,
+        'written-test',
+        1_000_000,
+        1,
+      );
+    assert.equal(
+      s.submit(
+        a,
+        'written-test-retired-existing',
+        '张三 · 笔试复盘补充',
+        writtenTestInput,
+        'written-test',
+      ).id,
+      'legacy-written-test-job',
+    );
   } finally {
     s.close();
   }

@@ -856,20 +856,43 @@ void test('connector fails resume work whose question evidence is absent from th
   }
 });
 
-void test('connector routes written-test work to the dedicated runner', async () => {
+void test('written-test creation is retired while the connector completes pre-existing work', async () => {
   const f = await fixture();
   const controller = new AbortController();
   let worker: Promise<void> | undefined;
   try {
     const device = f.store.redeem(f.store.pairing(f.user).code, '笔试复盘电脑');
     const response = await f.api('/api/jobs', 'POST', {
-      client: 'written-test-http-123',
+      client: 'written-test-http-retired',
       kind: 'written-test',
       label: '张三 · 笔试复盘补充',
       input: writtenTestInput,
     });
-    assert.equal(response.status, 202);
-    const job = (await response.json()) as { id: string };
+    assert.equal(response.status, 409);
+    assert.match(
+      ((await response.json()) as { error: string }).error,
+      /补充笔试复盘功能已下线.*补充追问.*补交笔试作品/,
+    );
+
+    const legacyJobId = 'legacy-written-test-http';
+    const now = Date.now();
+    f.store.db
+      .prepare(
+        "INSERT INTO jobs(id,user,client,inputHash,label,state,input,created,updated,kind,queued,requiredProtocol) VALUES(?,?,?,?,?,'queued',?,?,?,?,?,?)",
+      )
+      .run(
+        legacyJobId,
+        f.user,
+        'written-test-http-existing',
+        'legacy-written-test-http-hash',
+        '张三 · 笔试复盘补充',
+        JSON.stringify(writtenTestInput),
+        now,
+        now,
+        'written-test',
+        now,
+        SERVER_DRIVEN_EXECUTION_PROTOCOL,
+      );
     worker = runConnector(
       { server: f.origin, ...device },
       controller.signal,
@@ -882,8 +905,11 @@ void test('connector routes written-test work to the dedicated runner', async ()
       },
       { pollMs: 10, heartbeatMs: 20 },
     );
-    await until(() => f.store.get(f.user, job.id).state === 'completed');
-    assert.deepEqual(f.store.get(f.user, job.id).report, writtenTestResult);
+    await until(() => f.store.get(f.user, legacyJobId).state === 'completed');
+    assert.deepEqual(
+      f.store.get(f.user, legacyJobId).report,
+      writtenTestResult,
+    );
   } finally {
     controller.abort();
     await worker;
