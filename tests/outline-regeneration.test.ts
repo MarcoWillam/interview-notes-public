@@ -13,6 +13,7 @@ import {
   type InterviewOutlineV2,
   type InterviewQuestionV2,
 } from '../lib/interview-outline-v2.ts';
+import { calculateOutlineCoverageV3 } from '../lib/interview-outline-v3.ts';
 import { builtInRoleTemplates } from '../lib/default-role-templates.ts';
 
 const standards = {
@@ -100,6 +101,98 @@ void test('stale revisions and changed source positions are rejected', () => {
           })),
         },
         input,
+      ),
+    /来源顺序/,
+  );
+});
+
+void test('V3 regeneration keeps verified resume evidence and recalculates derived coverage', () => {
+  const template = builtInRoleTemplates[0];
+  const dimensionNames = template.dimensionText.split('、');
+  const source = '姓名：林小满。主动组织校园用户访谈。';
+  const makeQuestion = (index: number) => ({
+    id: `v3-${index + 1}`,
+    question: `在校园活动中你会怎样处理第${index + 1}个问题？`,
+    required: index < 6,
+    estimatedMinutes: index < 6 ? 5 : 4,
+    primaryDimension:
+      index < 4 ? dimensionNames[index + 4] : dimensionNames[index - 4],
+    secondaryDimensions:
+      index === 4 || index === 5 ? [dimensionNames[index - 2]] : [],
+    source: index === 0 ? ('resume' as const) : ('role' as const),
+    goal: '核实候选人的实际行动',
+    resumeEvidence: index === 0 ? '主动组织校园用户访谈' : null,
+    workSampleEvidence: null,
+    listenFor: ['本人行动'],
+    riskSignals: ['只有笼统结论'],
+    probes: [{ condition: '回答笼统', question: '你先做了什么？' }],
+  });
+  const questions = Array.from({ length: 8 }, (_, index) =>
+    makeQuestion(index),
+  );
+  const outline = {
+    version: 3 as const,
+    estimatedMinutes: 30,
+    requiredQuestions: questions.slice(0, 6),
+    reserveQuestions: questions.slice(6),
+    archivedReserveQuestions: [],
+    coverage: calculateOutlineCoverageV3(questions, dimensionNames),
+  };
+  const existing = validateOutlineRegenerationInput({
+    ...template,
+    resumeText: source,
+    revision: 'outline-v3-regression',
+    outlineVersion: 3,
+    outline,
+    workSample: null,
+  });
+  const regenerated = {
+    ...outline,
+    requiredQuestions: outline.requiredQuestions.map((item, index) =>
+      index === 0
+        ? { ...item, resumeEvidence: '候选人主动组织大型访谈' }
+        : item,
+    ),
+    coverage: [],
+  };
+  const coverageOnly = validateOutlineRegenerationResult(
+    {
+      outlineVersion: 3,
+      revision: existing.revision,
+      outline: { ...regenerated, requiredQuestions: outline.requiredQuestions },
+    },
+    existing,
+  );
+  if (!('outlineVersion' in coverageOnly) || coverageOnly.outlineVersion !== 3)
+    throw new Error('V3 result expected');
+  assert.deepEqual(coverageOnly.outline.coverage, outline.coverage);
+  const result = validateOutlineRegenerationResult(
+    { outlineVersion: 3, revision: existing.revision, outline: regenerated },
+    existing,
+  );
+  if (!('outlineVersion' in result) || result.outlineVersion !== 3)
+    throw new Error('V3 result expected');
+  assert.equal(
+    result.outline.requiredQuestions[0].resumeEvidence,
+    '主动组织校园用户访谈',
+  );
+  assert.deepEqual(result.outline.coverage, outline.coverage);
+  assert.throws(
+    () =>
+      validateOutlineRegenerationResult(
+        {
+          outlineVersion: 3,
+          revision: existing.revision,
+          outline: {
+            ...outline,
+            requiredQuestions: outline.requiredQuestions.map((item, index) =>
+              index === 0
+                ? { ...item, source: 'role', resumeEvidence: null }
+                : item,
+            ),
+          },
+        },
+        existing,
       ),
     /来源顺序/,
   );
