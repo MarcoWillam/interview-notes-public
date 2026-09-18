@@ -1265,7 +1265,7 @@ void test('jobs are isolated, idempotent and claimed once', () => {
     assert.equal(s.claim(da.token, true), null);
     assert.throws(() => s.finish(db.token, claim.id, claim.lease, report));
     s.finish(da.token, claim.id, claim.lease, report);
-    assert.deepEqual(s.get(a, claim.id).report, report);
+    assert.deepEqual(s.get(a, claim.id).report, { report });
     assert.equal(
       s.db.prepare('SELECT input FROM jobs WHERE id=?').get(claim.id)?.input,
       null,

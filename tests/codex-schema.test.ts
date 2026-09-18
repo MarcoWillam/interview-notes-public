@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { reportSchema } from '../lib/assessment.ts';
+import { assessmentResultSchema, reportSchema } from '../lib/assessment.ts';
 import { resumeOutputSchema, resumeSchema } from '../lib/resume-reading.ts';
 import {
   workSampleAnalysisV2Schema,
@@ -37,6 +37,7 @@ function assertStrictObjectSchemas(value: unknown, path = 'root') {
 void test('every Codex output schema satisfies strict required-property rules', () => {
   for (const [name, schema] of Object.entries({
     reportSchema,
+    assessmentResultSchema,
     resumeSchema,
     resumeSchemaV2: resumeOutputSchema(2),
     writtenTestSupplementSchema,

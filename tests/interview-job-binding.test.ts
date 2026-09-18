@@ -3,7 +3,11 @@ import {
   followUpResultFixture,
   followUpGroupFixture,
 } from './fixtures/follow-up-outline.ts';
-import { interviewJobSource, assertInterviewJobInputMatches } from '../lib/interview-job-binding.ts';
+import {
+  applyInterviewJobResult,
+  interviewJobSource,
+  assertInterviewJobInputMatches,
+} from '../lib/interview-job-binding.ts';
 import { validateFollowUpOutlineInput } from '../lib/follow-up-outline.ts';
 import { validateResumeReading } from '../lib/resume-reading.ts';
 import assert from 'node:assert/strict';
@@ -279,6 +283,42 @@ void test('bound interview assessment matches the record dimension array', () =>
   } finally {
     store.close();
   }
+});
+
+void test('assessment job results store candidate and interviewer findings separately', () => {
+  const record = cloudRecord('record-binding-assessment-result');
+  const report = {
+    summary: '候选人结论',
+    dimensions: [],
+    followUps: [],
+  };
+  const interviewerReview = {
+    status: 'unavailable' as const,
+    reason: 'speaker-labels-missing' as const,
+    summary: null,
+    dimensions: [] as [],
+    strengths: [] as [],
+    priorities: [] as [],
+    rewrites: [] as [],
+    missedFollowUps: [] as [],
+  };
+  const saved = applyInterviewJobResult(
+    record,
+    'interview',
+    { report, interviewerReview },
+    99,
+  );
+  assert.deepEqual(saved.report, report);
+  assert.deepEqual(saved.interviewerReview, interviewerReview);
+
+  const legacy = applyInterviewJobResult(
+    { ...saved, interviewerReview },
+    'interview',
+    { ...report, summary: '旧任务候选人结论' },
+    100,
+  );
+  assert.equal(legacy.report?.summary, '旧任务候选人结论');
+  assert.deepEqual(legacy.interviewerReview, interviewerReview);
 });
 
 void test('relevant edits retain a completed result for confirmation', () => {

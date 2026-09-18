@@ -79,8 +79,10 @@ import {
   validateInput,
   exportMarkdown,
   workSampleVerificationLabels,
+  type AssessmentResult,
   type Report,
 } from '@/lib/interview';
+import type { InterviewerReview } from '@/lib/interviewer-review';
 import { useInterviewLibrary } from '@/hooks/use-interview-library';
 import type { NewInterviewSeed, SavedInterview } from '@/lib/local/store';
 import {
@@ -107,6 +109,7 @@ import { InterviewHandoffDialog } from '@/components/interview/interview-handoff
 import { CandidateDashboard } from '@/components/interview/candidate-dashboard';
 import { SecondRoundOutlineView } from '@/components/interview/second-round-outline-view';
 import { SecondRoundComparisonView } from '@/components/interview/second-round-comparison-view';
+import { InterviewerReviewView } from '@/components/interview/interviewer-review-view';
 import {
   SecondRoundCreateDialog,
   type SecondRoundCreateSeed,
@@ -340,6 +343,8 @@ export default function Home({
   } | null>(null);
   const [reviewed, setReviewed] = useState(false);
   const [report, setReport] = useState<Report | null>(null);
+  const [interviewerReview, setInterviewerReview] =
+    useState<InterviewerReview | null>(null);
   const [conclusion, setConclusion] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState<BusyKind | null>(null);
@@ -649,6 +654,7 @@ export default function Home({
     );
     setReviewed(saved.reviewed);
     setReport(saved.report);
+    setInterviewerReview(saved.interviewerReview || null);
     setConclusion(saved.conclusion);
     setConfirmed(saved.confirmed);
     setTab('resume');
@@ -681,6 +687,7 @@ export default function Home({
       transcriptName,
       reviewed,
       report,
+      interviewerReview,
       conclusion,
       confirmed,
       sourceTemplateId,
@@ -878,15 +885,21 @@ export default function Home({
             const result = outcome.result as Awaited<
               ReturnType<typeof submitRemoteSecondRoundAssessment>
             >;
-            const { priorRoundComparison: comparison, ...nextReport } = result;
+            const {
+              priorRoundComparison: comparison,
+              report: nextReport,
+              interviewerReview: nextInterviewerReview,
+            } = result;
             await libraryRef.current.flush({
               report: nextReport,
+              interviewerReview: nextInterviewerReview || null,
               priorRoundComparison: comparison,
               secondRoundAssessmentJobId: undefined,
               secondRoundAssessmentSourceHash: undefined,
               confirmed: false,
             });
             setReport(nextReport);
+            setInterviewerReview(nextInterviewerReview || null);
             setPriorRoundComparison(comparison);
             setSecondRoundAssessmentJobId(undefined);
             setSecondRoundAssessmentSourceHash(undefined);
@@ -1048,6 +1061,7 @@ export default function Home({
           setWorkSample(next.workSample);
           setWorkSampleJobId(undefined);
           setReport(null);
+          setInterviewerReview(null);
           setConfirmed(false);
           setHasWrittenTest(true);
           setWrittenTestConfirmed(true);
@@ -2211,6 +2225,7 @@ export default function Home({
       setWorkSample(next.workSample);
       setWorkSampleJobId(undefined);
       setReport(null);
+      setInterviewerReview(null);
       setConfirmed(false);
       setHasWrittenTest(true);
       setWrittenTestConfirmed(true);
@@ -2355,6 +2370,7 @@ export default function Home({
     if (report || confirmed)
       setNotice('面试资料已修改，旧评估已清除；请重新评估并确认结论。');
     setReport(null);
+    setInterviewerReview(null);
     if (interviewStage === 'second') {
       setPriorRoundComparison([]);
       setSecondRoundAssessmentJobId(undefined);
@@ -2617,16 +2633,21 @@ export default function Home({
         );
         return;
       }
-      const { priorRoundComparison: comparison, ...nextReport } =
-        outcome.result;
+      const {
+        priorRoundComparison: comparison,
+        report: nextReport,
+        interviewerReview: nextInterviewerReview,
+      } = outcome.result;
       await library.flush({
         report: nextReport,
+        interviewerReview: nextInterviewerReview || null,
         priorRoundComparison: comparison,
         secondRoundAssessmentJobId: undefined,
         secondRoundAssessmentSourceHash: undefined,
         confirmed: false,
       });
       setReport(nextReport);
+      setInterviewerReview(nextInterviewerReview || null);
       setPriorRoundComparison(comparison);
       setSecondRoundAssessmentJobId(undefined);
       setSecondRoundAssessmentSourceHash(undefined);
@@ -2673,7 +2694,7 @@ export default function Home({
     const controller = new AbortController();
     analysisController.current = controller;
     try {
-      let data: Report;
+      let data: AssessmentResult;
       if (queuedCodex) {
         const recordBinding = await library.flushForTask();
         data = await submitRemoteAnalysis(
@@ -2701,18 +2722,20 @@ export default function Home({
             AbortSignal.timeout(localCodex ? 260000 : 100000),
           ]),
         });
-        data = (await r.json()) as Report & { error?: string };
+        data = (await r.json()) as AssessmentResult & { error?: string };
         controller.signal.throwIfAborted();
         if (!r.ok)
           throw new Error(
-            (data as Report & { error?: string }).error || '生成评估失败',
+            (data as AssessmentResult & { error?: string }).error ||
+              '生成评估失败',
           );
       }
       if (!queuedCodex) {
         if (analysisController.current !== controller) return;
         controller.signal.throwIfAborted();
       }
-      setReport(data);
+      setReport(data.report);
+      setInterviewerReview(data.interviewerReview ?? null);
       setConfirmed(false);
       setTab('report');
       setNotice('辅助评估已生成，请核实引用与判断后填写最终意见。');
@@ -2837,6 +2860,7 @@ export default function Home({
     setPendingImport(null);
     setReviewed(false);
     setReport(null);
+    setInterviewerReview(null);
     setConclusion('');
     setConfirmed(false);
     setNotice('');
@@ -4066,6 +4090,9 @@ export default function Home({
                             前往面试记录 <ArrowRight size={15} />
                           </button>
                         </div>
+                      )}
+                      {interviewerReview && (
+                        <InterviewerReviewView value={interviewerReview} />
                       )}
                       <div className="human-review">
                         <label htmlFor="conclusion">

@@ -40,6 +40,31 @@ void test('cloud interview accepts the current local record shape', () => {
   assert.equal(interviewSummary(value, 3).role, 'AI 产品经理（校招）');
 });
 
+void test('cloud interview stores a private interviewer review as a separate field', () => {
+  const interviewerReview = {
+    status: 'unavailable' as const,
+    reason: 'speaker-labels-missing' as const,
+    summary: null,
+    dimensions: [] as [],
+    strengths: [] as [],
+    priorities: [] as [],
+    rewrites: [] as [],
+    missedFollowUps: [] as [],
+  };
+  assert.deepEqual(
+    validateCloudInterview({ ...record, interviewerReview }).interviewerReview,
+    interviewerReview,
+  );
+  assert.throws(
+    () =>
+      validateCloudInterview({
+        ...record,
+        interviewerReview: { ...interviewerReview, status: 'available' },
+      }),
+    /说话人标记|面试官复盘/,
+  );
+});
+
 void test('cloud interview rejects malformed core fields and local binary data', () => {
   assert.throws(
     () => validateCloudInterview({ ...record, candidate: 1 }),

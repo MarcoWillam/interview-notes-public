@@ -19,7 +19,8 @@ void test('workbench and task center share competency grouping for results and d
     taskCenter,
     /groupAssessmentDimensions\(job\.label, report\.dimensions\)/,
   );
-  assert.match(
+  assert.match(taskCenter, /candidateReportFromAssessmentResult/);
+  assert.doesNotMatch(
     taskCenter,
     /groupAssessmentDimensions\(job\.label, job\.report\.dimensions\)/,
   );

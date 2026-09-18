@@ -94,7 +94,7 @@ void test('HTTP gateway serves the page and status, rejects foreign callers and 
   assert.equal(calls, 0);
   const response = await post(base, JSON.stringify(input));
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), report);
+  assert.deepEqual(await response.json(), { report });
   assert.equal(calls, 1);
 });
 void test('HTTP client disconnect aborts the running analysis', async (t) => {

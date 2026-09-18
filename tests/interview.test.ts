@@ -12,7 +12,10 @@ void test('empty role and transcript cannot be assessed', () => {
   );
 });
 
-import { validateReport } from '../lib/interview.ts';
+import {
+  validateAssessmentResult,
+  validateReport,
+} from '../lib/interview.ts';
 const input = {
   role: '产品经理',
   requirements: '独立推进项目',
@@ -70,6 +73,30 @@ const groundedReport = {
   ],
   followUps: [],
 };
+void test('assessment result keeps the candidate report separate from interviewer review', () => {
+  const result = validateAssessmentResult(
+    {
+      report: groundedReport,
+      interviewerReview: {
+        status: 'unavailable',
+        reason: 'speaker-labels-missing',
+        summary: null,
+        dimensions: [],
+        strengths: [],
+        priorities: [],
+        rewrites: [],
+        missedFollowUps: [],
+      },
+    },
+    input,
+  );
+  assert.equal(result.report.summary, groundedReport.summary);
+  assert.equal(result.interviewerReview?.status, 'unavailable');
+  assert.equal(
+    validateAssessmentResult(groundedReport, input).interviewerReview,
+    undefined,
+  );
+});
 void test('assessment rejects an invented quotation instead of presenting it as evidence', () => {
   assert.throws(() =>
     validateReport(

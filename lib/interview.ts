@@ -3,6 +3,10 @@ import {
   type WorkSampleAssessment,
 } from './work-sample.ts';
 import { groupAssessmentDimensions } from './assessment-groups.ts';
+import {
+  validateInterviewerReview,
+  type InterviewerReview,
+} from './interviewer-review.ts';
 
 export type InterviewInput = {
   role: string;
@@ -26,6 +30,11 @@ export type Report = {
   dimensions: Assessment[];
   followUps: string[];
   workSampleReview?: WorkSampleVerification[];
+};
+export type AssessmentResult = {
+  report: Report;
+  /** Missing only for a legacy result produced before interviewer review existed. */
+  interviewerReview?: InterviewerReview;
 };
 export type WorkSampleVerification = {
   observation: string;
@@ -175,6 +184,43 @@ export function validateReport(value: unknown, input: InterviewInput): Report {
     followUps: v.followUps.map((q) => boundedString(q, 1000, '待核实事项')),
     ...(workSampleReview ? { workSampleReview } : {}),
   };
+}
+
+export function validateAssessmentResult(
+  value: unknown,
+  inputValue: InterviewInput,
+): AssessmentResult {
+  const input = validateInput(inputValue);
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('评估返回格式错误');
+  const result = value as Record<string, unknown>;
+  if (!Object.hasOwn(result, 'report'))
+    return { report: validateReport(result, input) };
+  if (!Object.hasOwn(result, 'interviewerReview'))
+    return { report: validateReport(result.report, input) };
+  return {
+    report: validateReport(result.report, input),
+    interviewerReview: validateInterviewerReview(
+      result.interviewerReview,
+      input.transcript,
+    ),
+  };
+}
+
+export function candidateReportFromAssessmentResult(
+  value: unknown,
+): Report | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const result = value as Record<string, unknown>;
+  const candidate = Object.hasOwn(result, 'report') ? result.report : result;
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate))
+    return null;
+  const report = candidate as Record<string, unknown>;
+  return typeof report.summary === 'string' &&
+    Array.isArray(report.dimensions) &&
+    Array.isArray(report.followUps)
+    ? (candidate as Report)
+    : null;
 }
 
 export const workSampleVerificationLabels: Record<

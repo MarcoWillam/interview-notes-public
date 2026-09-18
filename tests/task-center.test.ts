@@ -666,6 +666,7 @@ function lifecycleEnvironment() {
     'TranscriptName',
     'Reviewed',
     'Report',
+    'InterviewerReview',
     'Conclusion',
     'Confirmed',
     'Tab',
@@ -985,13 +986,16 @@ void test('assessment success still publishes its report after same-record resto
       queuedCodex: true,
       candidate: '候选人',
       role: 'AI 产品经理',
-      submitRemoteAnalysis: async () => report,
+      submitRemoteAnalysis: async () => ({ report }),
       fetch: async () => {
         throw new Error('unexpected local request');
       },
       localCodex: false,
       setReport: (value: unknown) => {
         state.report = value;
+      },
+      setInterviewerReview: (value: unknown) => {
+        state.interviewerReview = value;
       },
       setConfirmed: (value: unknown) => {
         state.confirmed = value;
@@ -1273,7 +1277,10 @@ void test('analysis completions bind refreshes to record identity and navigation
     source.indexOf('async function analyze()'),
     source.indexOf('async function cancelAnalysis()'),
   );
-  assert.match(analyze, /setReport\(data\)[\s\S]*setTab\('report'\)/);
+  assert.match(
+    analyze,
+    /setReport\(data\.report\)[\s\S]*setInterviewerReview\(data\.interviewerReview \?\? null\)[\s\S]*setTab\('report'\)/,
+  );
   const resume = source.slice(
     source.indexOf('async function runResumeReading'),
     source.indexOf('function confirmResumeOutlineGeneration'),

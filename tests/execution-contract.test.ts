@@ -115,6 +115,28 @@ void test('server builds text contracts for every text-only task kind', () => {
   }
 });
 
+void test('interview contracts request separate candidate and interviewer results', () => {
+  const contract = executionContractFor('interview', {
+    role: standards.role,
+    requirements: standards.requirements,
+    transcript: '面试官：为什么做这个项目？\n候选人：我发现了同学的问题。',
+    dimensions: standards.dimensionText.split('、'),
+  });
+  const schema = contract.schema as {
+    required: string[];
+    properties: Record<string, unknown>;
+  };
+  assert.deepEqual(schema.required, ['report', 'interviewerReview']);
+  assert.ok(schema.properties.report);
+  assert.ok(schema.properties.interviewerReview);
+  assert.equal(
+    (contract.payload as { speakerLabelsAvailable?: boolean })
+      .speakerLabelsAvailable,
+    true,
+  );
+  assert.match(contract.instructions, /问题改写/);
+});
+
 void test('server builds artifact-bound contracts for initial and later work', () => {
   const mapping = executionContractFor('resume', {
     ...standards,

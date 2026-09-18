@@ -3,6 +3,10 @@ import {
   type FollowUpOutlineGroup,
 } from './follow-up-outline.ts';
 import type { Report } from './interview.ts';
+import {
+  validateInterviewerReview,
+  type InterviewerReview,
+} from './interviewer-review.ts';
 import type { ResumeReading } from './resume-reading.ts';
 import type { WorkSampleAssessment } from './work-sample.ts';
 import { interviewStatus, type InterviewStatus } from './interview-status.ts';
@@ -53,6 +57,7 @@ export type CloudInterview = {
   transcriptName?: string;
   reviewed: boolean;
   report: Report | null;
+  interviewerReview?: InterviewerReview | null;
   conclusion: string;
   confirmed: boolean;
   scoringGuidance?: string;
@@ -114,6 +119,7 @@ const allowedKeys = new Set<keyof CloudInterview>([
   'transcriptName',
   'reviewed',
   'report',
+  'interviewerReview',
   'conclusion',
   'confirmed',
   'scoringGuidance',
@@ -304,6 +310,8 @@ export function validateCloudInterview(value: unknown): CloudInterview {
     'priorRoundComparison',
   ])
     if (record[key] !== undefined) plainJson(record[key]);
+  if (record.interviewerReview !== undefined && record.interviewerReview !== null)
+    validateInterviewerReview(record.interviewerReview, String(record.transcript));
   if (record.outlineSupplements !== undefined)
     validateFollowUpOutlineGroups(record.outlineSupplements);
   plainJson(value);

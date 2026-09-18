@@ -5,8 +5,9 @@ import {
   type ResumeReading,
 } from './resume-reading.ts';
 import {
+  validateAssessmentResult,
   validateInput,
-  validateReport,
+  type AssessmentResult,
   type InterviewInput,
   type Report,
 } from './interview.ts';
@@ -329,13 +330,13 @@ export function submitRemoteAnalysis(
   input: InterviewInput,
   label: string,
   signal: AbortSignal,
-  onProgress: (job: RemoteJob) => void,
+  onProgress: (job: RemoteJob<AssessmentResult>) => void,
   dependencies: RemoteTaskDependencies = { fetcher: fetch, pollMs: 2000 },
-): Promise<Report> {
+): Promise<AssessmentResult> {
   return submitRemoteTask(
     validateInput(input),
     'interview',
-    (value) => validateReport(value, input),
+    (value) => validateAssessmentResult(value, input),
     label,
     signal,
     onProgress,

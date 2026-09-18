@@ -1,8 +1,8 @@
 import {
+  validateAssessmentResult,
   validateInput,
-  validateReport,
+  type AssessmentResult,
   type InterviewInput,
-  type Report,
 } from './interview.ts';
 
 export type InterviewStage = 'initial' | 'second';
@@ -132,7 +132,7 @@ export type SecondRoundAssessmentInput = InterviewInput & {
   priorRoundText: string;
 };
 
-export type SecondRoundAssessmentResult = Report & {
+export type SecondRoundAssessmentResult = AssessmentResult & {
   priorRoundComparison: PriorRoundComparison[];
 };
 
@@ -549,7 +549,7 @@ export function validateSecondRoundAssessmentResult(
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('复试评估结果格式无效。');
   const result = value as Record<string, unknown>;
-  const report = validateReport(result, input);
+  const assessment = validateAssessmentResult(result, input);
   if (
     !Array.isArray(result.priorRoundComparison) ||
     result.priorRoundComparison.length > 12
@@ -582,7 +582,7 @@ export function validateSecondRoundAssessmentResult(
       transcriptEvidence,
     };
   });
-  return { ...report, priorRoundComparison };
+  return { ...assessment, priorRoundComparison };
 }
 
 const secondRoundQuestionV2Schema = {

@@ -3,8 +3,12 @@ import {
   type CodexExecutionContract,
   type CodexExecutionKind,
 } from '../lib/codex-execution-contract.ts';
-import { assessmentInstructions, reportSchema } from '../lib/assessment.ts';
+import {
+  assessmentResultSchema,
+  combinedAssessmentInstructions,
+} from '../lib/assessment.ts';
 import { validateInput } from '../lib/interview.ts';
+import { hasReviewableSpeakerLabels } from '../lib/interviewer-review.ts';
 import {
   followUpOutlineInstructions,
   followUpOutlineOutputSchema,
@@ -169,13 +173,18 @@ function initialOutlineWorkSampleDefinition(
 }
 
 function modelDefinition(kind: CodexExecutionKind, value: unknown) {
-  if (kind === 'interview')
+  if (kind === 'interview') {
+    const input = validateInput(value);
     return {
       runner: 'structured-text' as const,
-      instructions: assessmentInstructions,
-      schema: reportSchema,
-      payload: validateInput(value),
+      instructions: combinedAssessmentInstructions,
+      schema: assessmentResultSchema,
+      payload: {
+        ...input,
+        speakerLabelsAvailable: hasReviewableSpeakerLabels(input.transcript),
+      },
     };
+  }
   if (kind === 'resume') {
     const input = validateResumeInput(value);
     return {
@@ -256,7 +265,7 @@ function modelDefinition(kind: CodexExecutionKind, value: unknown) {
   }
   if (kind === 'second-round-assessment') {
     const input = validateSecondRoundAssessmentInput(value);
-    const schema = structuredClone(reportSchema) as typeof reportSchema & {
+    const schema = structuredClone(assessmentResultSchema) as unknown as {
       required: string[];
       properties: Record<string, unknown>;
     };
@@ -264,9 +273,12 @@ function modelDefinition(kind: CodexExecutionKind, value: unknown) {
     schema.properties.priorRoundComparison = priorRoundComparisonSchema;
     return {
       runner: 'structured-text' as const,
-      instructions: `${assessmentInstructions}\n${secondRoundAssessmentInstructions}`,
+      instructions: `${combinedAssessmentInstructions}\n${secondRoundAssessmentInstructions}`,
       schema,
-      payload: input,
+      payload: {
+        ...input,
+        speakerLabelsAvailable: hasReviewableSpeakerLabels(input.transcript),
+      },
     };
   }
   const input = validateWorkSampleInput(value);

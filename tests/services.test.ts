@@ -86,19 +86,35 @@ void test('valid provider output is grounded against the submitted transcript', 
     ],
     followUps: [],
   };
+  const result = {
+    report,
+    interviewerReview: {
+      status: 'unavailable',
+      reason: 'speaker-labels-missing',
+      summary: null,
+      dimensions: [],
+      strengths: [],
+      priorities: [],
+      rewrites: [],
+      missedFollowUps: [],
+    },
+  };
   let called = false;
   const r = await handleAnalysis(request(input), env, async (url, options) => {
     called = true;
     assert.equal(url, 'https://provider.example/v1/chat/completions');
     const payload = JSON.parse(options?.body as string);
-    assert.equal(payload.messages[1].content, JSON.stringify(input));
+    assert.equal(
+      JSON.parse(payload.messages[1].content).speakerLabelsAvailable,
+      false,
+    );
     return Response.json({
-      choices: [{ message: { content: JSON.stringify(report) } }],
+      choices: [{ message: { content: JSON.stringify(result) } }],
     });
   });
   assert.equal(called, true);
   assert.equal(r.status, 200);
-  assert.deepEqual(await r.json(), report);
+  assert.deepEqual(await r.json(), result);
 });
 void test('raw provider failures and keys are not returned to the browser', async () => {
   const r = await handleAnalysis(

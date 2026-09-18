@@ -26,14 +26,14 @@ const request = (value: unknown = input, origin = 'http://localhost:8787') =>
     headers: { Origin: origin, 'Content-Type': 'application/json' },
     body: JSON.stringify(value),
   });
-void test('local analysis returns only a report grounded in the submitted text', async () => {
+void test('local analysis returns a normalized assessment result grounded in the submitted text', async () => {
   const handle = createAnalysisHandler(async (received) => {
     assert.deepEqual(received, input);
     return report;
   });
   const response = await handle(request());
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), report);
+  assert.deepEqual(await response.json(), { report });
 });
 void test('foreign origin and invalid inputs never invoke Codex', async () => {
   let calls = 0;

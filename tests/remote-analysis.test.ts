@@ -158,6 +158,19 @@ const report = {
   ],
   followUps: [],
 };
+const assessmentResult = {
+  report,
+  interviewerReview: {
+    status: 'unavailable' as const,
+    reason: 'speaker-labels-missing' as const,
+    summary: null,
+    dimensions: [] as [],
+    strengths: [] as [],
+    priorities: [] as [],
+    rewrites: [] as [],
+    missedFollowUps: [] as [],
+  },
+};
 
 function v2Outline(): InterviewOutlineV2 {
   const dimensions = builtInRoleTemplates[0].dimensionText.split('、');
@@ -197,7 +210,7 @@ void test('remote submission waits for queued and running jobs, then validates t
     return Response.json(
       ++count === 1
         ? { id: 'job', state: 'running' }
-        : { id: 'job', state: 'completed', report },
+        : { id: 'job', state: 'completed', report: assessmentResult },
     );
   };
   const result = await submitRemoteAnalysis(
@@ -207,7 +220,7 @@ void test('remote submission waits for queued and running jobs, then validates t
     (job) => states.push(job.state),
     { fetcher, pollMs: 0 },
   );
-  assert.deepEqual(result, report);
+  assert.deepEqual(result, assessmentResult);
   assert.deepEqual(states, ['queued', 'running', 'completed']);
   assert.equal(calls.length, 3);
 });
@@ -275,7 +288,7 @@ void test('an ambiguous submission retry reuses the first client key instead of 
       () => {},
       { fetcher, pollMs: 0 },
     ),
-    report,
+    { report },
   );
   assert.equal(ids.size, 1);
 });

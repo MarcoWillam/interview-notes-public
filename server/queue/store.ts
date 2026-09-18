@@ -15,7 +15,10 @@ import {
   validateInitialOutlineInput,
   validateInitialOutlineResult,
 } from '../../lib/initial-outline.ts';
-import { validateInput, validateReport } from '../../lib/interview.ts';
+import {
+  validateAssessmentResult,
+  validateInput,
+} from '../../lib/interview.ts';
 import {
   validateWrittenTestSupplement,
   validateWrittenTestSupplementInput,
@@ -1204,7 +1207,10 @@ export class QueueStore {
                             result,
                             validateSecondRoundAssessmentInput(storedInput),
                           )
-                        : validateReport(result, validateInput(storedInput)),
+                        : validateAssessmentResult(
+                            result,
+                            validateInput(storedInput),
+                          ),
         );
       } catch (validationError) {
         validationFeedback =

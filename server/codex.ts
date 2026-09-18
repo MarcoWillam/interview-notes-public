@@ -19,7 +19,11 @@ import {
   type WrittenTestSupplementInput,
 } from '../lib/written-test-supplement.ts';
 import type { InterviewInput } from '../lib/interview.ts';
-import { assessmentInstructions, reportSchema } from '../lib/assessment.ts';
+import {
+  assessmentResultSchema,
+  combinedAssessmentInstructions,
+} from '../lib/assessment.ts';
+import { hasReviewableSpeakerLabels } from '../lib/interviewer-review.ts';
 import {
   outlineRegenerationInstructionsFor,
   outlineRegenerationOutputSchema,
@@ -39,10 +43,13 @@ export async function analyzeWithCodex(
   signal: AbortSignal,
 ): Promise<unknown> {
   return runStructuredCodex(
-    input,
+    {
+      ...input,
+      speakerLabelsAvailable: hasReviewableSpeakerLabels(input.transcript),
+    },
     signal,
-    assessmentInstructions,
-    reportSchema,
+    combinedAssessmentInstructions,
+    assessmentResultSchema,
   );
 }
 

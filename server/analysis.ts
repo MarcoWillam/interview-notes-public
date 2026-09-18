@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 import {
+  validateAssessmentResult,
   validateInput,
-  validateReport,
   type InterviewInput,
 } from '../lib/interview.ts';
 import { AnalysisError } from './analysis-error.ts';
@@ -51,7 +51,7 @@ export function createAnalysisHandler(
       request.signal.throwIfAborted();
       const result = await run(input, request.signal);
       try {
-        return json(validateReport(result, input));
+        return json(validateAssessmentResult(result, input));
       } catch {
         throw new AnalysisError('评估格式或原文证据未通过校验，请重新生成。');
       }

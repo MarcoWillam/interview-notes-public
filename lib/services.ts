@@ -1,5 +1,6 @@
-import { assessmentInstructions } from './assessment.ts';
-import { validateInput, validateReport } from './interview.ts';
+import { combinedAssessmentInstructions } from './assessment.ts';
+import { validateAssessmentResult, validateInput } from './interview.ts';
+import { hasReviewableSpeakerLabels } from './interviewer-review.ts';
 export type ServiceEnv = Partial<
   Record<
     | 'ASR_BASE_URL'
@@ -155,9 +156,17 @@ export async function handleAnalysis(
           messages: [
             {
               role: 'system',
-              content: assessmentInstructions,
+              content: combinedAssessmentInstructions,
             },
-            { role: 'user', content: JSON.stringify(input) },
+            {
+              role: 'user',
+              content: JSON.stringify({
+                ...input,
+                speakerLabelsAvailable: hasReviewableSpeakerLabels(
+                  input.transcript,
+                ),
+              }),
+            },
           ],
         }),
       },
@@ -165,7 +174,7 @@ export async function handleAnalysis(
     const result = await providerJson(response);
     try {
       return json(
-        validateReport(
+        validateAssessmentResult(
           JSON.parse(result?.choices?.[0]?.message?.content),
           input,
         ),

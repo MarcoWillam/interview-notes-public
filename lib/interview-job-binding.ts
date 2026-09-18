@@ -6,7 +6,8 @@ import {
 import type { CloudInterview, CloudVersionReason } from './cloud-interview.ts';
 import type { CodexExecutionKind as JobKind } from './codex-execution-contract.ts';
 import type { ResumeReading } from './resume-reading.ts';
-import type { Report } from './interview.ts';
+import type { AssessmentResult, Report } from './interview.ts';
+import type { InterviewerReview } from './interviewer-review.ts';
 import { applyWrittenTestSupplement } from './interview-template-state.ts';
 import {
   applyOutlineRegeneration,
@@ -221,10 +222,14 @@ export function applyInterviewJobResult(
   }
   if (kind === 'second-round-assessment') {
     const value = result as SecondRoundAssessmentResult;
-    const { priorRoundComparison, ...report } = value;
+    const { priorRoundComparison } = value;
+    const assessment = splitAssessmentResult(value);
     const next: CloudInterview = {
       ...record,
-      report,
+      report: assessment.report,
+      ...(assessment.interviewerReview === undefined
+        ? {}
+        : { interviewerReview: assessment.interviewerReview }),
       priorRoundComparison,
       confirmed: false,
       updatedAt: now,
@@ -275,6 +280,7 @@ export function applyInterviewJobResult(
     return {
       ...applyLateWorkSample(record, result as WorkSampleAnalysisResult),
       report: null,
+      interviewerReview: null,
       confirmed: false,
       updatedAt: now,
     };
@@ -293,10 +299,35 @@ export function applyInterviewJobResult(
     delete next.outlineRegenerationJobId;
     return next;
   }
+  const assessment = splitAssessmentResult(result);
   return {
     ...record,
-    report: result as Report,
+    report: assessment.report,
+    ...(assessment.interviewerReview === undefined
+      ? {}
+      : { interviewerReview: assessment.interviewerReview }),
     confirmed: false,
     updatedAt: now,
   };
+}
+
+function splitAssessmentResult(result: unknown): {
+  report: Report;
+  interviewerReview?: InterviewerReview;
+} {
+  if (
+    result &&
+    typeof result === 'object' &&
+    !Array.isArray(result) &&
+    Object.hasOwn(result, 'report')
+  ) {
+    const value = result as AssessmentResult;
+    return {
+      report: value.report,
+      ...(value.interviewerReview === undefined
+        ? {}
+        : { interviewerReview: value.interviewerReview }),
+    };
+  }
+  return { report: result as Report };
 }

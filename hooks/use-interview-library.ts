@@ -287,7 +287,7 @@ export function useInterviewLibrary(
     const fieldEpoch = followUpFields.current.get(currentId)?.epoch || 0;
     const updatedAt = Date.now();
     createdAt.current ??= updatedAt;
-    let saved = {
+    let saved: SavedInterview = {
       ...value,
       id: currentId,
       createdAt: createdAt.current,

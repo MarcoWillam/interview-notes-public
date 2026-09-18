@@ -78,6 +78,16 @@ const source: CloudInterview = {
     ],
     followUps: [],
   },
+  interviewerReview: {
+    status: 'unavailable',
+    reason: 'speaker-labels-missing',
+    summary: null,
+    dimensions: [],
+    strengths: [],
+    priorities: [],
+    rewrites: [],
+    missedFollowUps: [],
+  },
   conclusion: '建议进入复试。',
   confirmed: true,
   outlineSupplements: [],
@@ -104,6 +114,7 @@ void test('initial handoff keeps preparation inputs and clears generated work', 
   assert.equal(record.workSample, null);
   assert.equal(record.transcript, '');
   assert.equal(record.report, null);
+  assert.equal(record.interviewerReview, undefined);
   assert.equal(record.confirmed, false);
   assert.equal(record.outlineSupplements, undefined);
 });
@@ -127,6 +138,8 @@ void test('second-round handoff embeds the confirmed initial interview export', 
   assert.equal(record.priorRoundDigest, null);
   assert.equal(record.transcript, '');
   assert.equal(record.report, null);
+  assert.equal(record.interviewerReview, undefined);
+  assert.doesNotMatch(record.priorRoundText || '', /我的面试复盘/);
   assert.equal(record.confirmed, false);
 });
 

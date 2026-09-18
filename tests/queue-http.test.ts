@@ -108,6 +108,16 @@ const report = {
   ],
   followUps: [],
 };
+const unavailableInterviewerReview = {
+  status: 'unavailable' as const,
+  reason: 'speaker-labels-missing' as const,
+  summary: null,
+  dimensions: [],
+  strengths: [],
+  priorities: [],
+  rewrites: [],
+  missedFollowUps: [],
+};
 const status = async () => ({
   provider: 'codex-local' as const,
   analysis: true,
@@ -259,8 +269,11 @@ void test('HTTP queue holds offline jobs, pairs a connector, and returns a valid
         status,
         execute: async (contract) => {
           calls++;
-          assert.deepEqual(contract.payload, input);
-          return report;
+          assert.deepEqual(contract.payload, {
+            ...input,
+            speakerLabelsAvailable: false,
+          });
+          return { report, interviewerReview: unavailableInterviewerReview };
         },
         workSamples: async () => ({
           artifacts: [workSampleFor(String(d.id))],
@@ -273,7 +286,10 @@ void test('HTTP queue holds offline jobs, pairs a connector, and returns a valid
     const restored = (await (await f.api('/api/jobs/' + job.id)).json()) as {
       report: unknown;
     };
-    assert.deepEqual(restored.report, report);
+    assert.deepEqual(restored.report, {
+      report,
+      interviewerReview: unavailableInterviewerReview,
+    });
     assert.equal(calls, 1);
     assert.equal(f.store.artifacts(f.user)[0]?.name, 'ai-pm-work.zip');
     assert.equal(

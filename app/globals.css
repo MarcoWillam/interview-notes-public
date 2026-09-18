@@ -1549,6 +1549,137 @@ fieldset:disabled {
   padding-left: 20px;
   list-style: disc;
 }
+.interviewer-review {
+  margin: 0 28px 26px;
+  padding: 20px;
+  border: 1px solid #d8e2ee;
+  border-radius: 12px;
+  background: #f7f9fc;
+  color: #33475b;
+}
+.interviewer-review-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.interviewer-review-heading h3 {
+  margin: 4px 0 0;
+  color: #243b53;
+  font-size: 17px;
+}
+.interviewer-review-summary {
+  margin: 14px 0 18px;
+  color: #52677b;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+.interviewer-review-dimensions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.interviewer-review-dimension {
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid #dde5ed;
+  border-radius: 9px;
+  background: #fff;
+}
+.interviewer-review-dimension > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.interviewer-review-dimension > div span {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #eef2f6;
+  color: #60758a;
+  font-size: 11px;
+  font-weight: 650;
+}
+.interviewer-review-dimension.level-表现较好 > div span {
+  background: #e6f3ed;
+  color: #27715b;
+}
+.interviewer-review-dimension.level-优先改进 > div span {
+  background: #fff0e5;
+  color: #9a5728;
+}
+.interviewer-review-dimension p {
+  margin: 8px 0 0;
+  color: #62768a;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.interviewer-review details {
+  margin-top: 10px;
+}
+.interviewer-review summary {
+  color: #3f6688;
+  font-size: 13px;
+  cursor: pointer;
+}
+.interviewer-review blockquote {
+  margin: 8px 0 0;
+  padding: 9px 11px;
+  border-left: 3px solid #a9bdd0;
+  background: #f8fafc;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+.interviewer-review-priorities {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 9px;
+  background: #fff8ed;
+}
+.interviewer-review-priorities h4 {
+  margin: 0 0 8px;
+  color: #805225;
+}
+.interviewer-review-priorities ol,
+.interviewer-review-details ul {
+  margin: 0;
+  padding-left: 20px;
+}
+.interviewer-review-priorities li,
+.interviewer-review-details li {
+  margin: 6px 0;
+  line-height: 1.6;
+}
+.interviewer-review-details {
+  padding-top: 12px;
+  border-top: 1px solid #e0e6ed;
+}
+.interviewer-review-rewrites {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.interviewer-review-rewrites article {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #fff;
+}
+.interviewer-review-rewrites article > span {
+  display: block;
+  color: #71869a;
+  font-size: 11px;
+  font-weight: 650;
+}
+.interviewer-review-rewrites article > p,
+.interviewer-review-rewrites article > strong {
+  display: block;
+  margin: 4px 0 10px;
+  line-height: 1.65;
+}
+.interviewer-review-unavailable > p {
+  margin: 14px 0 0;
+}
 .report-empty {
   text-align: center;
   padding: 32px 26px 36px;
@@ -1685,6 +1816,13 @@ fieldset label:last-of-type {
   .panel-body,
   .human-review {
     padding: 0 20px 22px;
+  }
+  .interviewer-review {
+    margin: 0 20px 22px;
+    padding: 16px;
+  }
+  .interviewer-review-dimensions {
+    grid-template-columns: 1fr;
   }
   .human-review {
     padding-top: 24px;

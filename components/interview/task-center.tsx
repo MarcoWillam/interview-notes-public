@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, ListChecks, RefreshCw, X } from 'lucide-react';
 import {
+  candidateReportFromAssessmentResult,
   workSampleReviewMarkdownLines,
   workSampleVerificationLabels,
   type Report,
@@ -65,15 +66,14 @@ type Job = RemoteJob<
 >;
 
 function downloadReport(job: Job) {
+  const report = candidateReportFromAssessmentResult(job.report);
   if (
-    !job.report ||
+    !report ||
     (job.kind !== undefined &&
       job.kind !== 'interview' &&
-      job.kind !== 'second-round-assessment') ||
-    !('followUps' in job.report)
+      job.kind !== 'second-round-assessment')
   )
     return;
-  const report = job.report as Report;
   const groups = groupAssessmentDimensions(job.label, report.dimensions);
   const markdown = [
     `# ${job.label}`,
@@ -395,6 +395,14 @@ function TaskResult({
   back: () => void;
   openInterview: () => void;
 }) {
+  const report = candidateReportFromAssessmentResult(job.report);
+  const priorRoundComparison =
+    job.report &&
+    typeof job.report === 'object' &&
+    'priorRoundComparison' in job.report &&
+    Array.isArray(job.report.priorRoundComparison)
+      ? job.report.priorRoundComparison
+      : [];
   return (
     <div className="remote-result task-center-result">
       <button className="text-button" onClick={back}>
@@ -470,16 +478,13 @@ function TaskResult({
             value={(job.report as SecondRoundOutlineResult).outline}
           />
         )}
-      {job.report &&
-        job.kind !== 'work-sample' &&
-        'dimensions' in job.report &&
-        'followUps' in job.report && (
+      {report && job.kind !== 'work-sample' && (
           <>
-            <p>{job.report.summary}</p>
-            {job.report.workSampleReview?.length ? (
+            <p>{report.summary}</p>
+            {report.workSampleReview?.length ? (
               <section>
                 <h4>作品表现（归属与过程待核实）</h4>
-                {job.report.workSampleReview.map((item, index) => (
+                {report.workSampleReview.map((item, index) => (
                   <div key={`${item.status}-${index}`}>
                     <strong>{workSampleVerificationLabels[item.status]}</strong>
                     <p>{item.observation}</p>
@@ -490,7 +495,7 @@ function TaskResult({
                 ))}
               </section>
             ) : null}
-            {groupAssessmentDimensions(job.label, job.report.dimensions).map(
+            {groupAssessmentDimensions(job.label, report.dimensions).map(
               (group, groupIndex) => (
                 <section
                   className="assessment-group"
@@ -522,16 +527,16 @@ function TaskResult({
               ),
             )}
             {job.kind === 'second-round-assessment' &&
-              'priorRoundComparison' in job.report && (
+              priorRoundComparison.length > 0 && (
                 <SecondRoundComparisonView
-                  value={job.report.priorRoundComparison}
+                  value={priorRoundComparison}
                 />
               )}
-            {job.report.followUps.length > 0 && (
+            {report.followUps.length > 0 && (
               <section>
                 <h4>待核实事项</h4>
                 <ul>
-                  {job.report.followUps.map((question, index) => (
+                  {report.followUps.map((question, index) => (
                     <li key={index}>{question}</li>
                   ))}
                 </ul>
