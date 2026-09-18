@@ -34,7 +34,7 @@ void test('connector release accepts current reports and identifies update state
   assert.equal(connectorUpdateState('0.1.0', 0), 'update-required');
   assert.equal(connectorUpdateState('2026.9.11-5', 2), 'update-available');
   assert.equal(compareConnectorVersions('2026.9.11-3', CONNECTOR_VERSION), -1);
-  assert.equal(compareConnectorVersions('2026.9.15-1', CONNECTOR_VERSION), 1);
+  assert.equal(compareConnectorVersions('2026.9.19-1', CONNECTOR_VERSION), 1);
   assert.equal(connectorSupportsOutline(CONNECTOR_PROTOCOL), true);
   assert.equal(connectorSupportsOutline(1), false);
   assert.equal(OUTLINE_V2_CONNECTOR_PROTOCOL, 3);

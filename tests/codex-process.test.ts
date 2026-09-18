@@ -65,7 +65,7 @@ void test('work sample Codex uses only the root-confined MCP alongside the read-
   );
 });
 void test('work sample analysis has enough time to inspect a bounded archive', () => {
-  assert.equal(codexAnalysisTimeoutMs('text'), 240_000);
+  assert.equal(codexAnalysisTimeoutMs('text'), 600_000);
   assert.equal(codexAnalysisTimeoutMs('work-sample'), 600_000);
 });
 void test('work sample Codex runtime stays inside the sandbox-readable archive root', async () => {

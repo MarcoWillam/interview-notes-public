@@ -248,14 +248,10 @@ void test('protocol five outline connector claims server-driven follow-up withou
       record.record.id,
       { interviewId: record.record.id, interviewRevision: record.revision },
     );
-    const existingProtocolFive = s.redeem(
-      s.pairing(a).code,
-      '现有协议五电脑',
-      {
-        version: CONNECTOR_VERSION,
-        protocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
-      },
-    );
+    const existingProtocolFive = s.redeem(s.pairing(a).code, '现有协议五电脑', {
+      version: CONNECTOR_VERSION,
+      protocol: SERVER_DRIVEN_EXECUTION_PROTOCOL,
+    });
     const claimed = s.claim(
       existingProtocolFive.token,
       true,
@@ -469,7 +465,15 @@ void test('outline regeneration requires a current connector and reports its ver
       writtenTestSupplement: null,
       workSampleQuestions: null,
     };
-    s.finish(device.token, claimed.id, claimed.lease, result, false, undefined, 1);
+    s.finish(
+      device.token,
+      claimed.id,
+      claimed.lease,
+      result,
+      false,
+      undefined,
+      1,
+    );
     assert.equal(s.get(a, submitted.id).state, 'completed');
     assert.throws(
       () =>
@@ -604,9 +608,8 @@ void test('protocol five receives a server contract and retries invalid results 
       protocol: 4,
     });
     assert.deepEqual(
-      s.db
-        .prepare('SELECT leaseProtocol FROM jobs WHERE id=?')
-        .get(claimed.id)?.leaseProtocol,
+      s.db.prepare('SELECT leaseProtocol FROM jobs WHERE id=?').get(claimed.id)
+        ?.leaseProtocol,
       5,
     );
 
@@ -701,9 +704,8 @@ void test('protocol four keeps the legacy input-only claim route', () => {
       protocol: CONNECTOR_PROTOCOL,
     });
     assert.deepEqual(
-      s.db
-        .prepare('SELECT leaseProtocol FROM jobs WHERE id=?')
-        .get(claimed.id)?.leaseProtocol,
+      s.db.prepare('SELECT leaseProtocol FROM jobs WHERE id=?').get(claimed.id)
+        ?.leaseProtocol,
       4,
     );
     assert.deepEqual(
@@ -745,10 +747,12 @@ void test('legacy outline work without a stored scope fails safely on finish', (
       claimed.lease,
       {
         revision: outlineInput.revision,
-        interviewQuestions: reading.interviewQuestions.map((question, index) => ({
-          ...question,
-          question: `请说明第${index + 1}项经历中的个人行动与结果？`,
-        })),
+        interviewQuestions: reading.interviewQuestions.map(
+          (question, index) => ({
+            ...question,
+            question: `请说明第${index + 1}项经历中的个人行动与结果？`,
+          }),
+        ),
         writtenTestSupplement: null,
         workSampleQuestions: null,
       },
@@ -793,6 +797,37 @@ void test('work sample failures retain a specific actionable reason', () => {
       s.finish(device.token, claimed.id, claimed.lease, null, true, failure);
       assert.match(String(s.get(a, job.id).error || ''), expected);
     }
+  } finally {
+    s.close();
+  }
+});
+void test('outline timeout names the outline task instead of a work sample', () => {
+  const { s, a } = setup();
+  try {
+    const device = s.redeem(s.pairing(a).code, '提纲电脑', {
+      version: CONNECTOR_VERSION,
+      protocol: CONNECTOR_PROTOCOL,
+    });
+    const job = s.submit(
+      a,
+      'outline-timeout-123',
+      '重新生成提纲',
+      {
+        ...resumeInput,
+        revision: 'outline-timeout-revision',
+        interviewQuestions: reading.interviewQuestions,
+        writtenTestSupplement: null,
+        workSample: null,
+      },
+      'outline',
+      'record-outline-timeout',
+    );
+    const claimed = s.claim(device.token, true, ['outline'], {
+      version: CONNECTOR_VERSION,
+      protocol: CONNECTOR_PROTOCOL,
+    })!;
+    s.finish(device.token, claimed.id, claimed.lease, null, true, 'timeout', 1);
+    assert.match(String(s.get(a, job.id).error), /提纲分析超时/);
   } finally {
     s.close();
   }

@@ -1,4 +1,4 @@
-export const CONNECTOR_VERSION = '2026.9.14-3';
+export const CONNECTOR_VERSION = '2026.9.18-1';
 export const CONNECTOR_PROTOCOL = 5;
 export const MINIMUM_CONNECTOR_PROTOCOL = 1;
 export const OUTLINE_CONNECTOR_PROTOCOL = 2;
@@ -6,7 +6,7 @@ export const OUTLINE_V2_CONNECTOR_PROTOCOL = 3;
 export const OUTLINE_V3_CONNECTOR_PROTOCOL = 4;
 export const SERVER_DRIVEN_EXECUTION_PROTOCOL = 5;
 export const CONNECTOR_RELEASE_NOTES =
-  '提纲和评估规则改由服务器下发，后续规则更新无需升级连接器';
+  '延长提纲等文本分析的运行时限；覆盖旧连接器程序文件时保留配对配置和作品目录';
 
 export const connectorRelease = {
   version: CONNECTOR_VERSION,

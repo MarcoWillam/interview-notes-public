@@ -256,8 +256,7 @@ export class QueueStore {
     if (stage === 'initial' && sourceUsername !== 'owner')
       throw new QueueError('仅 owner 可以派发初试。', 403);
     const target = this.userByName(targetUsername);
-    if (!target.active)
-      throw new QueueError('接收账号已停用，无法派发。', 409);
+    if (!target.active) throw new QueueError('接收账号已停用，无法派发。', 409);
     if (String(target.id) === sourceUser)
       throw new QueueError('不能把面试派发给当前账号。');
     return this.interviews.handoff(
@@ -639,11 +638,13 @@ export class QueueStore {
                     ? validateSecondRoundOutlineInput(value)
                     : kind === 'second-round-assessment'
                       ? validateSecondRoundAssessmentInput(value)
-                : kind === 'interview'
-                  ? validateInput(value)
-                  : (() => {
-                      throw new QueueError('作品评估任务尚未包含有效输入。');
-                  })(),
+                      : kind === 'interview'
+                        ? validateInput(value)
+                        : (() => {
+                            throw new QueueError(
+                              '作品评估任务尚未包含有效输入。',
+                            );
+                          })(),
       input = JSON.stringify(validatedInput),
       digest = hash(
         kind +
@@ -987,7 +988,8 @@ export class QueueStore {
       (kinds.includes('second-round-outline') || kinds.includes('outline'));
     const supportsSecondRoundAssessment =
       connectorProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
-      (kinds.includes('second-round-assessment') || kinds.includes('interview'));
+      (kinds.includes('second-round-assessment') ||
+        kinds.includes('interview'));
     this.db
       .prepare('UPDATE devices SET seen=?,ready=? WHERE id=?')
       .run(this.now(), ready ? 1 : 0, device.id);
@@ -1083,12 +1085,12 @@ export class QueueStore {
       executionProtocol >= SERVER_DRIVEN_EXECUTION_PROTOCOL &&
       executionAttempt !== undefined
     ) {
-      if (!Number.isSafeInteger(executionAttempt) || Number(executionAttempt) < 1)
-        throw new QueueError('执行合同次数无效。');
       if (
-        Number(executionAttempt) < Number(job.attempt || 1) &&
-        job.feedback
+        !Number.isSafeInteger(executionAttempt) ||
+        Number(executionAttempt) < 1
       )
+        throw new QueueError('执行合同次数无效。');
+      if (Number(executionAttempt) < Number(job.attempt || 1) && job.feedback)
         return {
           accepted: false,
           retry: {
@@ -1117,8 +1119,12 @@ export class QueueStore {
           '笔试作品 ZIP 无法安全读取，请检查文件内容后重新提交。',
         validation: 'Codex 输出的引用或结构校验失败，请重新提交。',
         timeout:
-          '本地 Codex 作品分析超时。较大的作品可能需要更久，请保持连接器运行后重新提交。',
-        network: '本地 Codex 作品分析时网络连接中断，请确认网络后重新提交。',
+          job.kind === 'work-sample'
+            ? '本地 Codex 作品分析超时。较大的作品可能需要更久，请保持连接器运行后重新提交。'
+            : job.kind === 'outline'
+              ? '本地 Codex 提纲分析超时。请使用新版连接器，保持电脑唤醒后重新提交。'
+              : '本地 Codex 分析超时。请保持电脑唤醒后重新提交。',
+        network: '本地 Codex 分析时网络连接中断，请确认网络后重新提交。',
         login:
           '本地 Codex 登录已失效，请在连接器电脑运行 codex login 后重新提交。',
         quota: '本地 Codex 使用额度不足或请求受限，请稍后重新提交。',
@@ -1162,7 +1168,7 @@ export class QueueStore {
                             result,
                             validateSecondRoundAssessmentInput(storedInput),
                           )
-                  : validateReport(result, validateInput(storedInput)),
+                        : validateReport(result, validateInput(storedInput)),
         );
       } catch (validationError) {
         validationFeedback =
@@ -1184,13 +1190,7 @@ export class QueueStore {
         .prepare(
           'UPDATE jobs SET attempt=?,feedback=?,until=?,updated=? WHERE id=?',
         )
-        .run(
-          attempt,
-          validationFeedback,
-          this.now() + 60000,
-          this.now(),
-          id,
-        );
+        .run(attempt, validationFeedback, this.now() + 60000, this.now(), id);
       return {
         accepted: false,
         retry: {
@@ -1225,9 +1225,7 @@ export class QueueStore {
         true,
       );
       const currentSourceHash = hash(
-        JSON.stringify(
-          interviewJobSource(current.record, job.kind as JobKind),
-        ),
+        JSON.stringify(interviewJobSource(current.record, job.kind as JobKind)),
       );
       if (current.deletedAt === null && currentSourceHash === job.sourceHash) {
         this.interviews.applyJobResult(

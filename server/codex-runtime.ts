@@ -140,8 +140,8 @@ type CommandRunner = (
   options?: Parameters<typeof runCommand>[2],
 ) => Promise<CommandResult>;
 
-export function codexAnalysisTimeoutMs(scope: 'text' | 'work-sample') {
-  return scope === 'work-sample' ? 600_000 : 240_000;
+export function codexAnalysisTimeoutMs(_scope: 'text' | 'work-sample') {
+  return 600_000;
 }
 
 export function createWorkSampleCodexDirectory(root: string) {
