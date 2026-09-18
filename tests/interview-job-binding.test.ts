@@ -15,6 +15,16 @@ import test from 'node:test';
 import { QueueStore } from '../server/queue/store.ts';
 import type { CloudInterview } from '../lib/cloud-interview.ts';
 import { connectorRelease } from '../lib/connector-release.ts';
+import {
+  BUILTIN_TEMPLATE_IDS,
+  builtInRoleTemplates,
+} from '../lib/default-role-templates.ts';
+import { createPreparationWorkSampleInput } from '../lib/preparation-analysis-inputs.ts';
+import {
+  calculateOutlineCoverageV3,
+  type InterviewQuestionV3,
+} from '../lib/interview-outline-v3.ts';
+import { validateWorkSampleInput } from '../lib/work-sample.ts';
 
 const input = {
   role: '产品经理',
@@ -55,16 +65,32 @@ const experienceMap = {
   summary: '识别到一段用户访谈经历。',
   experiences: [
     {
-      id: 'experience-1', sourceOrder: 1, type: 'project' as const,
-      name: '简历中未明确具体项目', nameEvidence: null,
-      organization: null, period: null, role: null, context: null,
+      id: 'experience-1',
+      sourceOrder: 1,
+      type: 'project' as const,
+      name: '简历中未明确具体项目',
+      nameEvidence: null,
+      organization: null,
+      period: null,
+      role: null,
+      context: null,
       actions: [{ text: '访谈五位用户', evidence: '我访谈了五位用户' }],
-      decisions: [], collaboration: [], outcomes: [], reflection: [],
-      evidence: ['我访谈了五位用户'], dimensionSignals: ['需求分析'],
+      decisions: [],
+      collaboration: [],
+      outcomes: [],
+      reflection: [],
+      evidence: ['我访谈了五位用户'],
+      dimensionSignals: ['需求分析'],
       missingInformation: ['项目名称未明确'],
     },
   ],
-  coverage: [{ source: '我访谈了五位用户', experienceId: 'experience-1', status: 'mapped' as const }],
+  coverage: [
+    {
+      source: '我访谈了五位用户',
+      experienceId: 'experience-1',
+      status: 'mapped' as const,
+    },
+  ],
   unresolvedItems: [],
 };
 
@@ -123,15 +149,7 @@ function finishResume(
   );
   const outline = store.claim(secret, true, ['resume'], connectorRelease)!;
   beforeFinal?.(outline.id);
-  store.finish(
-    secret,
-    outline.id,
-    outline.lease,
-    reading,
-    false,
-    undefined,
-    1,
-  );
+  store.finish(secret, outline.id, outline.lease, reading, false, undefined, 1);
   return outline;
 }
 
@@ -226,7 +244,13 @@ void test('bound task input must match the server record snapshot', () => {
   const { store, user } = setup();
   try {
     const record = cloudRecord('record-binding-mismatch');
-    store.interviews.put(user, record.id, 0, 'mutation-create-mismatch', record);
+    store.interviews.put(
+      user,
+      record.id,
+      0,
+      'mutation-create-mismatch',
+      record,
+    );
     assert.throws(
       () =>
         store.submit(
@@ -243,6 +267,95 @@ void test('bound task input must match the server record snapshot', () => {
   } finally {
     store.close();
   }
+});
+
+void test('bound late work sample accepts a saved V3 outline after canonical validation', () => {
+  const template = builtInRoleTemplates[0];
+  const dimensions = template.dimensionText.split('、');
+  const questions = [
+    '最近有没有一件没人要求但你主动做的事？',
+    '遇到陌生问题时你通常会怎么开始学？',
+    '哪件事一度很难推进后来你怎么处理的？',
+    '和同伴想法不同时你会怎么推动事情继续？',
+    '同学说AI功能不好用你会先了解什么？',
+    '为校园设计AI功能时你会从哪里开始？',
+    '哪段经历最能说明你理解真实用户？',
+    '如果验证结果不理想你会先调整什么？',
+  ];
+  const order = [4, 5, 6, 7, 0, 2, 1, 3];
+  const outlineQuestions: InterviewQuestionV3[] = questions.map(
+    (question, index) => ({
+      id: `bound-work-v3-${index + 1}`,
+      question,
+      required: index < 6,
+      estimatedMinutes: index < 6 ? 5 : 4,
+      primaryDimension: dimensions[order[index]],
+      secondaryDimensions:
+        index === 4 ? [dimensions[1]] : index === 5 ? [dimensions[3]] : [],
+      source: index === 4 ? ('resume' as const) : ('role' as const),
+      goal: '了解候选人的实际思考和行动方式',
+      resumeEvidence: index === 4 ? '我访谈了五位用户。' : null,
+      workSampleEvidence: null,
+      listenFor: ['候选人自己的行动'],
+      riskSignals: ['无法说明自己的行动'],
+      probes: [{ condition: '回答笼统', question: '当时你先做了哪一步？' }],
+      ...(index === 4
+        ? {
+            experienceId: 'experience-1',
+            contextLabel: '用户访谈项目',
+          }
+        : {}),
+    }),
+  );
+  const outline = {
+    version: 3 as const,
+    estimatedMinutes: 30,
+    requiredQuestions: outlineQuestions.slice(0, 6),
+    reserveQuestions: outlineQuestions.slice(6),
+    archivedReserveQuestions: [],
+    coverage: calculateOutlineCoverageV3(outlineQuestions, dimensions),
+  };
+  const record: CloudInterview = {
+    ...cloudRecord('record-binding-late-work-v3'),
+    ...template,
+    sourceTemplateId: BUILTIN_TEMPLATE_IDS.aiProductManager,
+    outlineVersion: 3,
+    resumeReading: {
+      summary: '候选人有一段用户访谈经历。',
+      sections: [],
+      followUps: [],
+      outline,
+    },
+  };
+  const artifact = {
+    id: 'artifact-12345678',
+    deviceId: 'device-12345678',
+    name: '作品.zip',
+    sha256: 'a'.repeat(64),
+    bytes: 1024,
+    modifiedAt: 1,
+  };
+  const submitted = validateWorkSampleInput(
+    createPreparationWorkSampleInput(
+      {
+        ...template,
+        resumeText: record.resumeText,
+        outlineVersion: 3,
+      },
+      record.resumeReading!,
+      artifact,
+    ),
+  );
+  if (submitted.outlineVersion !== 3)
+    throw new Error('expected V3 work sample input');
+  assert.notDeepEqual(submitted.outline, outline);
+  assert.doesNotThrow(() =>
+    assertInterviewJobInputMatches(
+      record,
+      'work-sample',
+      submitted as unknown as Record<string, unknown>,
+    ),
+  );
 });
 
 void test('bound interview assessment matches the record dimension array', () => {
@@ -336,16 +449,20 @@ void test('relevant edits retain a completed result for confirmation', () => {
       { interviewId: record.id, interviewRevision: 1 },
     );
     const claimed = finishResume(store, secret, () => {
-      store.interviews.put(
-        user,
-        record.id,
-        1,
-        'mutation-change-resume',
-        { ...record, resumeText: record.resumeText + '新增经历。', updatedAt: 2 },
-      );
+      store.interviews.put(user, record.id, 1, 'mutation-change-resume', {
+        ...record,
+        resumeText: record.resumeText + '新增经历。',
+        updatedAt: 2,
+      });
     });
-    assert.equal(store.interviews.get(user, record.id).record.resumeReading, null);
-    assert.equal(store.interviews.pendingResults(user, record.id)[0].state, 'pending');
+    assert.equal(
+      store.interviews.get(user, record.id).record.resumeReading,
+      null,
+    );
+    assert.equal(
+      store.interviews.pendingResults(user, record.id)[0].state,
+      'pending',
+    );
     assert.equal(store.get(user, claimed.id).resultDisposition, 'pending');
     const applied = store.interviews.applyPendingResult(
       user,
@@ -355,7 +472,10 @@ void test('relevant edits retain a completed result for confirmation', () => {
       'mutation-apply-pending-result',
     );
     assert.equal(applied.record.resumeReading?.summary, reading.summary);
-    assert.equal(store.interviews.pendingResults(user, record.id)[0].state, 'applied');
+    assert.equal(
+      store.interviews.pendingResults(user, record.id)[0].state,
+      'applied',
+    );
   } finally {
     store.close();
   }
@@ -365,7 +485,13 @@ void test('pending result survives the short-lived task queue', () => {
   const { store, user, secret, tick } = setup();
   try {
     const record = cloudRecord('record-binding-retained');
-    store.interviews.put(user, record.id, 0, 'mutation-create-retained', record);
+    store.interviews.put(
+      user,
+      record.id,
+      0,
+      'mutation-create-retained',
+      record,
+    );
     store.submit(
       user,
       'client-binding-retained',
@@ -376,18 +502,19 @@ void test('pending result survives the short-lived task queue', () => {
       { interviewId: record.id, interviewRevision: 1 },
     );
     const claimed = finishResume(store, secret, () => {
-      store.interviews.put(
-        user,
-        record.id,
-        1,
-        'mutation-change-retained',
-        { ...record, resumeText: record.resumeText + '后来新增。', updatedAt: 3 },
-      );
+      store.interviews.put(user, record.id, 1, 'mutation-change-retained', {
+        ...record,
+        resumeText: record.resumeText + '后来新增。',
+        updatedAt: 3,
+      });
     });
     tick(8 * 86_400_000);
     store.sweep();
     assert.throws(() => store.get(user, claimed.id), /任务不存在/);
-    assert.equal(store.interviews.pendingResults(user, record.id)[0].state, 'pending');
+    assert.equal(
+      store.interviews.pendingResults(user, record.id)[0].state,
+      'pending',
+    );
   } finally {
     store.close();
   }
@@ -410,8 +537,14 @@ void test('deleting a record during analysis retains the result without restorin
     finishResume(store, secret, () => {
       store.interviews.remove(user, record.id, 1, 'mutation-delete-running');
     });
-    assert.notEqual(store.interviews.get(user, record.id, true).deletedAt, null);
-    assert.equal(store.interviews.pendingResults(user, record.id)[0].state, 'pending');
+    assert.notEqual(
+      store.interviews.get(user, record.id, true).deletedAt,
+      null,
+    );
+    assert.equal(
+      store.interviews.pendingResults(user, record.id)[0].state,
+      'pending',
+    );
   } finally {
     store.close();
   }
@@ -421,7 +554,13 @@ void test('unrelated conclusion edits still allow the bound result to apply', ()
   const { store, user, secret } = setup();
   try {
     const record = cloudRecord('record-binding-unrelated');
-    store.interviews.put(user, record.id, 0, 'mutation-create-unrelated', record);
+    store.interviews.put(
+      user,
+      record.id,
+      0,
+      'mutation-create-unrelated',
+      record,
+    );
     store.submit(
       user,
       'client-binding-unrelated',
@@ -432,13 +571,11 @@ void test('unrelated conclusion edits still allow the bound result to apply', ()
       { interviewId: record.id, interviewRevision: 1 },
     );
     finishResume(store, secret, () => {
-      store.interviews.put(
-        user,
-        record.id,
-        1,
-        'mutation-change-conclusion',
-        { ...record, conclusion: '面试官备注', updatedAt: 2 },
-      );
+      store.interviews.put(user, record.id, 1, 'mutation-change-conclusion', {
+        ...record,
+        conclusion: '面试官备注',
+        updatedAt: 2,
+      });
     });
     const saved = store.interviews.get(user, record.id);
     assert.equal(saved.record.conclusion, '面试官备注');
@@ -499,10 +636,14 @@ void test('follow-up binding checks normalized standards, reading, version and s
         /云端面试记录不一致/,
       );
     }
-    assert.throws(() => assertInterviewJobInputMatches(record, 'follow-up-outline', {
-      ...validateFollowUpOutlineInput(followUpInputFixture()),
-      outlineVersion: 2,
-    }), /云端面试记录不一致/);
+    assert.throws(
+      () =>
+        assertInterviewJobInputMatches(record, 'follow-up-outline', {
+          ...validateFollowUpOutlineInput(followUpInputFixture()),
+          outlineVersion: 2,
+        }),
+      /云端面试记录不一致/,
+    );
     assert.doesNotThrow(() =>
       submit(followUpInputFixture(), 'client-follow-up-match'),
     );
@@ -675,25 +816,69 @@ for (const count of [49, 50]) {
       });
       const record = { ...followUpRecord(), outlineSupplements };
       const release = { version: '0.1.18', protocol: 5 };
-      const device = store.redeem(store.pairing(user).code, '容量测试电脑', release);
-      store.interviews.put(user, record.id, 0, 'mutation-capacity-create', record);
-      assert.equal(store.interviews.get(user, record.id).record.outlineSupplements?.length, count);
-      const submit = () => store.submit(
-        user, 'client-follow-up-capacity', '补充追问',
-        { ...followUpInputFixture(), existingSupplements: outlineSupplements },
-        'follow-up-outline', record.id,
-        { interviewId: record.id, interviewRevision: 1 },
+      const device = store.redeem(
+        store.pairing(user).code,
+        '容量测试电脑',
+        release,
       );
+      store.interviews.put(
+        user,
+        record.id,
+        0,
+        'mutation-capacity-create',
+        record,
+      );
+      assert.equal(
+        store.interviews.get(user, record.id).record.outlineSupplements?.length,
+        count,
+      );
+      const submit = () =>
+        store.submit(
+          user,
+          'client-follow-up-capacity',
+          '补充追问',
+          {
+            ...followUpInputFixture(),
+            existingSupplements: outlineSupplements,
+          },
+          'follow-up-outline',
+          record.id,
+          { interviewId: record.id, interviewRevision: 1 },
+        );
       if (count === 50) {
         assert.throws(submit, /补充追问.*50.*上限/);
-        assert.equal(store.db.prepare('SELECT count(*) AS count FROM jobs WHERE user=?').get(user)?.count, 0);
-        assert.equal(store.claim(device.token, true, ['follow-up-outline'], release), null);
+        assert.equal(
+          store.db
+            .prepare('SELECT count(*) AS count FROM jobs WHERE user=?')
+            .get(user)?.count,
+          0,
+        );
+        assert.equal(
+          store.claim(device.token, true, ['follow-up-outline'], release),
+          null,
+        );
         return;
       }
       const submitted = submit();
-      const claimed = store.claim(device.token, true, ['follow-up-outline'], release)!;
+      const claimed = store.claim(
+        device.token,
+        true,
+        ['follow-up-outline'],
+        release,
+      )!;
       assert.equal(claimed.id, submitted.id);
-      assert.equal(store.finish(device.token, claimed.id, claimed.lease, followUpResultFixture(), false, undefined, 1).accepted, true);
+      assert.equal(
+        store.finish(
+          device.token,
+          claimed.id,
+          claimed.lease,
+          followUpResultFixture(),
+          false,
+          undefined,
+          1,
+        ).accepted,
+        true,
+      );
       const saved = store.interviews.get(user, record.id);
       assert.equal(saved.record.outlineSupplements?.length, 50);
       assert.equal(saved.record.outlineSupplements?.at(-1)?.jobId, claimed.id);

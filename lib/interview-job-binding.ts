@@ -13,9 +13,14 @@ import {
   applyOutlineRegeneration,
   type OutlineRegenerationResult,
 } from './outline-regeneration.ts';
+import { createPreparationWorkSampleInput } from './preparation-analysis-inputs.ts';
 import { applyLateWorkSample } from './work-sample-workflow.ts';
 import type { WrittenTestSupplementResult } from './written-test-supplement.ts';
-import type { WorkSampleAnalysisResult } from './work-sample.ts';
+import {
+  validateWorkSampleInput,
+  validateWorkSampleReference,
+  type WorkSampleAnalysisResult,
+} from './work-sample.ts';
 import {
   validateSecondRoundAssessmentInput,
   validateSecondRoundOutlineInput,
@@ -128,6 +133,23 @@ export function assertInterviewJobInputMatches(
     });
     if (!equal(input, expected))
       throw new Error('补充追问资料与云端面试记录不一致。');
+    return;
+  }
+  if (kind === 'work-sample') {
+    if (!record.resumeReading) throw new Error('云端面试记录缺少现有提纲。');
+    const expected = validateWorkSampleInput(
+      createPreparationWorkSampleInput(
+        {
+          ...standards(record),
+          resumeText: record.resumeText,
+          outlineVersion: record.outlineVersion || 1,
+        },
+        record.resumeReading,
+        validateWorkSampleReference(input.workSample),
+      ),
+    );
+    if (!equal(input, expected))
+      throw new Error('作品资料与云端面试记录不一致。');
     return;
   }
   const expectedStandards = standards(record);
