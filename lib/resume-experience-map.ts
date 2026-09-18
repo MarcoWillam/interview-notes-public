@@ -236,7 +236,11 @@ export function validateResumeExperienceMap(
       throw new Error('经历覆盖引用了不存在的经历编号。');
     if (item.status === 'unresolved' && experienceId !== null)
       throw new Error('未归属经历不能包含经历编号。');
-    return { source, experienceId, status: item.status };
+    return {
+      source,
+      experienceId,
+      status: item.status as ResumeExperienceCoverage['status'],
+    };
   });
   return {
     version: RESUME_EXPERIENCE_MAP_VERSION,
@@ -267,6 +271,25 @@ export function experienceContextLabel(experience: ResumeExperience) {
   return experience.name !== UNNAMED_RESUME_PROJECT
     ? experience.name
     : fallbackContext(experience);
+}
+
+export function experienceEvidence(experience: ResumeExperience) {
+  const facts = [
+    experience.organization,
+    experience.period,
+    experience.role,
+    experience.context,
+    ...experience.actions,
+    ...experience.decisions,
+    ...experience.collaboration,
+    ...experience.outcomes,
+    ...experience.reflection,
+  ].filter((fact): fact is ResumeExperienceFact => fact !== null);
+  return new Set([
+    ...(experience.nameEvidence ? [experience.nameEvidence] : []),
+    ...experience.evidence,
+    ...facts.map((fact) => fact.evidence),
+  ]);
 }
 
 const factSchema = {

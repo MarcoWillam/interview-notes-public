@@ -3,6 +3,11 @@ import type {
   InterviewQuestionV2,
 } from './interview-outline-v2.ts';
 import { resolveResumeEvidence } from './resume-evidence.ts';
+import {
+  experienceContextLabel,
+  experienceEvidence,
+  type ResumeExperienceMap,
+} from './resume-experience-map.ts';
 
 export const INTERVIEW_OUTLINE_V3 = 3 as const;
 export const V3_REQUIRED_QUESTIONS = 6;
@@ -27,6 +32,7 @@ export type OutlineV3Context = {
   hasWrittenTest?: boolean;
   hasWorkSample?: boolean;
   allowExistingReviewSources?: boolean;
+  experienceMap?: ResumeExperienceMap;
 };
 
 const sources = new Set<InterviewQuestionV3['source']>([
@@ -130,6 +136,8 @@ export function validateInterviewQuestionV3(
     throw new Error('面试问题来源不正确。');
   const source = raw.source as InterviewQuestionV3['source'];
   let resumeEvidence: string | null = null;
+  let experienceId: string | null = null;
+  let contextLabel: string | null = null;
   if (source === 'resume') {
     const submittedEvidence = boundedText(raw.resumeEvidence, 2000, '简历依据');
     resumeEvidence = resolveResumeEvidence(
@@ -137,6 +145,25 @@ export function validateInterviewQuestionV3(
       submittedEvidence,
     );
     if (!resumeEvidence) throw new Error('面试问题引用无法在简历原文中找到。');
+    if (context.experienceMap) {
+      if (typeof raw.experienceId !== 'string' || !raw.experienceId.trim())
+        throw new Error('简历题缺少经历编号。');
+      const experience = context.experienceMap.experiences.find(
+        ({ id }) => id === raw.experienceId,
+      );
+      if (!experience) throw new Error('简历题经历编号不存在。');
+      const evidence = experienceEvidence(experience);
+      if (
+        ![...evidence].some(
+          (item) =>
+            item.includes(resumeEvidence as string) ||
+            (resumeEvidence as string).includes(item),
+        )
+      )
+        throw new Error('简历题依据不属于关联经历。');
+      experienceId = experience.id;
+      contextLabel = experienceContextLabel(experience);
+    }
   } else if (raw.resumeEvidence !== null) {
     throw new Error('非简历题不能引用简历原文。');
   }
@@ -181,6 +208,12 @@ export function validateInterviewQuestionV3(
     listenFor: stringList(raw.listenFor, 1, 3, 1000, '观察点'),
     riskSignals: stringList(raw.riskSignals, 1, 3, 1000, '风险信号'),
     probes,
+    ...(context.experienceMap || raw.experienceId !== undefined
+      ? { experienceId }
+      : {}),
+    ...(context.experienceMap || raw.contextLabel !== undefined
+      ? { contextLabel }
+      : {}),
   };
 }
 

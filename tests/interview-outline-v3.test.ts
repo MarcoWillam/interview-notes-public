@@ -8,6 +8,7 @@ import {
   type InterviewQuestionV3,
 } from '../lib/interview-outline-v3.ts';
 import { resumeOutlineV3Instructions } from '../lib/interview-outline-v3-prompt.ts';
+import { validateResumeExperienceMap } from '../lib/resume-experience-map.ts';
 
 const dimensions = [
   '用户洞察与问题定义',
@@ -83,10 +84,49 @@ function validOutline(): InterviewOutlineV3 {
 const context = {
   role: 'AI 产品经理（校招）',
   dimensions,
-  resumeText: '姓名：林小满。主动组织校园用户访谈。',
+  resumeText: '姓名：林小满。参与校园用户访谈项目，主动组织校园用户访谈。',
   hasWrittenTest: false,
   hasWorkSample: false,
 };
+
+const experienceMap = validateResumeExperienceMap(
+  {
+    version: 1,
+    summary: '识别到一段校园项目。',
+    experiences: [
+      {
+        id: 'experience-1',
+        sourceOrder: 1,
+        type: 'project',
+        name: '校园用户访谈项目',
+        nameEvidence: '校园用户访谈项目',
+        organization: null,
+        period: null,
+        role: null,
+        context: null,
+        actions: [
+          { text: '主动组织访谈', evidence: '主动组织校园用户访谈' },
+        ],
+        decisions: [],
+        collaboration: [],
+        outcomes: [],
+        reflection: [],
+        evidence: ['主动组织校园用户访谈'],
+        dimensionSignals: ['自驱力与结果闭环'],
+        missingInformation: [],
+      },
+    ],
+    coverage: [
+      {
+        source: '校园用户访谈',
+        experienceId: 'experience-1',
+        status: 'mapped',
+      },
+    ],
+    unresolvedItems: [],
+  },
+  { resumeText: context.resumeText, dimensions },
+);
 
 void test('V3 校招潜力提纲接受六道必问和两道候选题', () => {
   const outline = validateInterviewOutlineV3(validOutline(), context);
@@ -229,6 +269,69 @@ void test('V3 生成指令明确潜力导向和亲和表达', () => {
   assert.match(resumeOutlineV3Instructions, /前四道.*通用素质/);
   assert.match(resumeOutlineV3Instructions, /后两道.*岗位潜力/);
   assert.match(resumeOutlineV3Instructions, /用户运营约 60%.*数据增长约 40%/);
+  assert.match(resumeOutlineV3Instructions, /实习.*项目/);
+  assert.match(resumeOutlineV3Instructions, /experienceId/);
+});
+
+void test('V3 简历题绑定经历并由服务端生成项目定位语', () => {
+  const outline = validOutline();
+  const requiredQuestions = outline.requiredQuestions.map((item, index) =>
+    index === 0
+      ? {
+          ...item,
+          source: 'resume' as const,
+          resumeEvidence: '主动组织校园用户访谈',
+          experienceId: 'experience-1',
+          contextLabel: '模型不能覆盖这个字段',
+        }
+      : item,
+  );
+  const validated = validateInterviewOutlineV3(
+    { ...outline, requiredQuestions },
+    { ...context, experienceMap },
+  );
+  assert.equal(validated.requiredQuestions[0].experienceId, 'experience-1');
+  assert.equal(
+    validated.requiredQuestions[0].contextLabel,
+    '校园用户访谈项目',
+  );
+});
+
+void test('V3 经历地图拒绝缺失或错误的简历题经历编号', () => {
+  const outline = validOutline();
+  const resumeQuestion = {
+    ...outline.requiredQuestions[0],
+    source: 'resume' as const,
+    resumeEvidence: '主动组织校园用户访谈',
+  };
+  assert.throws(
+    () =>
+      validateInterviewOutlineV3(
+        {
+          ...outline,
+          requiredQuestions: [
+            { ...resumeQuestion, experienceId: null },
+            ...outline.requiredQuestions.slice(1),
+          ],
+        },
+        { ...context, experienceMap },
+      ),
+    /经历编号/,
+  );
+  assert.throws(
+    () =>
+      validateInterviewOutlineV3(
+        {
+          ...outline,
+          requiredQuestions: [
+            { ...resumeQuestion, experienceId: 'experience-404' },
+            ...outline.requiredQuestions.slice(1),
+          ],
+        },
+        { ...context, experienceMap },
+      ),
+    /经历编号/,
+  );
 });
 
 void test('AI 产品经理有笔试时只让后两道岗位题承担复盘', () => {

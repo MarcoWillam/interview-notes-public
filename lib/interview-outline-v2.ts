@@ -18,6 +18,8 @@ export type InterviewQuestionV2 = {
   listenFor: string[];
   riskSignals: string[];
   probes: { condition: string; question: string }[];
+  experienceId?: string | null;
+  contextLabel?: string | null;
 };
 
 export type InterviewOutlineCoverage = {
@@ -189,6 +191,22 @@ export function validateInterviewQuestionV2(
     listenFor: stringList(raw.listenFor, 1, 3, 1000, '观察点'),
     riskSignals: stringList(raw.riskSignals, 1, 3, 1000, '风险信号'),
     probes,
+    ...(raw.experienceId === undefined
+      ? {}
+      : {
+          experienceId:
+            raw.experienceId === null
+              ? null
+              : boundedText(raw.experienceId, 100, '经历编号'),
+        }),
+    ...(raw.contextLabel === undefined
+      ? {}
+      : {
+          contextLabel:
+            raw.contextLabel === null
+              ? null
+              : boundedText(raw.contextLabel, 200, '经历定位语'),
+        }),
   };
 }
 
@@ -505,6 +523,8 @@ export const interviewQuestionV2Schema = {
         excerpt: { type: 'string', minLength: 1, maxLength: 4000 },
       },
     },
+    experienceId: { type: ['string', 'null'], maxLength: 100 },
+    contextLabel: { type: ['string', 'null'], maxLength: 200 },
     listenFor: {
       type: 'array',
       minItems: 1,
