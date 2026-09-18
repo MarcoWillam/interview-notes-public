@@ -1,4 +1,4 @@
-export const CONNECTOR_VERSION = '2026.9.18-4';
+export const CONNECTOR_VERSION = '2026.9.18-5';
 export const CONNECTOR_PROTOCOL = 5;
 export const MINIMUM_CONNECTOR_PROTOCOL = 1;
 export const OUTLINE_CONNECTOR_PROTOCOL = 2;

@@ -7,7 +7,7 @@ import { executeCodexContract } from '../contract-executor.ts';
 import { connectorRelease } from '../../lib/connector-release.ts';
 import type { LocalWorkSampleReference } from '../work-samples/inventory.ts';
 export type Credentials = { server: string; token: string; id: string };
-export const CONNECTOR_HEARTBEAT_GRACE_MS = 240000;
+export const CONNECTOR_HEARTBEAT_GRACE_MS = 720000;
 export const CONNECTOR_FINISH_ATTEMPTS = 12;
 export function heartbeatConnectionExpired(
   lastHeartbeat: number,

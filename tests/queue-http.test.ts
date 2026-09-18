@@ -667,14 +667,14 @@ void test('connector allows only HTTPS or loopback roots', () => {
   ])
     assert.throws(() => validateServer(url));
 });
-void test('connector keeps analysis alive through a four minute heartbeat gap', () => {
+void test('connector keeps analysis alive through a full ten minute analysis gap', () => {
   const lastHeartbeat = 1_000_000;
   assert.equal(
-    heartbeatConnectionExpired(lastHeartbeat, lastHeartbeat + 240000),
+    heartbeatConnectionExpired(lastHeartbeat, lastHeartbeat + 600000),
     false,
   );
   assert.equal(
-    heartbeatConnectionExpired(lastHeartbeat, lastHeartbeat + 240001),
+    heartbeatConnectionExpired(lastHeartbeat, lastHeartbeat + 720001),
     true,
   );
 });

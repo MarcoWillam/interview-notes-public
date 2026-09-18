@@ -1295,15 +1295,15 @@ void test('heartbeats extend ownership and queued material expires after 24 hour
     s.close();
   }
 });
-void test('a running connector lease tolerates a four minute network interruption', () => {
+void test('a running connector lease covers a full ten minute analysis gap', () => {
   const { s, a, tick } = setup();
   try {
     const d = s.redeem(s.pairing(a).code, '电脑', connectorRelease);
     const job = s.submit(a, 'lease-network-gap-123', '面试', input);
     s.claim(d.token, true)!;
-    tick(240000);
+    tick(600000);
     assert.equal(s.get(a, job.id).state, 'running');
-    tick(60001);
+    tick(300001);
     assert.equal(s.get(a, job.id).state, 'failed');
   } finally {
     s.close();
@@ -1485,7 +1485,7 @@ void test('cancelled and expired leases cannot overwrite a result or run twice a
     assert.equal(s.finish(d.token, c.id, c.lease, report).accepted, false);
     s.submit(a, 'request-456', '面试', input);
     const next = s.claim(d.token, true)!;
-    tick(300001);
+    tick(900001);
     assert.equal(s.heartbeat(d.token, next.id, next.lease).active, false);
     assert.equal(s.get(a, next.id).state, 'failed');
     assert.equal(s.claim(d.token, true), null);
