@@ -3,6 +3,7 @@ import test from 'node:test';
 import { builtInRoleTemplates } from '../lib/default-role-templates.ts';
 import { executionContractFor } from '../server/execution-contract.ts';
 import { followUpInputFixture } from './fixtures/follow-up-outline.ts';
+import { validateResumeExperienceMap } from '../lib/resume-experience-map.ts';
 
 const standards = builtInRoleTemplates[0];
 const resumeText = '姓名：林小满。组织校园用户访谈并完成两轮验证。';
@@ -23,6 +24,45 @@ const workSample = {
   bytes: 1024,
   modifiedAt: 1,
 };
+
+const experienceMap = validateResumeExperienceMap(
+  {
+    version: 1,
+    summary: '识别到一段校园项目。',
+    experiences: [
+      {
+        id: 'experience-1',
+        sourceOrder: 1,
+        type: 'project',
+        name: '校园用户访谈',
+        nameEvidence: '校园用户访谈',
+        organization: null,
+        period: null,
+        role: null,
+        context: null,
+        actions: [
+          { text: '组织校园用户访谈', evidence: '组织校园用户访谈' },
+        ],
+        decisions: [],
+        collaboration: [],
+        outcomes: [],
+        reflection: [],
+        evidence: ['组织校园用户访谈'],
+        dimensionSignals: ['用户洞察与问题定义'],
+        missingInformation: [],
+      },
+    ],
+    coverage: [
+      {
+        source: '校园用户访谈',
+        experienceId: 'experience-1',
+        status: 'mapped',
+      },
+    ],
+    unresolvedItems: [],
+  },
+  { resumeText, dimensions: standards.dimensionText.split('、') },
+);
 
 void test('server builds text contracts for every text-only task kind', () => {
   const fixtures = [
@@ -76,12 +116,22 @@ void test('server builds text contracts for every text-only task kind', () => {
 });
 
 void test('server builds artifact-bound contracts for initial and later work', () => {
-  const initial = executionContractFor('resume', {
+  const mapping = executionContractFor('resume', {
     ...standards,
     resumeText,
     hasWrittenTest: true,
     outlineVersion: 1,
     workSample,
+  });
+  assert.equal(mapping.runner, 'structured-text');
+
+  const initial = executionContractFor('initial-outline', {
+    ...standards,
+    resumeText,
+    hasWrittenTest: true,
+    outlineVersion: 1,
+    workSample,
+    experienceMap,
   });
   assert.equal(initial.runner, 'structured-work-sample');
   assert.equal(initial.artifact?.coveragePointer, '/workSample/coverage');
@@ -105,7 +155,7 @@ void test('server builds artifact-bound contracts for initial and later work', (
   );
 });
 
-void test('server selects the V3 campus-potential prompt and schema at claim time', () => {
+void test('server splits resume mapping from V3 outline generation', () => {
   const contract = executionContractFor('resume', {
     ...standards,
     resumeText,
@@ -113,19 +163,38 @@ void test('server selects the V3 campus-potential prompt and schema at claim tim
     outlineVersion: 3,
   });
   assert.equal(contract.runner, 'structured-text');
-  assert.match(contract.instructions, /V3 校招潜力/);
+  assert.match(contract.instructions, /经历地图/);
   const schema = contract.schema as {
-    properties: { outline: { properties: { version: { enum: number[] } } } };
+    properties: { version: { enum: number[] } };
   };
-  assert.deepEqual(schema.properties.outline.properties.version.enum, [3]);
-});
+  assert.deepEqual(schema.properties.version.enum, [1]);
 
-void test('resume contracts restrict question sources to the submitted written-test state', () => {
-  const withoutWrittenTest = executionContractFor('resume', {
+  const outline = executionContractFor('initial-outline', {
     ...standards,
     resumeText,
     hasWrittenTest: false,
     outlineVersion: 3,
+    experienceMap,
+  });
+  assert.equal(outline.runner, 'structured-text');
+  assert.match(outline.instructions, /V3 校招潜力/);
+  assert.deepEqual(
+    (
+      outline.schema as {
+        properties: { outline: { properties: { version: { enum: number[] } } } };
+      }
+    ).properties.outline.properties.version.enum,
+    [3],
+  );
+});
+
+void test('resume contracts restrict question sources to the submitted written-test state', () => {
+  const withoutWrittenTest = executionContractFor('initial-outline', {
+    ...standards,
+    resumeText,
+    hasWrittenTest: false,
+    outlineVersion: 3,
+    experienceMap,
   });
   const withoutSchema = withoutWrittenTest.schema as {
     properties: {
@@ -150,11 +219,12 @@ void test('resume contracts restrict question sources to the submitted written-t
   assert.match(withoutWrittenTest.instructions, /hasWrittenTest=false/);
   assert.match(withoutWrittenTest.instructions, /不代表本候选人完成了笔试/);
 
-  const withWrittenTest = executionContractFor('resume', {
+  const withWrittenTest = executionContractFor('initial-outline', {
     ...standards,
     resumeText,
     hasWrittenTest: true,
     outlineVersion: 3,
+    experienceMap,
   });
   const withSchema = withWrittenTest.schema as typeof withoutSchema;
   assert.deepEqual(
@@ -163,11 +233,12 @@ void test('resume contracts restrict question sources to the submitted written-t
     ['role', 'resume', 'written-test'],
   );
 
-  const legacyWithoutWrittenTest = executionContractFor('resume', {
+  const legacyWithoutWrittenTest = executionContractFor('initial-outline', {
     ...standards,
     resumeText,
     hasWrittenTest: false,
     outlineVersion: 1,
+    experienceMap,
   });
   const legacySchema = legacyWithoutWrittenTest.schema as {
     properties: {

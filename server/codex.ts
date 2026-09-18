@@ -1,9 +1,17 @@
 import {
-  resumeInstructionsFor,
-  resumeOutputSchema,
   validateResumeInput,
   type ResumeInput,
 } from '../lib/resume-reading.ts';
+import {
+  resumeExperienceMapInstructions,
+  resumeExperienceMapSchema,
+  validateResumeExperienceMap,
+} from '../lib/resume-experience-map.ts';
+import {
+  initialOutlineInstructionsFor,
+  initialOutlineOutputSchema,
+  validateInitialOutlineResult,
+} from '../lib/initial-outline.ts';
 import {
   writtenTestSupplementInstructionsFor,
   writtenTestSupplementOutputSchema,
@@ -44,12 +52,30 @@ export async function readResumeWithCodex(
 ): Promise<unknown> {
   const normalized = validateResumeInput(input);
   const version = normalized.outlineVersion ?? 1;
-  return runStructuredCodex(
-    normalized,
+  if (normalized.workSample)
+    throw new Error('带笔试作品的简历准备需要通过连接器任务执行。');
+  const dimensions = normalized.dimensionText
+    .split(/[、,，\n]/)
+    .map((dimension) => dimension.trim())
+    .filter(Boolean);
+  const rawMap = await runStructuredCodex(
+    { resumeText: normalized.resumeText, dimensions },
     signal,
-    resumeInstructionsFor(version),
-    resumeOutputSchema(version),
+    resumeExperienceMapInstructions,
+    resumeExperienceMapSchema,
   );
+  const experienceMap = validateResumeExperienceMap(rawMap, {
+    resumeText: normalized.resumeText,
+    dimensions,
+  });
+  const initialInput = { ...normalized, experienceMap };
+  const rawReading = await runStructuredCodex(
+    initialInput,
+    signal,
+    initialOutlineInstructionsFor(version),
+    initialOutlineOutputSchema(version),
+  );
+  return validateInitialOutlineResult(rawReading, initialInput);
 }
 
 export async function generateWrittenTestSupplementWithCodex(

@@ -523,8 +523,6 @@ export const interviewQuestionV2Schema = {
         excerpt: { type: 'string', minLength: 1, maxLength: 4000 },
       },
     },
-    experienceId: { type: ['string', 'null'], maxLength: 100 },
-    contextLabel: { type: ['string', 'null'], maxLength: 200 },
     listenFor: {
       type: 'array',
       minItems: 1,

@@ -13,6 +13,7 @@ export type CodexExecutionRunner =
 export type CodexExecutionKind =
   | 'interview'
   | 'resume'
+  | 'initial-outline'
   | 'written-test'
   | 'outline'
   | 'follow-up-outline'

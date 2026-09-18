@@ -16,10 +16,17 @@ import {
   validateOutlineRegenerationInput,
 } from '../lib/outline-regeneration.ts';
 import {
-  resumeInstructionsFor,
-  resumeOutputSchema,
   validateResumeInput,
 } from '../lib/resume-reading.ts';
+import {
+  resumeExperienceMapInstructions,
+  resumeExperienceMapSchema,
+} from '../lib/resume-experience-map.ts';
+import {
+  initialOutlineInstructionsFor,
+  initialOutlineOutputSchema,
+  validateInitialOutlineInput,
+} from '../lib/initial-outline.ts';
 import { aiPmWorkSampleRubricContext } from '../lib/work-sample-rubric.ts';
 import {
   priorRoundComparisonSchema,
@@ -103,10 +110,12 @@ function allowedResumeSources(input: ReturnType<typeof validateResumeInput>) {
   return ['role', 'resume'];
 }
 
-function resumeSchemaFor(input: ReturnType<typeof validateResumeInput>) {
+function initialOutlineSchemaFor(
+  input: ReturnType<typeof validateInitialOutlineInput>,
+) {
   const version = input.outlineVersion ?? 1;
   const schema = structuredClone(
-    resumeOutputSchema(version),
+    initialOutlineOutputSchema(version),
   ) as unknown as MutableSourceSchema;
   const sources = allowedResumeSources(input);
   if (version === 1)
@@ -134,14 +143,14 @@ function resumeSourceInstructions(
   return '本次 hasWrittenTest=false 且未提供作品。即使岗位要求或模板文字提到“笔试”“作品”或其考察框架，也不代表本候选人完成了笔试或提交了作品；所有问题 source 只能使用 role 或 resume。';
 }
 
-function resumeWorkSampleDefinition(
-  input: ReturnType<typeof validateResumeInput>,
+function initialOutlineWorkSampleDefinition(
+  input: ReturnType<typeof validateInitialOutlineInput>,
 ) {
   const version = input.outlineVersion ?? 1;
-  const resumeSchema = resumeSchemaFor(input);
+  const resumeSchema = initialOutlineSchemaFor(input);
   return {
     runner: 'structured-work-sample' as const,
-    instructions: `${resumeInstructionsFor(version)}\n${resumeSourceInstructions(input)}\n只使用 work_sample 工具读取笔试作品。必须返回 workSample。${version === 3 ? 'outline 的第 5–6 道必问题必须与 workSample.questions 的问题文本、文件路径和逐字引用完全一致，source=work-sample；workSample.questions 恰好两道，主问题自然、亲和且为 12–30 字' : version === 2 ? 'outline 的第 2–4 道必问题必须与 workSample.questions 的问题文本、文件路径和逐字引用完全一致，source=work-sample' : '第 2–4 题必须与 workSample.questions 完全一致，questionSource=work-sample'}；引用只能来自 UTF-8 文本或源码。\n${workSampleEmbeddedInstructionsFor(version)}`,
+    instructions: `${initialOutlineInstructionsFor(version)}\n${resumeSourceInstructions(input)}\n只使用 work_sample 工具读取笔试作品。必须返回 workSample。${version === 3 ? 'outline 的第 5–6 道必问题必须与 workSample.questions 的问题文本、文件路径和逐字引用完全一致，source=work-sample；workSample.questions 恰好两道，主问题自然、亲和且为 12–30 字' : version === 2 ? 'outline 的第 2–4 道必问题必须与 workSample.questions 的问题文本、文件路径和逐字引用完全一致，source=work-sample' : '第 2–4 题必须与 workSample.questions 完全一致，questionSource=work-sample'}；引用只能来自 UTF-8 文本或源码。\n${workSampleEmbeddedInstructionsFor(version)}`,
     schema: {
       ...resumeSchema,
       required: [...resumeSchema.required, 'workSample'],
@@ -169,12 +178,27 @@ function modelDefinition(kind: CodexExecutionKind, value: unknown) {
     };
   if (kind === 'resume') {
     const input = validateResumeInput(value);
-    if (input.workSample) return resumeWorkSampleDefinition(input);
+    return {
+      runner: 'structured-text' as const,
+      instructions: resumeExperienceMapInstructions,
+      schema: resumeExperienceMapSchema,
+      payload: {
+        resumeText: input.resumeText,
+        dimensions: input.dimensionText
+          .split(/[、,，\n]/)
+          .map((dimension) => dimension.trim())
+          .filter(Boolean),
+      },
+    };
+  }
+  if (kind === 'initial-outline') {
+    const input = validateInitialOutlineInput(value);
+    if (input.workSample) return initialOutlineWorkSampleDefinition(input);
     const version = input.outlineVersion ?? 1;
     return {
       runner: 'structured-text' as const,
-      instructions: `${resumeInstructionsFor(version)}\n${resumeSourceInstructions(input)}`,
-      schema: resumeSchemaFor(input),
+      instructions: `${initialOutlineInstructionsFor(version)}\n${resumeSourceInstructions(input)}`,
+      schema: initialOutlineSchemaFor(input),
       payload: input,
     };
   }

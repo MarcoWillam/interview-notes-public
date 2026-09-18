@@ -36,6 +36,10 @@ import {
 import { resumeOutlineV3Instructions } from './interview-outline-v3-prompt.ts';
 import { resolveResumeEvidence } from './resume-evidence.ts';
 import { builtInRoleTemplates } from './default-role-templates.ts';
+import {
+  validateResumeExperienceMap,
+  type ResumeExperienceMap,
+} from './resume-experience-map.ts';
 
 export type {
   InterviewQuestion,
@@ -58,6 +62,7 @@ export type ResumeReading = {
   summary: string;
   sections: { name: string; items: { text: string; evidence: string }[] }[];
   followUps: string[];
+  experienceMap?: ResumeExperienceMap;
 };
 export const resumeCategories = ['教育背景', '工作经历', '项目经验', '技能'];
 function text(value: unknown, max: number): string {
@@ -170,12 +175,30 @@ function validateQuestions(
 export function validateResumeReading(
   value: unknown,
   input: ResumeInput,
-  options: { conciseQuestions?: boolean } = {},
+  options: {
+    conciseQuestions?: boolean;
+    experienceMap?: ResumeExperienceMap;
+  } = {},
 ): ResumeReading {
   const normalizedInput = validateResumeInput(input);
   if (!value || typeof value !== 'object')
     throw new Error('简历阅读格式不正确。');
   const v = value as Record<string, unknown>;
+  const dimensions = normalizedInput.dimensionText
+    .split(/[、,，\n]/)
+    .map((dimension) => dimension.trim())
+    .filter(Boolean);
+  const experienceMap = options.experienceMap
+    ? validateResumeExperienceMap(options.experienceMap, {
+        resumeText: normalizedInput.resumeText,
+        dimensions,
+      })
+    : v.experienceMap === undefined
+      ? undefined
+      : validateResumeExperienceMap(v.experienceMap, {
+          resumeText: normalizedInput.resumeText,
+          dimensions,
+        });
   if (!Array.isArray(v.sections) || v.sections.length !== 4)
     throw new Error('简历分类不完整。');
   const sections = resumeCategories.map((name) => {
@@ -235,13 +258,11 @@ export function validateResumeReading(
       );
     const outlineContext = {
       role: normalizedInput.role,
-      dimensions: normalizedInput.dimensionText
-        .split(/[、,，\n]/)
-        .map((dimension) => dimension.trim())
-        .filter(Boolean),
+      dimensions,
       resumeText: normalizedInput.resumeText,
       hasWrittenTest: normalizedInput.hasWrittenTest,
       hasWorkSample: normalizedInput.workSample !== undefined,
+      ...(experienceMap ? { experienceMap } : {}),
     };
     outline =
       normalizedInput.outlineVersion === 3
@@ -339,6 +360,7 @@ export function validateResumeReading(
     summary: text(v.summary, 4000),
     sections,
     followUps: v.followUps.map((q) => text(q, 1000)),
+    ...(experienceMap ? { experienceMap } : {}),
     ...(interviewQuestions ? { interviewQuestions } : {}),
     ...(outline ? { outline } : {}),
     ...(writtenTestSupplement ? { writtenTestSupplement } : {}),
